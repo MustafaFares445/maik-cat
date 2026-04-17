@@ -1,0 +1,989 @@
+{
+    "info": {
+        "name": "Maik Cars API",
+        "description": "Postman collection for the Maik Cars API. Responses are shown in camelCase because the API middleware transforms JSON keys on the wire. Use baseUrlLocal/baseUrlDev values and set baseUrl to the one you want.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http://maik-cars.test"
+        },
+        {
+            "key": "baseUrlLocal",
+            "value": "http://maik-cars.test"
+        },
+        {
+            "key": "baseUrlDev",
+            "value": "https://maik-cat.mustafafares.com"
+        },
+        {
+            "key": "bearerToken",
+            "value": ""
+        },
+        {
+            "key": "importFilePath",
+            "value": "C:/path/to/converters.xlsx"
+        }
+    ],
+    "item": [
+        {
+            "name": "Home",
+            "item": [
+                {
+                    "name": "GET /api/home/stats",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/home/stats?days=14&currency=USD",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "home",
+                                "stats"
+                            ],
+                            "query": [
+                                {
+                                    "key": "days",
+                                    "value": "14"
+                                },
+                                {
+                                    "key": "currency",
+                                    "value": "USD"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"stats\": {\n    \"source\": \"third_party\",\n    \"currency\": \"USD\",\n    \"changes\": [\n      {\n        \"date\": \"2026-04-17\",\n        \"ptUsdPerOz\": 1512.45,\n        \"pdUsdPerOz\": 1024.1,\n        \"rhUsdPerOz\": 4380.75,\n        \"ptChangePercent\": 1.2,\n        \"pdChangePercent\": -0.4,\n        \"rhChangePercent\": 0.8\n      }\n    ],\n    \"summary\": {\n      \"date\": \"2026-04-17\",\n      \"ptUsdPerOz\": 1512.45,\n      \"pdUsdPerOz\": 1024.1,\n      \"rhUsdPerOz\": 4380.75,\n      \"ptEurPerOz\": null,\n      \"pdEurPerOz\": null,\n      \"rhEurPerOz\": null,\n      \"ptChangePercent\": 1.2,\n      \"pdChangePercent\": -0.4,\n      \"rhChangePercent\": 0.8,\n      \"currency\": \"USD\",\n      \"fxRate\": 1\n    }\n  }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "GET /api/home/top_items",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/home/top_items",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "home",
+                                "top_items"
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"topItems\": [\n    {\n      \"id\": \"2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb\",\n      \"model\": \"BMW 520D\",\n      \"serialCode\": \"7832440\",\n      \"weightKg\": 0.182,\n      \"ptPpm\": 120,\n      \"pdPpm\": 350,\n      \"rhPpm\": 12,\n      \"shapeCode\": \"A1\",\n      \"details\": \"Turbo converter\",\n      \"carGroup\": {\n        \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n        \"name\": \"BMW\",\n        \"region\": \"EU\",\n        \"parentId\": null\n      },\n      \"extraCodes\": [\"BMW-01\", \"OE-7\"],\n      \"imageUrl\": null\n    }\n  ]\n}"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Catalog",
+            "item": [
+                {
+                    "name": "GET /api/car_groups",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/car_groups",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "car_groups"
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"data\": [\n    {\n      \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n      \"name\": \"BMW\",\n      \"region\": \"EU\",\n      \"parentId\": null\n    }\n  ]\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "GET /api/items",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/items?text=PR-ALT-01&categoryId=d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1&perPage=20&sort=-created_at",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "items"
+                            ],
+                            "query": [
+                                {
+                                    "key": "text",
+                                    "value": "PR-ALT-01"
+                                },
+                                {
+                                    "key": "categoryId",
+                                    "value": "d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1"
+                                },
+                                {
+                                    "key": "perPage",
+                                    "value": "20"
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "-created_at"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"data\": [\n    {\n      \"id\": \"2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb\",\n      \"model\": \"BMW 520D\",\n      \"serialCode\": \"7832440\",\n      \"weightKg\": 0.182,\n      \"ptPpm\": 120,\n      \"pdPpm\": 350,\n      \"rhPpm\": 12,\n      \"shapeCode\": \"A1\",\n      \"details\": \"Turbo converter\",\n      \"carGroup\": {\n        \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n        \"name\": \"BMW\",\n        \"region\": \"EU\",\n        \"parentId\": null\n      },\n      \"extraCodes\": [\"BMW-01\"],\n      \"imageUrl\": null\n    }\n  ],\n  \"links\": {\n    \"first\": \"https://example.test/api/items?page=1\",\n    \"last\": \"https://example.test/api/items?page=12\",\n    \"prev\": null,\n    \"next\": \"https://example.test/api/items?page=2\"\n  },\n  \"meta\": {\n    \"currentPage\": 1,\n    \"from\": 1,\n    \"lastPage\": 12,\n    \"path\": \"https://example.test/api/items\",\n    \"perPage\": 20,\n    \"to\": 20,\n    \"total\": 240\n  }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "GET /api/items/{item}",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/items/2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "items",
+                                "2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb"
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"data\": {\n    \"id\": \"2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb\",\n    \"model\": \"BMW 520D\",\n    \"serialCode\": \"7832440\",\n    \"weightKg\": 0.182,\n    \"ptPpm\": 120,\n    \"pdPpm\": 350,\n    \"rhPpm\": 12,\n    \"shapeCode\": \"A1\",\n    \"details\": \"Turbo converter\",\n    \"carGroup\": {\n      \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n      \"name\": \"BMW\",\n      \"region\": \"EU\",\n      \"parentId\": null\n    },\n    \"extraCodes\": [\"BMW-01\", \"OE-7\"],\n    \"imageUrl\": null\n  },\n  \"related\": [\n    {\n      \"id\": \"5db02e7e-9142-47a6-b040-7df4a9b78a2c\",\n      \"model\": \"BMW 530D\",\n      \"serialCode\": \"7832441\",\n      \"weightKg\": 0.175,\n      \"ptPpm\": 110,\n      \"pdPpm\": 300,\n      \"rhPpm\": 10,\n      \"shapeCode\": \"A1\",\n      \"details\": null,\n      \"carGroup\": {\n        \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n        \"name\": \"BMW\",\n        \"region\": \"EU\",\n        \"parentId\": null\n      },\n      \"extraCodes\": [],\n      \"imageUrl\": null\n    }\n  ]\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "GET /api/items/{item}/similar",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/items/2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb/similar?limit=8",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "items",
+                                "2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb",
+                                "similar"
+                            ],
+                            "query": [
+                                {
+                                    "key": "limit",
+                                    "value": "8"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"data\": [\n    {\n      \"id\": \"5db02e7e-9142-47a6-b040-7df4a9b78a2c\",\n      \"model\": \"BMW 530D\",\n      \"serialCode\": \"7832441\",\n      \"weightKg\": 0.175,\n      \"ptPpm\": 110,\n      \"pdPpm\": 300,\n      \"rhPpm\": 10,\n      \"shapeCode\": \"A1\",\n      \"details\": null,\n      \"carGroup\": {\n        \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n        \"name\": \"BMW\",\n        \"region\": \"EU\",\n        \"parentId\": null\n      },\n      \"extraCodes\": [],\n      \"imageUrl\": null\n    }\n  ]\n}"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Calculator",
+            "item": [
+                {
+                    "name": "POST /api/calculator/estimate",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"itemId\": \"2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb\",\n  \"recoveryRate\": 0.8,\n  \"currency\": \"USD\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/calculator/estimate",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "calculator",
+                                "estimate"
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"item\": {\n    \"id\": \"2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb\",\n    \"serialCode\": \"7832440\",\n    \"model\": \"BMW 520D\"\n  },\n  \"estimate\": {\n    \"recoveryRate\": 0.8,\n    \"currency\": \"USD\",\n    \"fxRate\": 1,\n    \"weightKg\": 0.182,\n    \"breakdown\": {\n      \"pt\": {\n        \"grams\": 0.02184,\n        \"usdPerGram\": 48.59,\n        \"valueUsd\": 0.85,\n        \"eurPerGram\": null,\n        \"valueEur\": null\n      },\n      \"pd\": {\n        \"grams\": 0.0637,\n        \"usdPerGram\": 32.89,\n        \"valueUsd\": 1.68,\n        \"eurPerGram\": null,\n        \"valueEur\": null\n      },\n      \"rh\": {\n        \"grams\": 0.002184,\n        \"usdPerGram\": 141.07,\n        \"valueUsd\": 0.25,\n        \"eurPerGram\": null,\n        \"valueEur\": null\n      }\n    },\n    \"totalUsd\": 2.78,\n    \"totalEur\": null,\n    \"priceReference\": {\n      \"id\": \"7e1de0ca-3f0d-4311-8d73-1a4bdc6c8d66\",\n      \"fetchedAt\": \"2026-04-18T10:15:00Z\"\n    }\n  }\n}"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Markets",
+            "item": [
+                {
+                    "name": "GET /api/charts/metals",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/charts/metals?days=14&currency=USD",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "charts",
+                                "metals"
+                            ],
+                            "query": [
+                                {
+                                    "key": "days",
+                                    "value": "14"
+                                },
+                                {
+                                    "key": "currency",
+                                    "value": "USD"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"period\": \"14_days\",\n  \"currency\": \"USD\",\n  \"points\": [\n    {\n      \"date\": \"2026-04-17\",\n      \"ptUsdPerOz\": 1512.45,\n      \"pdUsdPerOz\": 1024.1,\n      \"rhUsdPerOz\": 4380.75,\n      \"ptChangePercent\": 1.2,\n      \"pdChangePercent\": -0.4,\n      \"rhChangePercent\": 0.8\n    }\n  ]\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "GET /api/notifications/changes",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/notifications/changes?days=14&currency=USD",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "notifications",
+                                "changes"
+                            ],
+                            "query": [
+                                {
+                                    "key": "days",
+                                    "value": "14"
+                                },
+                                {
+                                    "key": "currency",
+                                    "value": "USD"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"currency\": \"USD\",\n  \"data\": [\n    {\n      \"id\": \"2026-04-17-0\",\n      \"type\": \"market_change\",\n      \"title\": \"Metal prices updated\",\n      \"body\": \"Pt 1.20%, Pd -0.40%, Rh 0.80%\",\n      \"date\": \"2026-04-17\",\n      \"meta\": {\n        \"ptUsdPerOz\": 1512.45,\n        \"pdUsdPerOz\": 1024.1,\n        \"rhUsdPerOz\": 4380.75,\n        \"ptEurPerOz\": null,\n        \"pdEurPerOz\": null,\n        \"rhEurPerOz\": null,\n        \"currency\": \"USD\",\n        \"fxRate\": 1\n      }\n    }\n  ]\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "GET /api/v1/metals/spot",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/v1/metals/spot?currency=USD&unit=both&metals=gold,platinum",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "metals",
+                                "spot"
+                            ],
+                            "query": [
+                                {
+                                    "key": "currency",
+                                    "value": "USD"
+                                },
+                                {
+                                    "key": "unit",
+                                    "value": "both"
+                                },
+                                {
+                                    "key": "metals",
+                                    "value": "gold,platinum"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"success\": true,\n  \"source\": \"kitco.com\",\n  \"cached\": true,\n  \"cacheExpiresAt\": \"2026-04-18T16:15:00Z\",\n  \"updatedAt\": \"2026-04-18T10:15:00Z\",\n  \"currency\": \"USD\",\n  \"fxRate\": 1,\n  \"data\": [\n    {\n      \"key\": \"platinum\",\n      \"nameEn\": \"Platinum\",\n      \"nameAr\": \"بلاتين\",\n      \"symbol\": \"Pt\",\n      \"priceOz\": 982.4,\n      \"priceGram\": 31.58,\n      \"changeOz\": 11.79,\n      \"changePct\": 1.2,\n      \"direction\": \"up\"\n    }\n  ]\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "GET /api/v1/metals/spot/{key}",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/v1/metals/spot/platinum?currency=USD",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "metals",
+                                "spot",
+                                "platinum"
+                            ],
+                            "query": [
+                                {
+                                    "key": "currency",
+                                    "value": "USD"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"success\": true,\n  \"source\": \"kitco.com\",\n  \"cached\": true,\n  \"currency\": \"USD\",\n  \"fxRate\": 1,\n  \"data\": {\n    \"key\": \"platinum\",\n    \"nameEn\": \"Platinum\",\n    \"nameAr\": \"بلاتين\",\n    \"symbol\": \"Pt\",\n    \"priceOz\": 982.4,\n    \"priceGram\": 31.58,\n    \"changeOz\": 11.79,\n    \"changePct\": 1.2,\n    \"direction\": \"up\"\n  }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "POST /api/v1/metals/refresh",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{bearerToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/v1/metals/refresh",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "metals",
+                                "refresh"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{bearerToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"success\": true,\n  \"message\": \"Cache cleared. Fresh data fetched.\",\n  \"source\": \"api.metals.live\",\n  \"updatedAt\": \"2026-04-18T10:15:00Z\"\n}"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Notifications",
+            "item": [
+                {
+                    "name": "GET /api/notifications",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{bearerToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/notifications",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "notifications"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{bearerToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"data\": [\n    {\n      \"id\": \"0a005136-8bc7-41ea-a80c-bd51671ec34f\",\n      \"type\": \"App\\\\Notifications\\\\ExampleNotification\",\n      \"notifiableType\": \"App\\\\Models\\\\User\",\n      \"notifiableId\": \"30e8bb6f-6714-4bb1-981f-d9f4ca551f92\",\n      \"data\": {\n        \"title\": \"New price update\",\n        \"body\": \"Platinum moved up\"\n      },\n      \"readAt\": null,\n      \"createdAt\": \"2026-04-18T09:10:00Z\",\n      \"updatedAt\": \"2026-04-18T09:10:00Z\"\n    }\n  ],\n  \"unreadCount\": 1\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "PATCH /api/notifications/read-all",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{bearerToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/notifications/read-all",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "notifications",
+                                "read-all"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{bearerToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"message\": \"Notifications marked as read.\",\n  \"unreadCount\": 0\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "PATCH /api/notifications/{notification}/read",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{bearerToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/notifications/0a005136-8bc7-41ea-a80c-bd51671ec34f/read",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "notifications",
+                                "0a005136-8bc7-41ea-a80c-bd51671ec34f",
+                                "read"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{bearerToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"message\": \"Notification marked as read.\",\n  \"data\": {\n    \"id\": \"0a005136-8bc7-41ea-a80c-bd51671ec34f\",\n    \"type\": \"App\\\\Notifications\\\\ExampleNotification\",\n    \"notifiableType\": \"App\\\\Models\\\\User\",\n    \"notifiableId\": \"30e8bb6f-6714-4bb1-981f-d9f4ca551f92\",\n    \"data\": {\n      \"title\": \"New price update\"\n    },\n    \"readAt\": \"2026-04-18T10:15:00Z\",\n    \"createdAt\": \"2026-04-18T09:10:00Z\",\n    \"updatedAt\": \"2026-04-18T10:15:00Z\"\n  }\n}"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Imports",
+            "item": [
+                {
+                    "name": "POST /api/imports",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{bearerToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "file",
+                                    "type": "file",
+                                    "src": "{{importFilePath}}"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/imports",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "imports"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{bearerToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "201 Created",
+                            "status": "Created",
+                            "code": 201,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"batchId\": \"7e1de0ca-3f0d-4311-8d73-1a4bdc6c8d66\",\n  \"status\": \"completed\",\n  \"rowsInserted\": 120,\n  \"rowsSkipped\": 4,\n  \"rowsFlagged\": 8,\n  \"rowsInvalid\": 2\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "GET /api/imports/{batch}",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{bearerToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/imports/7e1de0ca-3f0d-4311-8d73-1a4bdc6c8d66",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "imports",
+                                "7e1de0ca-3f0d-4311-8d73-1a4bdc6c8d66"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{bearerToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"id\": \"7e1de0ca-3f0d-4311-8d73-1a4bdc6c8d66\",\n  \"fileName\": \"converters.xlsx\",\n  \"importedBy\": \"admin@example.com\",\n  \"status\": \"completed\",\n  \"errorMessage\": null,\n  \"rowsInserted\": 120,\n  \"rowsSkipped\": 4,\n  \"rowsFlagged\": 8,\n  \"rowsInvalid\": 2,\n  \"duplicateReviews\": []\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "GET /api/imports/{batch}/duplicates",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{bearerToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/imports/7e1de0ca-3f0d-4311-8d73-1a4bdc6c8d66/duplicates",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "imports",
+                                "7e1de0ca-3f0d-4311-8d73-1a4bdc6c8d66",
+                                "duplicates"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{bearerToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"currentPage\": 1,\n  \"data\": [\n    {\n      \"id\": \"c7b771f4-7c29-42c0-8b0e-245f205f1f7a\",\n      \"batchId\": \"7e1de0ca-3f0d-4311-8d73-1a4bdc6c8d66\",\n      \"excelRow\": 42,\n      \"excelSheet\": \"BMW\",\n      \"payload\": {\n        \"model\": \"BMW 520D\",\n        \"serialCode\": \"7832440\",\n        \"weightKg\": 0.182,\n        \"ptPpm\": 120,\n        \"pdPpm\": 350,\n        \"rhPpm\": 12,\n        \"extraCodes\": \"BMW-01\",\n        \"details\": \"Turbo converter\",\n        \"shapeCode\": \"A1\"\n      },\n      \"existingItemId\": \"2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb\",\n      \"status\": \"pending\",\n      \"resolvedBy\": null,\n      \"resolvedAt\": null,\n      \"existingItem\": {\n        \"id\": \"2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb\",\n        \"model\": \"BMW 520D\",\n        \"serialCode\": \"7832440\",\n        \"carGroup\": {\n          \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n          \"name\": \"BMW\",\n          \"region\": \"EU\",\n          \"parentId\": null\n        }\n      }\n    }\n  ],\n  \"firstPageUrl\": \"https://example.test/api/imports/7e1de0ca-3f0d-4311-8d73-1a4bdc6c8d66/duplicates?page=1\",\n  \"from\": 1,\n  \"lastPage\": 1,\n  \"lastPageUrl\": \"https://example.test/api/imports/7e1de0ca-3f0d-4311-8d73-1a4bdc6c8d66/duplicates?page=1\",\n  \"links\": [],\n  \"nextPageUrl\": null,\n  \"path\": \"https://example.test/api/imports/7e1de0ca-3f0d-4311-8d73-1a4bdc6c8d66/duplicates\",\n  \"perPage\": 50,\n  \"prevPageUrl\": null,\n  \"to\": 1,\n  \"total\": 1\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "PATCH /api/duplicates/{review}",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{bearerToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"action\": \"keep\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/duplicates/c7b771f4-7c29-42c0-8b0e-245f205f1f7a",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "duplicates",
+                                "c7b771f4-7c29-42c0-8b0e-245f205f1f7a"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{bearerToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"id\": \"c7b771f4-7c29-42c0-8b0e-245f205f1f7a\",\n  \"status\": \"kept\",\n  \"resolvedBy\": \"admin@example.com\",\n  \"resolvedAt\": \"2026-04-18T10:15:00Z\"\n}"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
