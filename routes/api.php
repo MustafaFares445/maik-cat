@@ -2,14 +2,26 @@
 
 use App\Http\Controllers\API\CalculatorController;
 use App\Http\Controllers\API\CarGroupController;
+use App\Http\Controllers\API\ProfileController;
+use App\Http\Controllers\API\SavedItemController;
 use App\Http\Controllers\API\ItemController;
 use App\Http\Controllers\API\HomeController;
 use App\Http\Controllers\API\NotificationController;
 use App\Http\Controllers\API\MetalsController;
 use App\Http\Controllers\API\MarketChartController;
 use App\Http\Controllers\API\MarketNotificationController;
+use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\ImportController;
 use Illuminate\Support\Facades\Route;
+
+Route::prefix('auth')->group(function () {
+    Route::post('/login', [AuthController::class, 'login'])->name('auth.login');
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->name('auth.forgot-password');
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/logout', [AuthController::class, 'logout'])->name('auth.logout');
+    });
+});
 
 Route::get('/home/stats', [HomeController::class, 'stats'])->name('home.stats');
 Route::get('/home/top_items', [HomeController::class, 'topItems'])->name('home.top-items');
@@ -35,6 +47,13 @@ Route::prefix('v1/metals')->group(function () {
 });
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+
+    Route::get('/saved-items', [SavedItemController::class, 'index'])->name('saved-items.index');
+    Route::post('/saved-items', [SavedItemController::class, 'store'])->name('saved-items.store');
+    Route::delete('/saved-items/{item}', [SavedItemController::class, 'destroy'])->name('saved-items.destroy');
+
     Route::post('/imports', [ImportController::class, 'store']);
     Route::get('/imports/{batch}', [ImportController::class, 'show']);
     Route::get('/imports/{batch}/duplicates', [ImportController::class, 'duplicates']);

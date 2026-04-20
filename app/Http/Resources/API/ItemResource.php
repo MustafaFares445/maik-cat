@@ -29,7 +29,7 @@ class ItemResource extends JsonResource
             'car_group' => CarGroupResource::make($this->whenLoaded('carGroup')),
             'extra_codes' => $this->whenLoaded('extraCodes', fn() => $this->extraCodes->pluck('code')->values()),
             'image_url' => $imageUrl,
+            'saved_item' => (bool) ($this->saved_item ?? false),
         ];
     }
 }
-

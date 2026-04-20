@@ -1,4 +1,4 @@
-{
+﻿{
     "info": {
         "name": "Maik Cars API",
         "description": "Postman collection for the Maik Cars API. Responses are shown in camelCase because the API middleware transforms JSON keys on the wire. Use baseUrlLocal/baseUrlDev values and set baseUrl to the one you want.",
@@ -110,7 +110,7 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n  \"topItems\": [\n    {\n      \"id\": \"2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb\",\n      \"model\": \"BMW 520D\",\n      \"serialCode\": \"7832440\",\n      \"weightKg\": 0.182,\n      \"ptPpm\": 120,\n      \"pdPpm\": 350,\n      \"rhPpm\": 12,\n      \"shapeCode\": \"A1\",\n      \"details\": \"Turbo converter\",\n      \"carGroup\": {\n        \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n        \"name\": \"BMW\",\n        \"region\": \"EU\",\n        \"parentId\": null\n      },\n      \"extraCodes\": [\"BMW-01\", \"OE-7\"],\n      \"imageUrl\": null\n    }\n  ]\n}"
+                            "body": "{\n  \"topItems\": [\n    {\n      \"id\": \"2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb\",\n      \"model\": \"BMW 520D\",\n      \"serialCode\": \"7832440\",\n      \"weightKg\": 0.182,\n      \"ptPpm\": 120,\n      \"pdPpm\": 350,\n      \"rhPpm\": 12,\n      \"shapeCode\": \"A1\",\n      \"details\": \"Turbo converter\",\n      \"carGroup\": {\n        \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n        \"name\": \"BMW\",\n        \"region\": \"EU\",\n        \"parentId\": null\n      },\n      \"extraCodes\": [\n        \"BMW-01\",\n        \"OE-7\"\n      ],\n      \"imageUrl\": null,\n      \"savedItem\": false\n    }\n  ]\n}"
                         }
                     ]
                 }
@@ -205,7 +205,7 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n  \"data\": [\n    {\n      \"id\": \"2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb\",\n      \"model\": \"BMW 520D\",\n      \"serialCode\": \"7832440\",\n      \"weightKg\": 0.182,\n      \"ptPpm\": 120,\n      \"pdPpm\": 350,\n      \"rhPpm\": 12,\n      \"shapeCode\": \"A1\",\n      \"details\": \"Turbo converter\",\n      \"carGroup\": {\n        \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n        \"name\": \"BMW\",\n        \"region\": \"EU\",\n        \"parentId\": null\n      },\n      \"extraCodes\": [\"BMW-01\"],\n      \"imageUrl\": null\n    }\n  ],\n  \"links\": {\n    \"first\": \"https://example.test/api/items?page=1\",\n    \"last\": \"https://example.test/api/items?page=12\",\n    \"prev\": null,\n    \"next\": \"https://example.test/api/items?page=2\"\n  },\n  \"meta\": {\n    \"currentPage\": 1,\n    \"from\": 1,\n    \"lastPage\": 12,\n    \"path\": \"https://example.test/api/items\",\n    \"perPage\": 20,\n    \"to\": 20,\n    \"total\": 240\n  }\n}"
+                            "body": "{\n  \"data\": [\n    {\n      \"id\": \"2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb\",\n      \"model\": \"BMW 520D\",\n      \"serialCode\": \"7832440\",\n      \"weightKg\": 0.182,\n      \"ptPpm\": 120,\n      \"pdPpm\": 350,\n      \"rhPpm\": 12,\n      \"shapeCode\": \"A1\",\n      \"details\": \"Turbo converter\",\n      \"carGroup\": {\n        \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n        \"name\": \"BMW\",\n        \"region\": \"EU\",\n        \"parentId\": null\n      },\n      \"extraCodes\": [\n        \"BMW-01\"\n      ],\n      \"imageUrl\": null,\n      \"savedItem\": false\n    }\n  ],\n  \"links\": {\n    \"first\": \"https://example.test/api/items?page=1\",\n    \"last\": \"https://example.test/api/items?page=12\",\n    \"prev\": null,\n    \"next\": \"https://example.test/api/items?page=2\"\n  },\n  \"meta\": {\n    \"currentPage\": 1,\n    \"from\": 1,\n    \"lastPage\": 12,\n    \"path\": \"https://example.test/api/items\",\n    \"perPage\": 20,\n    \"to\": 20,\n    \"total\": 240\n  }\n}"
                         }
                     ]
                 },
@@ -242,7 +242,7 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n  \"data\": {\n    \"id\": \"2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb\",\n    \"model\": \"BMW 520D\",\n    \"serialCode\": \"7832440\",\n    \"weightKg\": 0.182,\n    \"ptPpm\": 120,\n    \"pdPpm\": 350,\n    \"rhPpm\": 12,\n    \"shapeCode\": \"A1\",\n    \"details\": \"Turbo converter\",\n    \"carGroup\": {\n      \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n      \"name\": \"BMW\",\n      \"region\": \"EU\",\n      \"parentId\": null\n    },\n    \"extraCodes\": [\"BMW-01\", \"OE-7\"],\n    \"imageUrl\": null\n  },\n  \"related\": [\n    {\n      \"id\": \"5db02e7e-9142-47a6-b040-7df4a9b78a2c\",\n      \"model\": \"BMW 530D\",\n      \"serialCode\": \"7832441\",\n      \"weightKg\": 0.175,\n      \"ptPpm\": 110,\n      \"pdPpm\": 300,\n      \"rhPpm\": 10,\n      \"shapeCode\": \"A1\",\n      \"details\": null,\n      \"carGroup\": {\n        \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n        \"name\": \"BMW\",\n        \"region\": \"EU\",\n        \"parentId\": null\n      },\n      \"extraCodes\": [],\n      \"imageUrl\": null\n    }\n  ]\n}"
+                            "body": "{\n  \"data\": {\n    \"id\": \"2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb\",\n    \"model\": \"BMW 520D\",\n    \"serialCode\": \"7832440\",\n    \"weightKg\": 0.182,\n    \"ptPpm\": 120,\n    \"pdPpm\": 350,\n    \"rhPpm\": 12,\n    \"shapeCode\": \"A1\",\n    \"details\": \"Turbo converter\",\n    \"carGroup\": {\n      \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n      \"name\": \"BMW\",\n      \"region\": \"EU\",\n      \"parentId\": null\n    },\n    \"extraCodes\": [\n      \"BMW-01\",\n      \"OE-7\"\n    ],\n    \"imageUrl\": null,\n    \"savedItem\": false\n  },\n  \"related\": [\n    {\n      \"id\": \"5db02e7e-9142-47a6-b040-7df4a9b78a2c\",\n      \"model\": \"BMW 530D\",\n      \"serialCode\": \"7832441\",\n      \"weightKg\": 0.175,\n      \"ptPpm\": 110,\n      \"pdPpm\": 300,\n      \"rhPpm\": 10,\n      \"shapeCode\": \"A1\",\n      \"details\": null,\n      \"carGroup\": {\n        \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n        \"name\": \"BMW\",\n        \"region\": \"EU\",\n        \"parentId\": null\n      },\n      \"extraCodes\": [],\n      \"imageUrl\": null,\n      \"savedItem\": false\n    }\n  ]\n}"
                         }
                     ]
                 },
@@ -286,7 +286,7 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n  \"data\": [\n    {\n      \"id\": \"5db02e7e-9142-47a6-b040-7df4a9b78a2c\",\n      \"model\": \"BMW 530D\",\n      \"serialCode\": \"7832441\",\n      \"weightKg\": 0.175,\n      \"ptPpm\": 110,\n      \"pdPpm\": 300,\n      \"rhPpm\": 10,\n      \"shapeCode\": \"A1\",\n      \"details\": null,\n      \"carGroup\": {\n        \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n        \"name\": \"BMW\",\n        \"region\": \"EU\",\n        \"parentId\": null\n      },\n      \"extraCodes\": [],\n      \"imageUrl\": null\n    }\n  ]\n}"
+                            "body": "{\n  \"data\": [\n    {\n      \"id\": \"5db02e7e-9142-47a6-b040-7df4a9b78a2c\",\n      \"model\": \"BMW 530D\",\n      \"serialCode\": \"7832441\",\n      \"weightKg\": 0.175,\n      \"ptPpm\": 110,\n      \"pdPpm\": 300,\n      \"rhPpm\": 10,\n      \"shapeCode\": \"A1\",\n      \"details\": null,\n      \"carGroup\": {\n        \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n        \"name\": \"BMW\",\n        \"region\": \"EU\",\n        \"parentId\": null\n      },\n      \"extraCodes\": [],\n      \"imageUrl\": null,\n      \"savedItem\": false\n    }\n  ]\n}"
                         }
                     ]
                 }
@@ -980,6 +980,449 @@
                                 }
                             ],
                             "body": "{\n  \"id\": \"c7b771f4-7c29-42c0-8b0e-245f205f1f7a\",\n  \"status\": \"kept\",\n  \"resolvedBy\": \"admin@example.com\",\n  \"resolvedAt\": \"2026-04-18T10:15:00Z\"\n}"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Authentication",
+            "item": [
+                {
+                    "name": "POST /api/auth/login",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"secret123\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/login",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "login"
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"token\": \"1|plain-text-token\",\n  \"user\": {\n    \"id\": 1,\n    \"name\": \"Admin\",\n    \"email\": \"admin@example.com\"\n  }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "POST /api/auth/logout",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{bearerToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/logout",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "logout"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{bearerToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"message\": \"Logged out successfully.\"\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "POST /api/auth/forgot-password",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"admin@example.com\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/forgot-password",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "forgot-password"
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"message\": \"If the account exists, a password reset link was sent.\"\n}"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Profile",
+            "item": [
+                {
+                    "name": "GET /api/profile",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{bearerToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/profile",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "profile"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{bearerToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"data\": {\n    \"id\": 1,\n    \"name\": \"Admin\",\n    \"email\": \"admin@example.com\"\n  }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "PATCH /api/profile",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{bearerToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Admin User\",\n  \"email\": \"admin@example.com\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/profile",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "profile"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{bearerToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"message\": \"Profile updated successfully.\",\n  \"data\": {\n    \"id\": 1,\n    \"name\": \"Admin User\",\n    \"email\": \"admin@example.com\"\n  }\n}"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Saved Items",
+            "item": [
+                {
+                    "name": "GET /api/saved-items",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{bearerToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/saved-items",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "saved-items"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{bearerToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"data\": [\n    {\n      \"id\": \"2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb\",\n      \"model\": \"BMW 520D\",\n      \"serialCode\": \"7832440\",\n      \"weightKg\": 0.182,\n      \"ptPpm\": 120,\n      \"pdPpm\": 350,\n      \"rhPpm\": 12,\n      \"shapeCode\": \"A1\",\n      \"details\": \"Turbo converter\",\n      \"carGroup\": {\n        \"id\": \"d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1\",\n        \"name\": \"BMW\",\n        \"region\": \"EU\",\n        \"parentId\": null\n      },\n      \"extraCodes\": [\n        \"BMW-01\"\n      ],\n      \"imageUrl\": null,\n      \"savedItem\": true\n    }\n  ]\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "POST /api/saved-items",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{bearerToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"itemId\": \"2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/saved-items",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "saved-items"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{bearerToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "201 Created",
+                            "status": "Created",
+                            "code": 201,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"message\": \"Item saved successfully.\"\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "DELETE /api/saved-items/{item}",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{bearerToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/saved-items/2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "saved-items",
+                                "2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{bearerToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"message\": \"Item removed from saved list.\"\n}"
                         }
                     ]
                 }

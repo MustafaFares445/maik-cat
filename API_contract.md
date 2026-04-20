@@ -8,11 +8,184 @@ Environments:
 
 Authentication:
 - Public endpoints do not require auth.
-- Import, duplicate-resolution, and user notifications endpoints require Sanctum bearer auth.
+- Import, duplicate-resolution, saved-items, profile, auth logout, and user notifications endpoints require Sanctum bearer auth.
 
 Response format:
 - API responses are converted to camelCase by middleware.
 - Query and JSON request keys may be sent as camelCase; they are normalized server-side.
+- Item payloads now include `savedItem` in all GET item endpoints. Default is `false` for guests.
+
+## Auth A. Login
+
+`POST /api/auth/login`
+
+Body props:
+
+| Name | Type | Required | Example |
+| --- | --- | --- | --- |
+| email | string | Yes | admin@example.com |
+| password | string | Yes | secret123 |
+
+Example response:
+
+```json
+{
+  "token": "1|plain-text-token",
+  "user": {
+    "id": 1,
+    "name": "Admin",
+    "email": "admin@example.com"
+  }
+}
+```
+
+Errors:
+- 422 when credentials are invalid.
+
+## Auth B. Logout
+
+`POST /api/auth/logout`
+
+Auth: Sanctum bearer token required.
+
+Example response:
+
+```json
+{
+  "message": "Logged out successfully."
+}
+```
+
+## Auth C. Forget password
+
+`POST /api/auth/forgot-password`
+
+Body props:
+
+| Name | Type | Required | Example |
+| --- | --- | --- | --- |
+| email | string | Yes | admin@example.com |
+
+Example response:
+
+```json
+{
+  "message": "If the account exists, a password reset link was sent."
+}
+```
+
+## Profile A. Get profile
+
+`GET /api/profile`
+
+Auth: Sanctum bearer token required.
+
+Example response:
+
+```json
+{
+  "data": {
+    "id": 1,
+    "name": "Admin",
+    "email": "admin@example.com"
+  }
+}
+```
+
+## Profile B. Update profile
+
+`PATCH /api/profile`
+
+Auth: Sanctum bearer token required.
+
+Body props:
+
+| Name | Type | Required | Example |
+| --- | --- | --- | --- |
+| name | string | Yes | Admin User |
+| email | string | Yes | admin@example.com |
+
+Example response:
+
+```json
+{
+  "message": "Profile updated successfully.",
+  "data": {
+    "id": 1,
+    "name": "Admin User",
+    "email": "admin@example.com"
+  }
+}
+```
+
+## Saved items A. List
+
+`GET /api/saved-items`
+
+Auth: Sanctum bearer token required.
+
+Example response:
+
+```json
+{
+  "data": [
+    {
+      "id": "2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb",
+      "model": "BMW 520D",
+      "serialCode": "7832440",
+      "weightKg": 0.182,
+      "ptPpm": 120,
+      "pdPpm": 350,
+      "rhPpm": 12,
+      "shapeCode": "A1",
+      "details": "Turbo converter",
+      "carGroup": {
+        "id": "d9d1c8c7-8f70-4f3d-9e3f-2cfd6069b9c1",
+        "name": "BMW",
+        "region": "EU",
+        "parentId": null
+      },
+      "extraCodes": ["BMW-01"],
+      "imageUrl": null,
+      "savedItem": true
+    }
+  ]
+}
+```
+
+## Saved items B. Store
+
+`POST /api/saved-items`
+
+Auth: Sanctum bearer token required.
+
+Body props:
+
+| Name | Type | Required | Example | Notes |
+| --- | --- | --- | --- | --- |
+| itemId | uuid | Yes | 2b87a4d7-8e2f-4d2d-bdf5-7ce31c14a2bb | Alias: item_id |
+
+Example response:
+
+```json
+{
+  "message": "Item saved successfully."
+}
+```
+
+## Saved items C. Delete
+
+`DELETE /api/saved-items/{item}`
+
+Auth: Sanctum bearer token required.
+
+Example response:
+
+```json
+{
+  "message": "Item removed from saved list."
+}
+```
 
 ## 1. Home stats
 
@@ -87,7 +260,8 @@ Example response:
         "parentId": null
       },
       "extraCodes": ["BMW-01", "OE-7"],
-      "imageUrl": null
+      "imageUrl": null,
+      "savedItem": false
     }
   ]
 }
@@ -148,7 +322,8 @@ Example response:
         "parentId": null
       },
       "extraCodes": ["BMW-01"],
-      "imageUrl": null
+      "imageUrl": null,
+      "savedItem": false
     }
   ],
   "links": {
@@ -200,7 +375,8 @@ Example response:
       "parentId": null
     },
     "extraCodes": ["BMW-01", "OE-7"],
-    "imageUrl": null
+    "imageUrl": null,
+    "savedItem": false
   },
   "related": [
     {
@@ -220,7 +396,8 @@ Example response:
         "parentId": null
       },
       "extraCodes": [],
-      "imageUrl": null
+      "imageUrl": null,
+      "savedItem": false
     }
   ]
 }
@@ -258,7 +435,8 @@ Example response:
         "parentId": null
       },
       "extraCodes": [],
-      "imageUrl": null
+      "imageUrl": null,
+      "savedItem": false
     }
   ]
 }
