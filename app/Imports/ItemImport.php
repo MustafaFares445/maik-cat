@@ -3,29 +3,38 @@
 namespace App\Imports;
 
 use App\Models\CarGroup;
-use App\Models\ImportBatch;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 
 class ItemImport implements WithMultipleSheets
 {
-    public function __construct(
-        private readonly ImportBatch $batch,
-    ) {
-    }
+    private array $sheetImports = [];
+
+    public function __construct($unused = null) {}
 
     public function sheets(): array
     {
         $skip = ['kitko'];
 
-        return collect(CarGroup::all())
-            ->mapWithKeys(fn (CarGroup $group) => [
-                $group->excel_sheet_name => new ItemSheetImport(
-                    batch: $this->batch,
-                    carGroup: $group,
-                ),
-            ])
-            ->reject(fn ($_, string $sheet) => in_array(strtolower($sheet), $skip, true))
+        $this->sheetImports = collect(CarGroup::all())
+            ->mapWithKeys(function (CarGroup $group) {
+                $import = new ItemSheetImport($group);
+
+                return [
+                    $group->excel_sheet_name => $import,
+                ];
+            })
+            ->reject(fn($_, string $sheet) => in_array(strtolower($sheet), $skip, true))
             ->toArray();
+
+        return $this->sheetImports;
+    }
+
+    public function report(): array
+    {
+        return [
+            'rows_inserted' => collect($this->sheetImports)->sum(fn(ItemSheetImport $sheet) => $sheet->insertedCount()),
+            'rows_skipped' => collect($this->sheetImports)->sum(fn(ItemSheetImport $sheet) => $sheet->skippedCount()),
+            'rows_invalid' => collect($this->sheetImports)->sum(fn(ItemSheetImport $sheet) => $sheet->invalidCount()),
+        ];
     }
 }
-

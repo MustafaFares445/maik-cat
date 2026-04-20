@@ -4,30 +4,27 @@ namespace App\Imports;
 
 use App\Models\CarGroup;
 use App\Models\Item;
-use App\Models\DuplicateReview;
 use App\Models\ExtraCode;
-use App\Models\ImportBatch;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
-use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithStartRow;
-use Maatwebsite\Excel\Events\AfterSheet;
 
-class ItemSheetImport implements ToCollection, WithStartRow, WithChunkReading, WithEvents
+class ItemSheetImport implements ToCollection, WithStartRow, WithChunkReading
 {
     private int $inserted = 0;
     private int $skipped = 0;
-    private int $flagged = 0;
     private int $invalid = 0;
     private array $importedSignatures = [];
+    private CarGroup $carGroup;
+    private int $chunkSize;
 
-    public function __construct(
-        private readonly ImportBatch $batch,
-        private readonly CarGroup $carGroup,
-        private readonly int $chunkSize = 200,
-    ) {}
+    public function __construct(CarGroup $carGroup, int $chunkSize = 200)
+    {
+        $this->carGroup = $carGroup;
+        $this->chunkSize = $chunkSize;
+    }
 
     public function startRow(): int
     {
@@ -43,7 +40,7 @@ class ItemSheetImport implements ToCollection, WithStartRow, WithChunkReading, W
     {
         $rows = $this->dedupeWithinChunk($rows);
 
-        foreach ($rows as $index => $row) {
+        foreach ($rows as $row) {
             $data = $this->mapRow($row);
 
             if (! $this->isValidRow($data)) {
@@ -51,7 +48,7 @@ class ItemSheetImport implements ToCollection, WithStartRow, WithChunkReading, W
                 continue;
             }
 
-            $this->processRow($data, $index);
+            $this->processRow($data);
         }
     }
 
@@ -68,8 +65,13 @@ class ItemSheetImport implements ToCollection, WithStartRow, WithChunkReading, W
         })->values();
     }
 
-    private function processRow(array $data, int $rowIndex): void
+    private function processRow(array $data): void
     {
+        if ($this->isImportedSignature($data)) {
+            $this->skipped++;
+            return;
+        }
+
         $existing = $this->findExisting($data);
 
         if ($existing === null) {
@@ -77,12 +79,7 @@ class ItemSheetImport implements ToCollection, WithStartRow, WithChunkReading, W
             return;
         }
 
-        if ($this->isImportedSignature($data)) {
-            $this->skipped++;
-            return;
-        }
-
-        $this->flagForReview($data, $existing, $rowIndex);
+        $this->skipped++;
     }
 
     private function findExisting(array $data): ?Item
@@ -158,21 +155,6 @@ class ItemSheetImport implements ToCollection, WithStartRow, WithChunkReading, W
             ]));
     }
 
-    private function flagForReview(array $data, Item $existing, int $rowIndex): void
-    {
-        DuplicateReview::create([
-            'id' => Str::uuid(),
-            'batch_id' => $this->batch->id,
-            'excel_row' => $this->startRow() + $rowIndex,
-            'excel_sheet' => $this->carGroup->excel_sheet_name,
-            'payload' => $data,
-            'existing_item_id' => $existing->id,
-            'status' => 'pending',
-        ]);
-
-        $this->flagged++;
-    }
-
     private function mapRow(Collection|array $row): array
     {
         $row = $row instanceof Collection ? $row->toArray() : $row;
@@ -231,15 +213,18 @@ class ItemSheetImport implements ToCollection, WithStartRow, WithChunkReading, W
         return is_numeric($cleaned) ? (float) $cleaned : null;
     }
 
-    public function registerEvents(): array
+    public function insertedCount(): int
     {
-        return [
-            AfterSheet::class => function () {
-                $this->batch->increment('rows_inserted', $this->inserted);
-                $this->batch->increment('rows_skipped', $this->skipped);
-                $this->batch->increment('rows_flagged', $this->flagged);
-                $this->batch->increment('rows_invalid', $this->invalid);
-            },
-        ];
+        return $this->inserted;
+    }
+
+    public function skippedCount(): int
+    {
+        return $this->skipped;
+    }
+
+    public function invalidCount(): int
+    {
+        return $this->invalid;
     }
 }

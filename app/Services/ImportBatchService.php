@@ -3,34 +3,25 @@
 namespace App\Services;
 
 use App\Imports\ItemImport;
-use App\Models\ImportBatch;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
 use Throwable;
 
 class ImportBatchService
 {
-    public function import(UploadedFile $file, string $importedBy): ImportBatch
+    public function import(UploadedFile $file): array
     {
-        $batch = $this->createBatch($file, $importedBy);
+        $import = new ItemImport();
 
         try {
-            DB::transaction(function () use ($file, $batch) {
-                Excel::import(new ItemImport($batch), $file);
+            DB::transaction(function () use ($file, $import) {
+                Excel::import($import, $file);
             });
-
-            $batch->update(['status' => 'completed']);
         } catch (Throwable $e) {
-            $batch->update([
-                'status' => 'failed',
-                'error_message' => $e->getMessage(),
-            ]);
-
-            Log::error('Import batch failed', [
-                'batch_id' => $batch->id,
+            Log::error('Import failed', [
+                'file_name' => $file->getClientOriginalName(),
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -38,17 +29,8 @@ class ImportBatchService
             throw $e;
         }
 
-        return $batch->fresh();
-    }
-
-    private function createBatch(UploadedFile $file, string $importedBy): ImportBatch
-    {
-        return ImportBatch::create([
-            'id' => Str::uuid(),
-            'file_name' => $file->getClientOriginalName(),
-            'imported_by' => $importedBy,
-            'status' => 'processing',
-        ]);
+        return array_merge([
+            'status' => 'completed',
+        ], $import->report());
     }
 }
-
