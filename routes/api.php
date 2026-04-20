@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\API\CalculatorController;
+use App\Http\Controllers\API\AppVersionController;
 use App\Http\Controllers\API\CarGroupController;
 use App\Http\Controllers\API\ProfileController;
 use App\Http\Controllers\API\SavedItemController;
@@ -26,6 +27,8 @@ Route::prefix('auth')->group(function () {
 Route::get('/home/stats', [HomeController::class, 'stats'])->name('home.stats');
 Route::get('/home/top_items', [HomeController::class, 'topItems'])->name('home.top-items');
 
+Route::get('/app-version', [AppVersionController::class, 'check'])->name('app-version.check');
+
 Route::get('/car_groups', [CarGroupController::class, 'index'])->name('car-groups.index');
 
 Route::get('/items', [ItemController::class, 'index'])->name('items.index');
@@ -33,6 +36,10 @@ Route::get('/items/{item}', [ItemController::class, 'show'])->name('items.show')
 Route::get('/items/{item}/similar', [ItemController::class, 'similar'])->name('items.similar');
 
 Route::post('/calculator/estimate', [CalculatorController::class, 'estimate'])->name('calculator.estimate');
+
+Route::prefix('v1/app')->group(function () {
+    Route::post('version-check', [AppVersionController::class, 'check'])->name('app.version-check');
+});
 
 Route::get('/charts/metals', [MarketChartController::class, 'index'])->name('markets.charts.index');
 Route::get('/notifications/changes', [MarketNotificationController::class, 'index'])->name('markets.notifications.index');
@@ -53,7 +60,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/saved-items', [SavedItemController::class, 'index'])->name('saved-items.index');
     Route::post('/saved-items', [SavedItemController::class, 'store'])->name('saved-items.store');
     Route::delete('/saved-items/{item}', [SavedItemController::class, 'destroy'])->name('saved-items.destroy');
-    
+
     Route::post('/imports', [ImportController::class, 'store']);
 
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');

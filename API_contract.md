@@ -9,11 +9,55 @@ Environments:
 Authentication:
 - Public endpoints do not require auth.
 - Import, duplicate-resolution, saved-items, profile, auth logout, and user notifications endpoints require Sanctum bearer auth.
+- App version check endpoints are public and do not require auth.
 
 Response format:
 - API responses are converted to camelCase by middleware.
 - Query and JSON request keys may be sent as camelCase; they are normalized server-side.
 - Item payloads now include `savedItem` in all GET item endpoints. Default is `false` for guests.
+
+## App Version A. Check version
+
+`POST /api/v1/app/version-check`
+
+`GET /api/app-version`
+
+Public endpoint.
+
+Body props:
+
+| Name | Type | Required | Example | Notes |
+| --- | --- | --- | --- | --- |
+| platform | string | Yes | android | Accepted: ios, android. |
+| version | string | Yes | 1.0.0 | Semver format: X.Y.Z. |
+
+Example request:
+
+```json
+{
+  "platform": "android",
+  "version": "1.0.0"
+}
+```
+
+Example response:
+
+```json
+{
+  "platform": "android",
+  "currentVersion": "1.0.0",
+  "latestVersion": "1.0.0",
+  "minimumVersion": "1.0.0",
+  "updateRequired": false,
+  "updateAvailable": false,
+  "storeUrl": "https://play.google.com/store/apps/details?id=com.example.app",
+  "releaseNotes": "Initial release."
+}
+```
+
+Errors:
+- 404 when no platform policy exists.
+- 422 when platform or version is invalid.
 
 ## Auth A. Login
 

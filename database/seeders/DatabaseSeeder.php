@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
             CarGroupSeeder::class,
             MobileRealDataSeeder::class,
             MobileFakeDataSeeder::class,
+            AppVersionSeeder::class,
         ]);
 
         User::factory()->create([
