@@ -304,6 +304,10 @@ class MetalsSpotService
             }
         }
 
+        if ((bool) config('services.metals.hard_fallback_enabled', true)) {
+            return $this->hardFallbackPayload();
+        }
+
         throw new RuntimeException('All price sources are currently unreachable.');
     }
 
@@ -348,6 +352,50 @@ class MetalsSpotService
         return [
             'source' => $source,
             'cached' => false,
+            'updated_at' => now()->toIso8601String(),
+            'data' => $rows,
+        ];
+    }
+
+    /**
+     * Hard fallback payload when providers and stale cache are unavailable.
+     *
+     * @return array{source: string, cached: bool, updated_at: string, data: array<int, array<string, mixed>>}
+     */
+    private function hardFallbackPayload(): array
+    {
+        /** @var array<string, float|int|string> $configured */
+        $configured = (array) config('services.metals.hard_fallback_prices', []);
+
+        $defaultOz = [
+            'gold' => 2350.00,
+            'silver' => 28.00,
+            'platinum' => 1864.94,
+            'palladium' => 1377.89,
+            'rhodium' => 9270.06,
+        ];
+
+        $rows = [];
+
+        foreach ($this->meta as $key => $meta) {
+            $oz = (float) ($configured[$key] ?? $defaultOz[$key] ?? 0.0);
+
+            $rows[] = [
+                'key' => $key,
+                'name_en' => $meta['name_en'],
+                'name_ar' => $meta['name_ar'],
+                'symbol' => $meta['symbol'],
+                'price_oz' => round($oz, 2),
+                'price_gram' => round($oz / self::TROY_OZ_TO_GRAM, 2),
+                'change_oz' => 0.0,
+                'change_pct' => 0.0,
+                'direction' => 'flat',
+            ];
+        }
+
+        return [
+            'source' => 'hard_fallback',
+            'cached' => true,
             'updated_at' => now()->toIso8601String(),
             'data' => $rows,
         ];

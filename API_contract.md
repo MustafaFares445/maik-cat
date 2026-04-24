@@ -559,6 +559,27 @@ Errors:
 - 422 when no metal price is available.
 - 422 when `itemId` is missing or invalid.
 
+### Calculator Page API Flow
+
+This is the expected call sequence used by the calculator screen:
+
+1. `GET /api/v1/metals/spot?currency=EUR` (or USD) to render live Pt/Pd/Rh table and per-gram prices.
+2. `GET /api/items` and optionally `GET /api/items/{item}` to select the converter/item and read PPM values.
+3. `POST /api/calculator/estimate` with `itemId`, `recoveryRate`, and `currency` to compute the final estimate.
+
+Metals source fallback order (server-side):
+
+1. Primary feed: `api.metals.live`
+2. Secondary feed: `kitco.com`
+3. Stale cache (when enabled via `METALS_FALLBACK_ENABLED=true`)
+4. Hard fallback static prices (when enabled via `METALS_HARD_FALLBACK_ENABLED=true`)
+
+`source` field values for `GET /api/v1/metals/spot`:
+- `api.metals.live`
+- `kitco.com`
+- `stale_cache`
+- `hard_fallback`
+
 ## 8. Metals market chart
 
 `GET /api/charts/metals`
@@ -668,7 +689,7 @@ Example response:
 ```
 
 Errors:
-- 503 when all metal price sources are unavailable.
+- 503 only when all providers are unavailable and hard fallback is disabled.
 
 ## 11. Single metal spot
 
@@ -711,6 +732,7 @@ Example response:
 
 Errors:
 - 404 when the metal key is not supported.
+- 503 only when all providers are unavailable and hard fallback is disabled.
 
 ## 12. Metals refresh
 
@@ -730,7 +752,7 @@ Example response:
 ```
 
 Errors:
-- 503 when all metal price sources are unavailable.
+- 503 only when all providers are unavailable and hard fallback is disabled.
 
 ## 13. Import batch create
 

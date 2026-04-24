@@ -30,16 +30,20 @@ class MetalsController extends Controller
 
     public function show(string $key): JsonResponse
     {
-        $currency = strtoupper((string) request()->query('currency', 'USD'));
-        $metal = $this->metalsService->find($key, $currency);
+        try {
+            $currency = strtoupper((string) request()->query('currency', 'USD'));
+            $metal = $this->metalsService->find($key, $currency);
 
-        if (! $metal) {
-            return response()->json($this->responseService->notFoundPayload($key), 404);
+            if (! $metal) {
+                return response()->json($this->responseService->notFoundPayload($key), 404);
+            }
+
+            $all = $this->metalsService->all($currency);
+
+            return response()->json($this->responseService->showPayload($all, $metal));
+        } catch (\RuntimeException $exception) {
+            return response()->json($this->responseService->upstreamUnavailablePayload($exception->getMessage()), 503);
         }
-
-        $all = $this->metalsService->all($currency);
-
-        return response()->json($this->responseService->showPayload($all, $metal));
     }
 
     public function refresh(): JsonResponse
