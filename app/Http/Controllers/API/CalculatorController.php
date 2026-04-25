@@ -2,10 +2,8 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Data\CalculatorEstimateData;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\API\CalculatorEstimateRequest;
-use App\Models\Item;
 use App\Models\MetalPrice;
 use App\Services\Mobile\CalculatorService;
 use Illuminate\Http\JsonResponse;
@@ -16,11 +14,7 @@ class CalculatorController extends Controller
 
     public function estimate(CalculatorEstimateRequest $request): JsonResponse
     {
-        $payload = CalculatorEstimateData::from($request->validated());
-
-        $item = Item::query()
-            ->with(['carGroup', 'extraCodes'])
-            ->findOrFail($payload->item_id);
+        $payload = $request->validated();
 
         $metalPrice = MetalPrice::query()->latest('fetched_at')->first();
 
@@ -31,18 +25,16 @@ class CalculatorController extends Controller
         }
 
         $estimate = $this->calculatorService->estimate(
-            item: $item,
+            weight: (float) $payload['weight'],
+            ptPpm: (float) $payload['ptPpm'],
+            pdPpm: (float) $payload['pdPpm'],
+            rhPpm: (float) $payload['rhPpm'],
             metalPrice: $metalPrice,
-            recoveryRate: (float) ($payload->recovery_rate ?? 0.8),
+            recoveryRate: (float) $payload['recoveryRate'],
             currency: $request->currency(),
         );
 
         return response()->json([
-            'item' => [
-                'id' => $item->id,
-                'serial_code' => $item->serial_code,
-                'model' => $item->model,
-            ],
             'estimate' => $estimate,
         ]);
     }

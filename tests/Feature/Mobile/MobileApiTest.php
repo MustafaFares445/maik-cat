@@ -114,13 +114,6 @@ test('charts endpoint returns last 14 daily points from fallback source', functi
 });
 
 test('calculator endpoint returns estimate breakdown and total', function () {
-    $converter = Item::factory()->create([
-        'weight_kg' => 1.000,
-        'pt_ppm' => 1000,
-        'pd_ppm' => 500,
-        'rh_ppm' => 0,
-    ]);
-
     $price = MetalPrice::factory()->create([
         'pt_usd_per_oz' => 1555.2150,
         'pd_usd_per_oz' => 933.1290,
@@ -131,13 +124,16 @@ test('calculator endpoint returns estimate breakdown and total', function () {
     $expected = round((1 * ($price->pt_usd_per_oz / 31.1043)) + (0.5 * ($price->pd_usd_per_oz / 31.1043)), 2);
 
     $response = postJson('/api/calculator/estimate', [
-        'itemId' => $converter->id,
+        'weight' => 1000,
+        'ptPpm' => 1000,
+        'pdPpm' => 500,
+        'rhPpm' => 0,
         'recoveryRate' => 1,
+        'currency' => 'USD',
     ]);
 
     $response->assertOk();
-    $response->assertJsonPath('item.id', $converter->id);
-    $response->assertJsonPath('item.serialCode', $converter->serial_code);
+    $response->assertJsonPath('estimate.currency', 'USD');
     expect((float) $response->json('estimate.totalUsd'))->toBe($expected);
 });
 
