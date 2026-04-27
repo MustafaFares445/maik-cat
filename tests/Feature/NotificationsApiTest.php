@@ -1,11 +1,11 @@
 <?php
 
+use App\Enums\NotificationType;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\DatabaseNotification;
 use Laravel\Sanctum\Sanctum;
 
-use function Pest\Laravel\actingAs;
 use function Pest\Laravel\getJson;
 use function Pest\Laravel\patchJson;
 
@@ -19,7 +19,11 @@ test('notifications endpoint returns authenticated user notifications', function
         'type' => 'App\\Notifications\\ExampleNotification',
         'notifiable_type' => User::class,
         'notifiable_id' => $user->id,
-        'data' => json_encode(['title' => 'New price update', 'body' => 'Platinum moved up'], JSON_THROW_ON_ERROR),
+        'data' => json_encode([
+            'type' => NotificationType::GENERALE_NOTIFICATION,
+            'title' => 'New price update',
+            'body' => 'Platinum moved up',
+        ], JSON_THROW_ON_ERROR),
         'read_at' => null,
     ]);
 
@@ -29,6 +33,8 @@ test('notifications endpoint returns authenticated user notifications', function
 
     $response->assertOk();
     $response->assertJsonCount(1, 'data');
+    $response->assertJsonPath('data.0.data.iconUrl', NotificationType::iconUrl(NotificationType::GENERALE_NOTIFICATION));
+    $response->assertJsonPath('data.0.data.imageUrl', NotificationType::iconUrl(NotificationType::GENERALE_NOTIFICATION));
     $response->assertJsonPath('unreadCount', 1);
 });
 
@@ -65,7 +71,10 @@ test('single notification endpoint marks a notification as read', function () {
         'type' => 'App\\Notifications\\ExampleNotification',
         'notifiable_type' => User::class,
         'notifiable_id' => $user->id,
-        'data' => json_encode(['title' => 'New price update'], JSON_THROW_ON_ERROR),
+        'data' => json_encode([
+            'type' => NotificationType::GENERALE_NOTIFICATION,
+            'title' => 'New price update',
+        ], JSON_THROW_ON_ERROR),
         'read_at' => null,
     ]);
 
@@ -74,5 +83,7 @@ test('single notification endpoint marks a notification as read', function () {
     $response = patchJson("/api/notifications/{$notification->id}/read");
 
     $response->assertOk();
+    $response->assertJsonPath('data.data.iconUrl', NotificationType::iconUrl(NotificationType::GENERALE_NOTIFICATION));
+    $response->assertJsonPath('data.data.imageUrl', NotificationType::iconUrl(NotificationType::GENERALE_NOTIFICATION));
     expect(DatabaseNotification::query()->findOrFail($notification->id)->read_at)->not->toBeNull();
 });

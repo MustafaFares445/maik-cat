@@ -16,6 +16,16 @@ class ItemResource extends JsonResource
             ? $this->resource->getFirstMediaUrl('images')
             : null;
 
+        $ptPrice = config('metals.pt_price', 0);
+        $pdPrice = config('metals.pd_price', 0);
+        $rhPrice = config('metals.rh_price', 0);
+
+        $price = ($this->weight_kg / 1000) * (
+            ($this->pt_ppm * $ptPrice) +
+            ($this->pd_ppm * $pdPrice) +
+            ($this->rh_ppm * $rhPrice)
+        );
+
         return [
             'id' => $this->id,
             'model' => $this->model,
@@ -30,6 +40,7 @@ class ItemResource extends JsonResource
             'extra_codes' => $this->whenLoaded('extraCodes', fn() => $this->extraCodes->pluck('code')->values()),
             'image_url' => $imageUrl,
             'saved_item' => (bool) ($this->saved_item ?? false),
+            'price' => round($price, 2),
         ];
     }
 }

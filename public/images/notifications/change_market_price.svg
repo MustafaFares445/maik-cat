@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Market price change notification</title>
+  <desc id="desc">Rising market chart and price badge in Iron and Ember colors</desc>
+  <rect width="256" height="256" rx="56" fill="#F4F1EF"/>
+  <path d="M54 194h152" stroke="#1A1A1A" stroke-width="14" stroke-linecap="round"/>
+  <path d="M66 172l36-42 34 22 54-70" fill="none" stroke="#E8610A" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M168 82h34v34" fill="none" stroke="#E8610A" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="50" y="52" width="70" height="46" rx="16" fill="#1A1A1A"/>
+  <path d="M72 82h26M85 68v28" stroke="#008CF9" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="190" cy="170" r="28" fill="#008CF9"/>
+  <path d="M177 170h26M190 157v26" stroke="#FFFFFF" stroke-width="9" stroke-linecap="round"/>
+</svg>

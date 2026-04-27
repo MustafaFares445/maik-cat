@@ -1,9 +1,8 @@
-# API Contract
+﻿# API Contract
 
 Base URL: `/api`
 
 Environments:
-- local: `http://maik-cars.test`
 - dev: `https://maik-cat.mustafafares.com`
 
 Authentication:
@@ -67,8 +66,9 @@ Body props:
 
 | Name | Type | Required | Example |
 | --- | --- | --- | --- |
-| email | string | Yes | admin@example.com |
-| password | string | Yes | secret123 |
+| email | string | Yes | test@example.com |
+| password | string | Yes | password |
+| fcmToken | string | No | eYJhbGciOi... |
 
 Example response:
 
@@ -77,8 +77,8 @@ Example response:
   "token": "1|plain-text-token",
   "user": {
     "id": 1,
-    "name": "Admin",
-    "email": "admin@example.com"
+    "name": "Test User",
+    "email": "test@example.com"
   }
 }
 ```
@@ -108,7 +108,7 @@ Body props:
 
 | Name | Type | Required | Example |
 | --- | --- | --- | --- |
-| email | string | Yes | admin@example.com |
+| email | string | Yes | test@example.com |
 
 Example response:
 
@@ -130,8 +130,8 @@ Example response:
 {
   "data": {
     "id": 1,
-    "name": "Admin",
-    "email": "admin@example.com"
+    "name": "Test User",
+    "email": "test@example.com"
   }
 }
 ```
@@ -146,8 +146,8 @@ Body props:
 
 | Name | Type | Required | Example |
 | --- | --- | --- | --- |
-| name | string | Yes | Admin User |
-| email | string | Yes | admin@example.com |
+| name | string | Yes | Test User |
+| email | string | Yes | test@example.com |
 
 Example response:
 
@@ -156,8 +156,8 @@ Example response:
   "message": "Profile updated successfully.",
   "data": {
     "id": 1,
-    "name": "Admin User",
-    "email": "admin@example.com"
+    "name": "Test User",
+    "email": "test@example.com"
   }
 }
 ```
@@ -630,9 +630,11 @@ Example response:
   "data": [
     {
       "id": "2026-04-17-0",
-      "type": "market_change",
+      "type": "change_market_price",
       "title": "Metal prices updated",
       "body": "Pt 1.20%, Pd -0.40%, Rh 0.80%",
+      "iconUrl": "https://example.test/images/notifications/change_market_price.svg",
+      "imageUrl": "https://example.test/images/notifications/change_market_price.svg",
       "date": "2026-04-17",
       "meta": {
         "ptUsdPerOz": 1512.45,
@@ -676,7 +678,7 @@ Example response:
     {
       "key": "platinum",
       "nameEn": "Platinum",
-      "nameAr": "بلاتين",
+      "nameAr": "Ø¨Ù„Ø§ØªÙŠÙ†",
       "symbol": "Pt",
       "priceOz": 982.4,
       "priceGram": 31.58,
@@ -719,7 +721,7 @@ Example response:
   "data": {
     "key": "platinum",
     "nameEn": "Platinum",
-    "nameAr": "بلاتين",
+    "nameAr": "Ø¨Ù„Ø§ØªÙŠÙ†",
     "symbol": "Pt",
     "priceOz": 982.4,
     "priceGram": 31.58,
@@ -808,7 +810,7 @@ Example response:
 {
   "id": "7e1de0ca-3f0d-4311-8d73-1a4bdc6c8d66",
   "fileName": "converters.xlsx",
-  "importedBy": "admin@example.com",
+  "importedBy": "test@example.com",
   "status": "completed",
   "errorMessage": null,
   "rowsInserted": 120,
@@ -938,7 +940,7 @@ Example response:
 {
   "id": "c7b771f4-7c29-42c0-8b0e-245f205f1f7a",
   "status": "kept",
-  "resolvedBy": "admin@example.com",
+  "resolvedBy": "test@example.com",
   "resolvedAt": "2026-04-18T10:15:00Z"
 }
 ```
@@ -952,6 +954,12 @@ Errors:
 
 Auth: Sanctum bearer token required.
 
+Supported notification data types (`data.type`):
+- `auth_login_new_device`
+- `add_new_item`
+- `change_market_price`
+- `generale_notification`
+
 Example response:
 
 ```json
@@ -963,8 +971,11 @@ Example response:
       "notifiableType": "App\\Models\\User",
       "notifiableId": "30e8bb6f-6714-4bb1-981f-d9f4ca551f92",
       "data": {
+        "type": "generale_notification",
         "title": "New price update",
-        "body": "Platinum moved up"
+        "body": "Platinum moved up",
+        "iconUrl": "https://example.test/images/notifications/generale_notification.svg",
+        "imageUrl": "https://example.test/images/notifications/generale_notification.svg"
       },
       "readAt": null,
       "createdAt": "2026-04-18T09:10:00Z",
@@ -1013,7 +1024,10 @@ Example response:
     "notifiableType": "App\\Models\\User",
     "notifiableId": "30e8bb6f-6714-4bb1-981f-d9f4ca551f92",
     "data": {
-      "title": "New price update"
+      "type": "generale_notification",
+      "title": "New price update",
+      "iconUrl": "https://example.test/images/notifications/generale_notification.svg",
+      "imageUrl": "https://example.test/images/notifications/generale_notification.svg"
     },
     "readAt": "2026-04-18T10:15:00Z",
     "createdAt": "2026-04-18T09:10:00Z",
@@ -1024,3 +1038,125 @@ Example response:
 
 Errors:
 - 404 when the notification does not belong to the authenticated user.
+
+## 20. Send test FCM notification
+
+`POST /api/notifications/test-fcm`
+
+Auth: Sanctum bearer token required.
+
+Body props:
+
+| Name | Type | Required | Example |
+| --- | --- | --- | --- |
+| title | string | Yes | Metal prices update |
+| body | string | Yes | Platinum moved by +1.2% |
+| data | object | No | {"source":"manual_test"} |
+| type | string | No | generale_notification |
+
+Allowed `type` values:
+- `auth_login_new_device`
+- `add_new_item`
+- `change_market_price`
+- `generale_notification`
+
+Each notification type has a public icon URL returned as `iconUrl` in notification responses. The same URL is also sent in the FCM payload as `notification.image`, `data.iconUrl`, and `data.imageUrl`.
+
+Example response:
+
+```json
+{
+  "message": "Test notification sent successfully."
+}
+```
+
+Errors:
+- 422 when the authenticated user does not have an `fcmToken`.
+
+## 21. Notification updates flow
+
+This section defines the expected end-to-end client flow for notification updates in mobile apps.
+
+### A. Register/refresh FCM token on login
+
+`POST /api/auth/login`
+
+Client should send `fcmToken` whenever available.
+
+Example request:
+
+```json
+{
+  "email": "test@example.com",
+  "password": "password",
+  "fcmToken": "eYJhbGciOi..."
+}
+```
+
+Behavior:
+- If credentials are valid, auth token is returned.
+- If `fcmToken` is provided, backend stores/updates it for the authenticated user.
+- If `fcmToken` is omitted, login still succeeds.
+
+### B. Deliver a notification update
+
+`POST /api/notifications/test-fcm`
+
+Auth: Sanctum bearer token required.
+
+Example request:
+
+```json
+{
+  "title": "Metal prices update",
+  "body": "Platinum moved by +1.2%",
+  "type": "change_market_price",
+  "data": {
+    "source": "manual_test",
+    "kind": "change_market_price"
+  }
+}
+```
+
+Behavior:
+- Sends a push notification through FCM with the type icon URL in `notification.image`, `data.iconUrl`, and `data.imageUrl`.
+- Stores the same notification in Laravel `database` notifications for in-app inbox with `data.iconUrl`.
+
+Error:
+- `422` when user has no stored `fcmToken`.
+
+### C. Sync notification inbox
+
+`GET /api/notifications`
+
+Auth: Sanctum bearer token required.
+
+Client should call this on:
+- app launch,
+- app resume,
+- and after receiving push (foreground/background tap).
+
+Response contract:
+- `data`: latest notifications.
+- `unreadCount`: number of unread notifications.
+
+### D. Update read state
+
+Mark one:
+- `PATCH /api/notifications/{notification}/read`
+
+Mark all:
+- `PATCH /api/notifications/read-all`
+
+Expected client behavior:
+- Update local unread badge from API response.
+- Re-fetch `GET /api/notifications` after bulk actions if local list is stale.
+
+### E. Recommended client sequence (happy path)
+
+1. Login with `fcmToken`.
+2. Receive push update from FCM.
+3. Open app/tap notification.
+4. Call `GET /api/notifications` to sync inbox.
+5. Call single/bulk read endpoint based on user action.
+6. Update UI badge from `unreadCount`.

@@ -8,6 +8,7 @@
     "require": {
         "php": "^8.3",
         "filament/filament": "*",
+        "kreait/firebase-php": "*",
         "laravel/framework": "^13.0",
         "laravel/sanctum": "*",
         "laravel/tinker": "^3.0",

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">General notification</title>
+  <desc id="desc">Bell notification icon in Iron and Ember colors</desc>
+  <rect width="256" height="256" rx="56" fill="#1A1A1A"/>
+  <path d="M128 48c-33.1 0-60 26.9-60 60v29.8c0 8.3-3.3 16.3-9.2 22.2L50 169c-5 5-1.5 13.6 5.6 13.6h144.8c7.1 0 10.6-8.6 5.6-13.6l-8.8-9c-5.9-5.9-9.2-13.9-9.2-22.2V108c0-33.1-26.9-60-60-60Z" fill="#E8610A"/>
+  <path d="M101 196c5.4 11 15.2 18 27 18s21.6-7 27-18" fill="none" stroke="#F4F1EF" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="178" cy="68" r="24" fill="#008CF9"/>
+  <path d="M128 72v78" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round" opacity=".8"/>
+  <path d="M103 150h50" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round" opacity=".8"/>
+</svg>

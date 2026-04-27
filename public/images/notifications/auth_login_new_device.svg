@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">New device login notification</title>
+  <desc id="desc">Phone and secure login arrow icon in Iron and Ember colors</desc>
+  <rect width="256" height="256" rx="56" fill="#1A1A1A"/>
+  <circle cx="196" cy="60" r="34" fill="#E8610A"/>
+  <path d="M86 40h72c13.3 0 24 10.7 24 24v128c0 13.3-10.7 24-24 24H86c-13.3 0-24-10.7-24-24V64c0-13.3 10.7-24 24-24Z" fill="#F4F1EF"/>
+  <path d="M94 58h56c6.6 0 12 5.4 12 12v108c0 6.6-5.4 12-12 12H94c-6.6 0-12-5.4-12-12V70c0-6.6 5.4-12 12-12Z" fill="#1A1A1A"/>
+  <path d="M99 128h46" stroke="#008CF9" stroke-width="16" stroke-linecap="round"/>
+  <path d="M127 100l28 28-28 28" fill="none" stroke="#008CF9" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M183 43l15 14 25-27" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="122" cy="202" r="7" fill="#E8610A"/>
+</svg>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\API;
 
+use App\Enums\NotificationType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\API\MarketChangesRequest;
 use App\Services\Mobile\ThirdPartyMarketService;
@@ -18,7 +19,7 @@ class MarketNotificationController extends Controller
         $notifications = $changes
             ->reverse()
             ->values()
-            ->map(fn(array $item, int $index) => $this->toNotification($item, $index));
+            ->map(fn (array $item, int $index) => $this->toNotification($item, $index));
 
         return response()->json([
             'currency' => $request->currency(),
@@ -29,8 +30,8 @@ class MarketNotificationController extends Controller
     private function toNotification(array $item, int $index): array
     {
         return [
-            'id' => (string) ($item['date'] ?? now()->toDateString()) . '-' . $index,
-            'type' => 'market_change',
+            'id' => (string) ($item['date'] ?? now()->toDateString()).'-'.$index,
+            'type' => NotificationType::CHANGE_MARKET_PRICE,
             'title' => 'Metal prices updated',
             'body' => sprintf(
                 'Pt %.2f%%, Pd %.2f%%, Rh %.2f%%',
@@ -38,6 +39,8 @@ class MarketNotificationController extends Controller
                 (float) ($item['pd_change_percent'] ?? 0),
                 (float) ($item['rh_change_percent'] ?? 0),
             ),
+            'icon_url' => NotificationType::iconUrl(NotificationType::CHANGE_MARKET_PRICE),
+            'image_url' => NotificationType::iconUrl(NotificationType::CHANGE_MARKET_PRICE),
             'date' => $item['date'] ?? null,
             'meta' => [
                 'pt_usd_per_oz' => $item['pt_usd_per_oz'] ?? null,

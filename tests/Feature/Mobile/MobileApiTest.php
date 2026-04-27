@@ -1,8 +1,9 @@
 <?php
 
+use App\Enums\NotificationType;
 use App\Models\CarGroup;
-use App\Models\Item;
 use App\Models\ExtraCode;
+use App\Models\Item;
 use App\Models\MetalPrice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -202,9 +203,12 @@ test('notifications endpoint returns last 14 change notifications', function () 
 
     $response->assertOk();
     $response->assertJsonCount(14, 'data');
+    $response->assertJsonPath('data.0.type', NotificationType::CHANGE_MARKET_PRICE);
+    $response->assertJsonPath('data.0.iconUrl', NotificationType::iconUrl(NotificationType::CHANGE_MARKET_PRICE));
+    $response->assertJsonPath('data.0.imageUrl', NotificationType::iconUrl(NotificationType::CHANGE_MARKET_PRICE));
     $response->assertJsonStructure([
         'data' => [
-            ['meta' => ['ptUsdPerOz', 'pdUsdPerOz', 'rhUsdPerOz']],
+            ['iconUrl', 'imageUrl', 'meta' => ['ptUsdPerOz', 'pdUsdPerOz', 'rhUsdPerOz']],
         ],
     ]);
 });

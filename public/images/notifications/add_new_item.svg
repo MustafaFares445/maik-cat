@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Add new item notification</title>
+  <desc id="desc">Catalog card with plus mark in Iron and Ember colors</desc>
+  <rect width="256" height="256" rx="56" fill="#E8610A"/>
+  <path d="M55 72c0-13.3 10.7-24 24-24h72l50 50v86c0 13.3-10.7 24-24 24H79c-13.3 0-24-10.7-24-24V72Z" fill="#F4F1EF"/>
+  <path d="M151 48v42c0 4.4 3.6 8 8 8h42" fill="#FFC6A8"/>
+  <path d="M82 119h64M82 148h51M82 177h78" stroke="#1A1A1A" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="183" cy="174" r="34" fill="#008CF9"/>
+  <path d="M183 154v40M163 174h40" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round"/>
+</svg>

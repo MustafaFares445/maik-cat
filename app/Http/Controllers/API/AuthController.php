@@ -16,12 +16,20 @@ class AuthController extends Controller
 {
     public function login(LoginRequest $request): JsonResponse
     {
-        $user = User::query()->where('email', $request->validated('email'))->first();
+        $validated = $request->validated();
 
-        if (! $user || ! Hash::check($request->validated('password'), $user->password)) {
+        $user = User::query()->where('email', $validated['email'])->first();
+
+        if (! $user || ! Hash::check($validated['password'], $user->password)) {
             return response()->json([
                 'message' => 'Invalid credentials.',
             ], 422);
+        }
+
+        $fcmToken = $validated['fcm_token'] ?? null;
+
+        if (is_string($fcmToken) && $fcmToken !== '') {
+            $user->forceFill(['fcm_token' => $fcmToken])->save();
         }
 
         $token = $user->createToken('mobile-api-token')->plainTextToken;

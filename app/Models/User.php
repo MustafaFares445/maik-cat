@@ -11,7 +11,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'email', 'password'])]
+#[Fillable(['name', 'email', 'password', 'fcm_token'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -36,5 +36,10 @@ class User extends Authenticatable
     public function savedItems(): BelongsToMany
     {
         return $this->belongsToMany(Item::class, 'saved_items', 'user_id', 'item_id')->withTimestamps();
+    }
+
+    public function routeNotificationForFcm(): ?string
+    {
+        return $this->fcm_token;
     }
 }

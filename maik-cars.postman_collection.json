@@ -1,4 +1,4 @@
-﻿{
+{
     "info": {
         "name": "Maik Cars API",
         "description": "Postman collection for the Maik Cars API. Responses are shown in camelCase because the API middleware transforms JSON keys on the wire. Use baseUrlLocal/baseUrlDev values and set baseUrl to the one you want.",
@@ -440,7 +440,7 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n  \"currency\": \"USD\",\n  \"data\": [\n    {\n      \"id\": \"2026-04-17-0\",\n      \"type\": \"market_change\",\n      \"title\": \"Metal prices updated\",\n      \"body\": \"Pt 1.20%, Pd -0.40%, Rh 0.80%\",\n      \"date\": \"2026-04-17\",\n      \"meta\": {\n        \"ptUsdPerOz\": 1512.45,\n        \"pdUsdPerOz\": 1024.1,\n        \"rhUsdPerOz\": 4380.75,\n        \"ptEurPerOz\": null,\n        \"pdEurPerOz\": null,\n        \"rhEurPerOz\": null,\n        \"currency\": \"USD\",\n        \"fxRate\": 1\n      }\n    }\n  ]\n}"
+                            "body": "{\n  \"currency\": \"USD\",\n  \"data\": [\n    {\n      \"id\": \"2026-04-17-0\",\n      \"type\": \"change_market_price\",\n      \"title\": \"Metal prices updated\",\n      \"body\": \"Pt 1.20%, Pd -0.40%, Rh 0.80%\",\n      \"date\": \"2026-04-17\",\n      \"meta\": {\n        \"ptUsdPerOz\": 1512.45,\n        \"pdUsdPerOz\": 1024.1,\n        \"rhUsdPerOz\": 4380.75,\n        \"ptEurPerOz\": null,\n        \"pdEurPerOz\": null,\n        \"rhEurPerOz\": null,\n        \"currency\": \"USD\",\n        \"fxRate\": 1\n      }\n    }\n  ]\n}"
                         }
                     ]
                 },
@@ -644,7 +644,71 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n  \"data\": [\n    {\n      \"id\": \"0a005136-8bc7-41ea-a80c-bd51671ec34f\",\n      \"type\": \"App\\\\Notifications\\\\ExampleNotification\",\n      \"notifiableType\": \"App\\\\Models\\\\User\",\n      \"notifiableId\": \"30e8bb6f-6714-4bb1-981f-d9f4ca551f92\",\n      \"data\": {\n        \"title\": \"New price update\",\n        \"body\": \"Platinum moved up\"\n      },\n      \"readAt\": null,\n      \"createdAt\": \"2026-04-18T09:10:00Z\",\n      \"updatedAt\": \"2026-04-18T09:10:00Z\"\n    }\n  ],\n  \"unreadCount\": 1\n}"
+                            "body": "{\n  \"data\": [\n    {\n      \"id\": \"0a005136-8bc7-41ea-a80c-bd51671ec34f\",\n      \"type\": \"App\\\\Notifications\\\\ExampleNotification\",\n      \"notifiableType\": \"App\\\\Models\\\\User\",\n      \"notifiableId\": \"30e8bb6f-6714-4bb1-981f-d9f4ca551f92\",\n      \"data\": {\n        \"type\": \"generale_notification\",\n        \"title\": \"New price update\",\n        \"body\": \"Platinum moved up\"\n      },\n      \"readAt\": null,\n      \"createdAt\": \"2026-04-18T09:10:00Z\",\n      \"updatedAt\": \"2026-04-18T09:10:00Z\"\n    }\n  ],\n  \"unreadCount\": 1\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "POST /api/notifications/test-fcm",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{bearerToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"title\": \"Metal prices update\",\n  \"body\": \"Platinum moved by +1.2%\",\n  \"type\": \"change_market_price\",\n  \"data\": {\n    \"source\": \"manual_test\",\n    \"kind\": \"change_market_price\"\n  }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/notifications/test-fcm",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "notifications",
+                                "test-fcm"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{bearerToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n  \"message\": \"Test notification sent successfully.\"\n}"
                         }
                     ]
                 },
@@ -747,7 +811,7 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n  \"message\": \"Notification marked as read.\",\n  \"data\": {\n    \"id\": \"0a005136-8bc7-41ea-a80c-bd51671ec34f\",\n    \"type\": \"App\\\\Notifications\\\\ExampleNotification\",\n    \"notifiableType\": \"App\\\\Models\\\\User\",\n    \"notifiableId\": \"30e8bb6f-6714-4bb1-981f-d9f4ca551f92\",\n    \"data\": {\n      \"title\": \"New price update\"\n    },\n    \"readAt\": \"2026-04-18T10:15:00Z\",\n    \"createdAt\": \"2026-04-18T09:10:00Z\",\n    \"updatedAt\": \"2026-04-18T10:15:00Z\"\n  }\n}"
+                            "body": "{\n  \"message\": \"Notification marked as read.\",\n  \"data\": {\n    \"id\": \"0a005136-8bc7-41ea-a80c-bd51671ec34f\",\n    \"type\": \"App\\\\Notifications\\\\ExampleNotification\",\n    \"notifiableType\": \"App\\\\Models\\\\User\",\n    \"notifiableId\": \"30e8bb6f-6714-4bb1-981f-d9f4ca551f92\",\n    \"data\": {\n      \"type\": \"generale_notification\",\n      \"title\": \"New price update\"\n    },\n    \"readAt\": \"2026-04-18T10:15:00Z\",\n    \"createdAt\": \"2026-04-18T09:10:00Z\",\n    \"updatedAt\": \"2026-04-18T10:15:00Z\"\n  }\n}"
                         }
                     ]
                 }
@@ -863,7 +927,7 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n  \"id\": \"7e1de0ca-3f0d-4311-8d73-1a4bdc6c8d66\",\n  \"fileName\": \"converters.xlsx\",\n  \"importedBy\": \"admin@example.com\",\n  \"status\": \"completed\",\n  \"errorMessage\": null,\n  \"rowsInserted\": 120,\n  \"rowsSkipped\": 4,\n  \"rowsFlagged\": 8,\n  \"rowsInvalid\": 2,\n  \"duplicateReviews\": []\n}"
+                            "body": "{\n  \"id\": \"7e1de0ca-3f0d-4311-8d73-1a4bdc6c8d66\",\n  \"fileName\": \"converters.xlsx\",\n  \"importedBy\": \"test@example.com\",\n  \"status\": \"completed\",\n  \"errorMessage\": null,\n  \"rowsInserted\": 120,\n  \"rowsSkipped\": 4,\n  \"rowsFlagged\": 8,\n  \"rowsInvalid\": 2,\n  \"duplicateReviews\": []\n}"
                         }
                     ]
                 },
@@ -979,7 +1043,7 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n  \"id\": \"c7b771f4-7c29-42c0-8b0e-245f205f1f7a\",\n  \"status\": \"kept\",\n  \"resolvedBy\": \"admin@example.com\",\n  \"resolvedAt\": \"2026-04-18T10:15:00Z\"\n}"
+                            "body": "{\n  \"id\": \"c7b771f4-7c29-42c0-8b0e-245f205f1f7a\",\n  \"status\": \"kept\",\n  \"resolvedBy\": \"test@example.com\",\n  \"resolvedAt\": \"2026-04-18T10:15:00Z\"\n}"
                         }
                     ]
                 }
@@ -1004,7 +1068,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"secret123\"\n}",
+                            "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"password\",\n  \"fcmToken\": \"test-fcm-token-123\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -1034,7 +1098,7 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n  \"token\": \"1|plain-text-token\",\n  \"user\": {\n    \"id\": 1,\n    \"name\": \"Admin\",\n    \"email\": \"admin@example.com\"\n  }\n}"
+                            "body": "{\n  \"token\": \"1|plain-text-token\",\n  \"user\": {\n    \"id\": 1,\n    \"name\": \"Test User\",\n    \"email\": \"test@example.com\"\n  }\n}"
                         }
                     ]
                 },
@@ -1105,7 +1169,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"email\": \"admin@example.com\"\n}",
+                            "raw": "{\n  \"email\": \"test@example.com\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -1190,7 +1254,7 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n  \"data\": {\n    \"id\": 1,\n    \"name\": \"Admin\",\n    \"email\": \"admin@example.com\"\n  }\n}"
+                            "body": "{\n  \"data\": {\n    \"id\": 1,\n    \"name\": \"Test User\",\n    \"email\": \"test@example.com\"\n  }\n}"
                         }
                     ]
                 },
@@ -1214,7 +1278,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"name\": \"Admin User\",\n  \"email\": \"admin@example.com\"\n}",
+                            "raw": "{\n  \"name\": \"Test User\",\n  \"email\": \"test@example.com\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -1253,7 +1317,7 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n  \"message\": \"Profile updated successfully.\",\n  \"data\": {\n    \"id\": 1,\n    \"name\": \"Admin User\",\n    \"email\": \"admin@example.com\"\n  }\n}"
+                            "body": "{\n  \"message\": \"Profile updated successfully.\",\n  \"data\": {\n    \"id\": 1,\n    \"name\": \"Test User\",\n    \"email\": \"test@example.com\"\n  }\n}"
                         }
                     ]
                 }
