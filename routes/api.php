@@ -62,6 +62,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/saved-items/{item}', [SavedItemController::class, 'destroy'])->name('saved-items.destroy');
 
     Route::post('/imports', [ImportController::class, 'store']);
+    Route::get('/imports/{batch}', [ImportController::class, 'show']);
+    Route::get('/imports/{batch}/duplicates', [ImportController::class, 'duplicates']);
+    Route::patch('/duplicates/{review}', [ImportController::class, 'resolveDuplicate']);
 
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::post('/notifications/test-fcm', [NotificationController::class, 'sendTestFcm'])->name('notifications.test-fcm');

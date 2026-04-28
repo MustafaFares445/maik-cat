@@ -20,6 +20,10 @@ class DuplicateResolverService
             );
         }
 
+        if (! $review->isPending()) {
+            throw new InvalidArgumentException('Duplicate review is already resolved.');
+        }
+
         DB::transaction(function () use ($review, $action, $resolvedBy) {
             match ($action) {
                 'keep' => $this->keep($review),
@@ -27,8 +31,14 @@ class DuplicateResolverService
                 'insert' => $this->insert($review),
             };
 
+            $resolvedStatus = match ($action) {
+                'keep' => 'kept',
+                'overwrite' => 'overwritten',
+                'insert' => 'inserted',
+            };
+
             $review->update([
-                'status' => $action === 'keep' ? 'kept' : $action . 'd',
+                'status' => $resolvedStatus,
                 'resolved_by' => $resolvedBy,
                 'resolved_at' => now(),
             ]);
