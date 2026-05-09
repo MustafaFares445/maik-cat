@@ -20,6 +20,10 @@ class ImportExcelRequest extends FormRequest
                 'mimes:xlsx,xls',
                 'max:20480',
             ],
+            'dry_run' => [
+                'sometimes',
+                'boolean',
+            ],
         ];
     }
 

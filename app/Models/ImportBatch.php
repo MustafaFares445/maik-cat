@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -26,5 +26,10 @@ class ImportBatch extends Model
     public function duplicateReviews(): HasMany
     {
         return $this->hasMany(DuplicateReview::class, 'batch_id');
+    }
+
+    public function rowIssues(): HasMany
+    {
+        return $this->hasMany(ImportRowIssue::class, 'batch_id');
     }
 }

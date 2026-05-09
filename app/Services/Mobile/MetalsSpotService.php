@@ -2,6 +2,8 @@
 
 namespace App\Services\Mobile;
 
+use Illuminate\Http\Client\Pool;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -11,48 +13,44 @@ use Throwable;
 class MetalsSpotService
 {
     private const float TROY_OZ_TO_GRAM = 31.1035;
-    private const string CACHE_KEY = 'metals_spot_payload';
-    private const string STALE_CACHE_KEY = 'metals_spot_payload_stale';
 
-    /** @var array<string, array{name_en: string, name_ar: string, symbol: string}> */
+    public const string UPSTREAM_UNAVAILABLE_MESSAGE = 'The metals pricing service is temporarily unavailable.';
+
+    private const string SOURCE = 'metal-sentinel';
+
+    /** @var array<string, array{name_en: string, name_ar: string, symbol: string, api_symbol: string}> */
     private array $meta = [
-        'gold' => ['name_en' => 'Gold', 'name_ar' => 'ذهب', 'symbol' => 'Au'],
-        'silver' => ['name_en' => 'Silver', 'name_ar' => 'فضة', 'symbol' => 'Ag'],
-        'platinum' => ['name_en' => 'Platinum', 'name_ar' => 'بلاتين', 'symbol' => 'Pt'],
-        'palladium' => ['name_en' => 'Palladium', 'name_ar' => 'بلاديوم', 'symbol' => 'Pd'],
-        'rhodium' => ['name_en' => 'Rhodium', 'name_ar' => 'روديوم', 'symbol' => 'Rh'],
+        'gold' => ['name_en' => 'Gold', 'name_ar' => 'ذهب', 'symbol' => 'Au', 'api_symbol' => 'AU'],
+        'silver' => ['name_en' => 'Silver', 'name_ar' => 'فضة', 'symbol' => 'Ag', 'api_symbol' => 'AG'],
+        'platinum' => ['name_en' => 'Platinum', 'name_ar' => 'بلاتين', 'symbol' => 'Pt', 'api_symbol' => 'PT'],
+        'palladium' => ['name_en' => 'Palladium', 'name_ar' => 'بلاديوم', 'symbol' => 'Pd', 'api_symbol' => 'PD'],
+        'rhodium' => ['name_en' => 'Rhodium', 'name_ar' => 'روديوم', 'symbol' => 'Rh', 'api_symbol' => 'RH'],
     ];
 
-    public function __construct(private readonly CurrencyConversionService $currencyConversionService) {}
-
     /**
-     * @return array{source: string, cached: bool, updated_at: string, data: array<int, array<string, mixed>>}
+     * @return array{source: string, cached: bool, updated_at: string, currency: string, fx_rate: float, data: array<int, array<string, mixed>>}
      */
     public function all(string $currency = 'USD'): array
     {
-        $ttl = (int) config('services.metals.cache_ttl', 21600);
+        $currency = strtoupper(trim($currency));
+        $ttl = (int) config('services.metals.cache_ttl', 120);
+        $cacheKey = $this->cacheKey($currency);
 
-        if (Cache::has(self::CACHE_KEY)) {
-            /** @var array{source: string, updated_at: string, data: array<int, array<string, mixed>>} $cached */
-            $cached = Cache::get(self::CACHE_KEY);
+        $hit = Cache::has($cacheKey);
 
-            $payload = [
-                ...$cached,
-                'cached' => true,
-            ];
-
-            return $this->convertPayloadCurrency($payload, $currency);
+        try {
+            $payload = Cache::remember($cacheKey, $ttl, fn (): array => $this->fetchFreshPayload($currency));
+        } catch (Throwable $e) {
+            Cache::forget($cacheKey);
+            throw $e;
         }
 
-        $fresh = $this->fetchFresh();
-
-        Cache::put(self::CACHE_KEY, [
-            'source' => $fresh['source'],
-            'updated_at' => $fresh['updated_at'],
-            'data' => $fresh['data'],
-        ], $ttl);
-
-        return $this->convertPayloadCurrency($fresh, $currency);
+        return [
+            ...$payload,
+            'cached' => $hit,
+            'currency' => $currency,
+            'fx_rate' => 1.0,
+        ];
     }
 
     /**
@@ -67,277 +65,94 @@ class MetalsSpotService
     }
 
     /**
-     * @return array{source: string, cached: bool, updated_at: string, data: array<int, array<string, mixed>>}
+     * @return array{source: string, cached: bool, updated_at: string, currency: string, fx_rate: float, data: array<int, array<string, mixed>>}
      */
     public function refresh(string $currency = 'USD'): array
     {
-        Cache::forget(self::CACHE_KEY);
-
-        $fresh = $this->fetchFresh();
-
-        $ttl = (int) config('services.metals.cache_ttl', 21600);
-
-        Cache::put(self::CACHE_KEY, [
-            'source' => $fresh['source'],
-            'updated_at' => $fresh['updated_at'],
-            'data' => $fresh['data'],
-        ], $ttl);
-
-        return $this->convertPayloadCurrency($fresh, $currency);
-    }
-
-    /**
-     * @param  array{source: string, cached: bool, updated_at: string, data: array<int, array<string, mixed>>}  $payload
-     * @return array{source: string, cached: bool, updated_at: string, currency: string, fx_rate: float, data: array<int, array<string, mixed>>}
-     */
-    private function convertPayloadCurrency(array $payload, string $currency): array
-    {
-        $currency = strtoupper(trim($currency));
-
-        if ($currency !== 'EUR') {
-            return [
-                ...$payload,
-                'currency' => 'USD',
-                'fx_rate' => 1.0,
-            ];
+        foreach (['USD', 'EUR'] as $cur) {
+            Cache::forget($this->cacheKey($cur));
         }
 
-        $rate = $this->currencyConversionService->rateOrOne('USD', 'EUR');
-        $numericFields = ['price_oz', 'price_gram', 'change_oz'];
+        return $this->all($currency);
+    }
 
-        $data = collect($payload['data'])
-            ->map(function (array $row) use ($rate, $numericFields): array {
-                foreach ($numericFields as $field) {
-                    if (isset($row[$field]) && is_numeric($row[$field])) {
-                        $row[$field] = round((float) $row[$field] * $rate, 2);
-                    }
-                }
-
-                return $row;
-            })
-            ->values()
-            ->all();
-
-        return [
-            ...$payload,
-            'currency' => 'EUR',
-            'fx_rate' => round($rate, 6),
-            'data' => $data,
-        ];
+    private function cacheKey(string $currency): string
+    {
+        return 'metals_spot_sentinel_v1:'.strtoupper($currency);
     }
 
     /**
-     * @return array{source: string, cached: bool, updated_at: string, data: array<int, array<string, mixed>>}|null
+     * @return array{source: string, updated_at: string, data: array<int, array<string, mixed>>}
      */
-    private function fetchFromMetalsLive(): ?array
+    private function fetchFreshPayload(string $currency): array
     {
+        $apiKey = (string) config('services.metals.rapidapi_key', '');
+        $baseUrl = rtrim((string) config('services.metals.base_url', 'https://metal-sentinel.p.rapidapi.com'), '/');
+
+        if ($apiKey === '') {
+            Log::warning('Metal Sentinel API key is not configured');
+
+            throw new RuntimeException(self::UPSTREAM_UNAVAILABLE_MESSAGE);
+        }
+
+        $timeout = (int) config('services.metals.timeout', 8);
+        // RapidAPI hub exposes this route as /metal-quote (not /api/metal-quote); see 404 "does not exist" on /api/...
+        $quoteUrl = $baseUrl.'/metal-quote';
+        $host = parse_url($baseUrl, PHP_URL_HOST) ?: 'metal-sentinel.p.rapidapi.com';
+
         try {
-            $response = Http::timeout((int) config('services.metals.timeout', 8))
-                ->acceptJson()
-                ->get((string) config('services.metals.live_url'));
+            /** @var array<string, Response> $responses */
+            $responses = Http::pool(function (Pool $pool) use ($quoteUrl, $currency, $timeout, $apiKey, $host): array {
+                $pending = [];
 
-            if (! $response->successful()) {
-                return null;
-            }
-
-            $raw = $response->json();
-            if (! is_array($raw) || empty($raw)) {
-                return null;
-            }
-
-            $candidate = $this->extractFirstPriceMap($raw);
-            if ($candidate === []) {
-                return null;
-            }
-
-            return $this->normalise($candidate, 'api.metals.live');
-        } catch (Throwable $exception) {
-            Log::warning('Metals live fetch failed', ['error' => $exception->getMessage()]);
-
-            return null;
-        }
-    }
-
-    /**
-     * @return array{source: string, cached: bool, updated_at: string, data: array<int, array<string, mixed>>}|null
-     */
-    private function fetchFromKitco(): ?array
-    {
-        try {
-            $response = Http::timeout((int) config('services.metals.timeout', 8))
-                ->withHeaders([
-                    'User-Agent' => 'Mozilla/5.0 (compatible; MaikCarsMetalsWidget/1.0)',
-                    'Accept' => 'text/plain,text/html;q=0.9,*/*;q=0.8',
-                ])
-                ->get((string) config('services.metals.kitco_url'));
-
-            if (! $response->successful()) {
-                return null;
-            }
-
-            $parsed = $this->parseKitcoQuotes($response->body());
-
-            if ($parsed === []) {
-                return null;
-            }
-
-            return $this->normalise($parsed, 'kitco.com');
-        } catch (Throwable $exception) {
-            Log::warning('Kitco fetch failed', ['error' => $exception->getMessage()]);
-
-            return null;
-        }
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function extractFirstPriceMap(array $payload): array
-    {
-        if (array_is_list($payload)) {
-            foreach ($payload as $entry) {
-                if (! is_array($entry) || empty($entry)) {
-                    continue;
+                foreach ($this->meta as $metalKey => $meta) {
+                    $pending[] = $pool->as($metalKey)
+                        ->withHeaders([
+                            'X-RapidAPI-Key' => $apiKey,
+                            'X-RapidAPI-Host' => $host,
+                        ])
+                        ->timeout($timeout)
+                        ->acceptJson()
+                        ->get($quoteUrl, [
+                            'symbol' => $meta['api_symbol'],
+                            'currency' => $currency,
+                        ]);
                 }
 
-                $candidate = $this->normalizeMetalsLiveRow($entry);
-                if ($candidate !== []) {
-                    return $candidate;
-                }
-            }
-
-            return [];
+                return $pending;
+            });
+        } catch (Throwable $e) {
+            throw new RuntimeException(self::UPSTREAM_UNAVAILABLE_MESSAGE);
         }
 
-        return $this->normalizeMetalsLiveRow($payload);
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     * @return array<string, mixed>
-     */
-    private function normalizeMetalsLiveRow(array $row): array
-    {
-        $normalized = [];
-
-        foreach ($this->meta as $metal => $_meta) {
-            if (array_key_exists($metal, $row)) {
-                $normalized[$metal] = $row[$metal];
-                continue;
-            }
-
-            $symbol = strtolower($_meta['symbol']);
-
-            if (array_key_exists($symbol, $row)) {
-                $normalized[$metal] = $row[$symbol];
-            }
-        }
-
-        return $normalized;
-    }
-
-    /**
-     * @return array<string, array{price: float, bid: float, ask: float, change: float, change_pct: float}>
-     */
-    private function parseKitcoQuotes(string $body): array
-    {
-        $text = strtolower(strip_tags($body));
-        $metals = array_keys($this->meta);
-        $map = [];
-
-        foreach ($metals as $metal) {
-            $pattern = '/\b' . preg_quote($metal, '/')
-                . '\b\s+(-?[\d,]+(?:\.\d+)?)'
-                . '\s+(-?[\d,]+(?:\.\d+)?)'
-                . '\s+(-?[\d,]+(?:\.\d+)?)'
-                . '\s+(-?[\d,.]+)%/i';
-
-            if (! preg_match($pattern, $text, $matches)) {
-                continue;
-            }
-
-            $bid = (float) str_replace(',', '', $matches[1]);
-            $ask = (float) str_replace(',', '', $matches[2]);
-            $change = (float) str_replace(',', '', $matches[3]);
-            $changePct = (float) str_replace(',', '', $matches[4]);
-
-            $map[$metal] = [
-                'price' => round(($bid + $ask) / 2, 2),
-                'bid' => $bid,
-                'ask' => $ask,
-                'change' => $change,
-                'change_pct' => $changePct,
-            ];
-        }
-
-        return $map;
-    }
-
-    /**
-     * @return array{source: string, cached: bool, updated_at: string, data: array<int, array<string, mixed>>}
-     */
-    private function fetchFresh(): array
-    {
-        $result = $this->fetchFromMetalsLive()
-            ?? $this->fetchFromKitco();
-
-        if ($result !== null) {
-            Cache::forever(self::STALE_CACHE_KEY, [
-                'source' => $result['source'],
-                'updated_at' => $result['updated_at'],
-                'data' => $result['data'],
-            ]);
-
-            return $result;
-        }
-
-        if ((bool) config('services.metals.fallback', true)) {
-            $stale = Cache::get(self::STALE_CACHE_KEY);
-
-            if (is_array($stale) && isset($stale['data'])) {
-                return [
-                    'source' => 'stale_cache',
-                    'cached' => true,
-                    'updated_at' => (string) ($stale['updated_at'] ?? now()->toIso8601String()),
-                    'data' => $stale['data'],
-                ];
-            }
-        }
-
-        if ((bool) config('services.metals.hard_fallback_enabled', true)) {
-            return $this->hardFallbackPayload();
-        }
-
-        throw new RuntimeException('All price sources are currently unreachable.');
-    }
-
-    /**
-     * @param  array<string, mixed>  $raw
-     * @return array{source: string, cached: bool, updated_at: string, data: array<int, array<string, mixed>>}
-     */
-    private function normalise(array $raw, string $source): array
-    {
         $rows = [];
 
-        foreach ($this->meta as $key => $meta) {
-            if (! array_key_exists($key, $raw)) {
-                continue;
+        foreach ($this->meta as $metalKey => $meta) {
+            $response = $responses[$metalKey] ?? null;
+
+            if (! $response instanceof Response || ! $response->successful()) {
+                Log::warning('Metal Sentinel quote request failed', [
+                    'metal' => $metalKey,
+                    'status' => $response instanceof Response ? $response->status() : null,
+                ]);
+
+                throw new RuntimeException(self::UPSTREAM_UNAVAILABLE_MESSAGE);
             }
 
-            $entry = $raw[$key];
+            $json = $response->json();
 
-            if (is_numeric($entry)) {
-                $priceOz = (float) $entry;
-                $changeOz = 0.0;
-                $changePct = 0.0;
-            } else {
-                $priceOz = (float) ($entry['price'] ?? $entry['ask'] ?? 0.0);
-                $changeOz = (float) ($entry['change'] ?? 0.0);
-                $changePct = (float) ($entry['change_pct'] ?? 0.0);
+            if (! is_array($json)) {
+                throw new RuntimeException(self::UPSTREAM_UNAVAILABLE_MESSAGE);
+            }
+
+            [$priceOz, $changeOz, $changePct] = $this->extractSpotMetrics($json);
+
+            if ($priceOz <= 0.0) {
+                throw new RuntimeException(self::UPSTREAM_UNAVAILABLE_MESSAGE);
             }
 
             $rows[] = [
-                'key' => $key,
+                'key' => $metalKey,
                 'name_en' => $meta['name_en'],
                 'name_ar' => $meta['name_ar'],
                 'symbol' => $meta['symbol'],
@@ -350,54 +165,154 @@ class MetalsSpotService
         }
 
         return [
-            'source' => $source,
-            'cached' => false,
+            'source' => self::SOURCE,
             'updated_at' => now()->toIso8601String(),
             'data' => $rows,
         ];
     }
 
     /**
-     * Hard fallback payload when providers and stale cache are unavailable.
+     * RapidAPI may return the quote flatly or wrapped in `data` / `results` (e.g. ID + results envelope).
      *
-     * @return array{source: string, cached: bool, updated_at: string, data: array<int, array<string, mixed>>}
+     * @param  array<string, mixed>  $json
+     * @return array<string, mixed>
      */
-    private function hardFallbackPayload(): array
+    private function resolveQuotePayloadNode(array $json): array
     {
-        /** @var array<string, float|int|string> $configured */
-        $configured = (array) config('services.metals.hard_fallback_prices', []);
+        foreach (['data', 'results'] as $wrapper) {
+            if (! isset($json[$wrapper]) || ! is_array($json[$wrapper])) {
+                continue;
+            }
 
-        $defaultOz = [
-            'gold' => 2350.00,
-            'silver' => 28.00,
-            'platinum' => 1864.94,
-            'palladium' => 1377.89,
-            'rhodium' => 9270.06,
-        ];
+            $inner = $json[$wrapper];
 
-        $rows = [];
+            if (array_is_list($inner)) {
+                $first = $inner[0] ?? null;
 
-        foreach ($this->meta as $key => $meta) {
-            $oz = (float) ($configured[$key] ?? $defaultOz[$key] ?? 0.0);
+                if (is_array($first)) {
+                    return $first;
+                }
 
-            $rows[] = [
-                'key' => $key,
-                'name_en' => $meta['name_en'],
-                'name_ar' => $meta['name_ar'],
-                'symbol' => $meta['symbol'],
-                'price_oz' => round($oz, 2),
-                'price_gram' => round($oz / self::TROY_OZ_TO_GRAM, 2),
-                'change_oz' => 0.0,
-                'change_pct' => 0.0,
-                'direction' => 'flat',
-            ];
+                continue;
+            }
+
+            return $inner;
         }
 
-        return [
-            'source' => 'hard_fallback',
-            'cached' => true,
-            'updated_at' => now()->toIso8601String(),
-            'data' => $rows,
-        ];
+        return $json;
+    }
+
+    /**
+     * @param  array<string, mixed>  $json
+     * @return array{0: float, 1: float, 2: float}
+     */
+    private function extractSpotMetrics(array $json): array
+    {
+        $node = $this->resolveQuotePayloadNode($json);
+
+        $price = $this->extractSpotPriceOz($node);
+
+        $changeOz = $this->firstNumeric($node, ['change', 'priceChange', 'dailyChange', 'chg', 'changeAmount']) ?? 0.0;
+        $changePct = $this->firstNumeric($node, ['changePercent', 'percentChange', 'change_pct', 'pctChange', 'changePercentage']) ?? 0.0;
+
+        if ($price === null) {
+            throw new RuntimeException(self::UPSTREAM_UNAVAILABLE_MESSAGE);
+        }
+
+        return [(float) $price, (float) $changeOz, (float) $changePct];
+    }
+
+    /**
+     * Prefer a strictly positive spot; upstream may send price=0 alongside spotPrice.
+     *
+     * @param  array<string, mixed>  $node
+     */
+    private function extractSpotPriceOz(array $node): ?float
+    {
+        $priceKeys = ['price', 'spotPrice', 'lastPrice', 'midPrice', 'close', 'spot'];
+
+        $price = $this->firstPositiveNumeric($node, $priceKeys);
+
+        if ($price !== null) {
+            return $price;
+        }
+
+        $bid = $this->firstPositiveNumeric($node, ['bid']);
+        $ask = $this->firstPositiveNumeric($node, ['ask']);
+
+        if ($bid !== null && $ask !== null) {
+            return ($bid + $ask) / 2;
+        }
+
+        foreach (['quote', 'payload', 'spot', 'item', 'result', 'body'] as $nest) {
+            if (! isset($node[$nest]) || ! is_array($node[$nest])) {
+                continue;
+            }
+
+            $nested = $node[$nest];
+
+            $price = $this->firstPositiveNumeric($nested, $priceKeys);
+
+            if ($price !== null) {
+                return $price;
+            }
+
+            $bid = $this->firstPositiveNumeric($nested, ['bid']);
+            $ask = $this->firstPositiveNumeric($nested, ['ask']);
+
+            if ($bid !== null && $ask !== null) {
+                return ($bid + $ask) / 2;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<int, string>  $keys
+     */
+    private function firstPositiveNumeric(array $data, array $keys): ?float
+    {
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+
+            $value = $data[$key];
+
+            if (! is_numeric($value)) {
+                continue;
+            }
+
+            $float = (float) $value;
+
+            if ($float > 0.0) {
+                return $float;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<int, string>  $keys
+     */
+    private function firstNumeric(array $data, array $keys): ?float
+    {
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+
+            $value = $data[$key];
+
+            if (is_numeric($value)) {
+                return (float) $value;
+            }
+        }
+
+        return null;
     }
 }

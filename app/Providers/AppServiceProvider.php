@@ -2,9 +2,11 @@
 
 namespace App\Providers;
 
+use App\Models\User;
 use App\Notifications\Channels\FcmChannel;
 use App\Services\Mobile\MetalsSpotService;
 use Illuminate\Notifications\ChannelManager;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Kreait\Firebase\Contract\Messaging;
 use Kreait\Firebase\Factory;
@@ -19,7 +21,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(MetalsSpotService::class);
 
         $this->app->singleton(Messaging::class, function (): Messaging {
-            $factory = new Factory();
+            $factory = new Factory;
             $credentials = config('services.firebase.credentials');
             $projectId = config('services.firebase.project_id');
 
@@ -44,6 +46,14 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->make(ChannelManager::class)->extend('fcm', function ($app): FcmChannel {
             return $app->make(FcmChannel::class);
+        });
+
+        Gate::before(static function (mixed $user, string $ability): ?bool {
+            if (! $user instanceof User) {
+                return null;
+            }
+
+            return $user->hasRole('super_admin') ? true : null;
         });
     }
 }

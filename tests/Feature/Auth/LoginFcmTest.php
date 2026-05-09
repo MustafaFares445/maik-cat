@@ -41,3 +41,19 @@ test('login works without fcm token and keeps existing token untouched', functio
     $response->assertOk();
     expect($user->fresh()->fcm_token)->toBe('existing-token');
 });
+
+test('inactive users cannot login', function () {
+    User::factory()->create([
+        'email' => 'inactive@example.com',
+        'password' => 'secret123',
+        'is_active' => false,
+    ]);
+
+    $response = postJson('/api/auth/login', [
+        'email' => 'inactive@example.com',
+        'password' => 'secret123',
+    ]);
+
+    $response->assertForbidden();
+    $response->assertJsonPath('message', 'Your account is currently inactive. Please contact support.');
+});

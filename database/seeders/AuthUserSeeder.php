@@ -12,12 +12,18 @@ class AuthUserSeeder extends Seeder
      */
     public function run(): void
     {
-        User::query()->updateOrCreate(
-            ['email' => 'test@example.com'],
+        $user = User::query()->updateOrCreate(
+            ['email' => 'admin@example.com'],
             [
                 'name' => 'Test User',
                 'password' => bcrypt('password'),
+                'is_active' => true,
+                'preferred_language' => 'en',
             ]
         );
+
+        if (! $user->hasRole('super_admin')) {
+            $user->assignRole('super_admin');
+        }
     }
 }

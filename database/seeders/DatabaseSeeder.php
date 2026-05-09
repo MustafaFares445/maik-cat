@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
             MobileRealDataSeeder::class,
             MobileFakeDataSeeder::class,
             AppVersionSeeder::class,
+            RolesAndPermissionsSeeder::class,
             AuthUserSeeder::class,
         ]);
     }

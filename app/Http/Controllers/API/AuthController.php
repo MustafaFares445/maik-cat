@@ -26,6 +26,12 @@ class AuthController extends Controller
             ], 422);
         }
 
+        if (! $user->is_active) {
+            return response()->json([
+                'message' => 'Your account is currently inactive. Please contact support.',
+            ], 403);
+        }
+
         $fcmToken = $validated['fcm_token'] ?? null;
 
         if (is_string($fcmToken) && $fcmToken !== '') {
@@ -40,6 +46,7 @@ class AuthController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'preferred_language' => $user->preferredLanguageOrDefault(),
             ],
         ]);
     }
@@ -59,8 +66,8 @@ class AuthController extends Controller
 
         $exists = User::query()->where('email', $request->input('email'))->exists();
 
-        if (!$exists) {
-            return response()->json(['message' => 'email not found.' , Response::HTTP_BAD_REQUEST]);
+        if (! $exists) {
+            return response()->json(['message' => 'email not found.', Response::HTTP_BAD_REQUEST]);
         }
 
         return response()->json([

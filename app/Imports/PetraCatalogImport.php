@@ -9,9 +9,12 @@ class PetraCatalogImport implements WithMultipleSheets
 {
     private PetraSheetImport $sheetImport;
 
-    public function __construct(ImportBatch $batch, private readonly string $sheetName)
-    {
-        $this->sheetImport = new PetraSheetImport($batch, $sheetName);
+    public function __construct(
+        ImportBatch $batch,
+        private readonly string $sheetName,
+        private readonly bool $dryRun = false,
+    ) {
+        $this->sheetImport = new PetraSheetImport($batch, $sheetName, $dryRun);
     }
 
     public function sheets(): array

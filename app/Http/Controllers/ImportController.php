@@ -6,10 +6,12 @@ use App\Http\Requests\ImportExcelRequest;
 use App\Http\Requests\ResolveDuplicateRequest;
 use App\Models\DuplicateReview;
 use App\Models\ImportBatch;
+use App\Models\ImportRowIssue;
 use App\Services\DuplicateResolverService;
 use App\Services\ImportBatchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Throwable;
 
 class ImportController extends Controller
@@ -26,7 +28,8 @@ class ImportController extends Controller
     {
         $report = $this->importer->import(
             $request->file('file'),
-            $request->user()?->email
+            $request->user()?->email,
+            (bool) $request->boolean('dry_run', false),
         );
 
         return response()->json($report, 201);
@@ -36,7 +39,8 @@ class ImportController extends Controller
     {
         $batch->loadCount([
             'duplicateReviews as duplicates_total',
-            'duplicateReviews as duplicates_pending' => fn($query) => $query->where('status', 'pending'),
+            'duplicateReviews as duplicates_pending' => fn ($query) => $query->where('status', 'pending'),
+            'rowIssues as issues_total',
         ]);
 
         return response()->json([
@@ -51,6 +55,7 @@ class ImportController extends Controller
             'rows_invalid' => $batch->rows_invalid,
             'duplicates_total' => $batch->duplicates_total,
             'duplicates_pending' => $batch->duplicates_pending,
+            'issues_total' => $batch->issues_total,
             'created_at' => $batch->created_at,
             'updated_at' => $batch->updated_at,
         ]);
@@ -87,6 +92,36 @@ class ImportController extends Controller
                         'parent_id' => $review->existingItem->carGroup->parent_id,
                     ] : null,
                 ] : null,
+            ];
+        });
+
+        return response()->json($paginator);
+    }
+
+    public function issues(Request $request, ImportBatch $batch): JsonResponse
+    {
+        $perPage = max(1, min(100, (int) $request->integer('per_page', 50)));
+        $issueCode = trim((string) $request->query('issue_code', ''));
+
+        $query = $batch->rowIssues()->latest();
+
+        if ($issueCode !== '') {
+            $query->where('issue_code', Str::snake($issueCode));
+        }
+
+        $paginator = $query->paginate($perPage);
+
+        $paginator->getCollection()->transform(function (ImportRowIssue $issue): array {
+            return [
+                'id' => $issue->id,
+                'batch_id' => $issue->batch_id,
+                'excel_row' => $issue->excel_row,
+                'excel_sheet' => $issue->excel_sheet,
+                'issue_code' => $issue->issue_code,
+                'raw_payload' => $issue->raw_payload,
+                'normalized_payload' => $issue->normalized_payload,
+                'created_at' => $issue->created_at,
+                'updated_at' => $issue->updated_at,
             ];
         });
 

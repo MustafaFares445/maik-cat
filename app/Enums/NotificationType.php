@@ -25,11 +25,40 @@ final class NotificationType
         ];
     }
 
+    /**
+     * @return array<string, string>
+     */
+    public static function labels(): array
+    {
+        return [
+            self::AUTH_LOGIN_NEW_DEVICE => 'Auth Login New Device',
+            self::ADD_NEW_ITEM => 'Add New Item',
+            self::CHANGE_MARKET_PRICE => 'Change Market Price',
+            self::GENERALE_NOTIFICATION => 'Generale Notification',
+        ];
+    }
+
+    public static function normalize(string $type): string
+    {
+        $normalized = str($type)
+            ->trim()
+            ->lower()
+            ->replace(['-', ' '], '_')
+            ->replaceMatches('/_+/', '_')
+            ->toString();
+
+        if ($normalized === '') {
+            return self::GENERALE_NOTIFICATION;
+        }
+
+        return in_array($normalized, self::values(), true)
+            ? $normalized
+            : self::GENERALE_NOTIFICATION;
+    }
+
     public static function iconPath(string $type): string
     {
-        if (! in_array($type, self::values(), true)) {
-            $type = self::GENERALE_NOTIFICATION;
-        }
+        $type = self::normalize($type);
 
         return "images/notifications/{$type}.svg";
     }

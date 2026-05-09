@@ -6,6 +6,7 @@ use App\Models\CarGroup;
 use App\Models\DuplicateReview;
 use App\Models\ImportBatch;
 use App\Models\Item;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Maatwebsite\Excel\Concerns\OnEachRow;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
@@ -13,11 +14,14 @@ use Maatwebsite\Excel\Concerns\WithStartRow;
 use Maatwebsite\Excel\Row;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 
-class PetraSheetImport implements OnEachRow, WithStartRow, WithChunkReading
+class PetraSheetImport implements OnEachRow, WithChunkReading, WithStartRow
 {
     private int $inserted = 0;
+
     private int $skipped = 0;
+
     private int $invalid = 0;
+
     private int $flagged = 0;
 
     /** @var array<string, true> */
@@ -29,6 +33,7 @@ class PetraSheetImport implements OnEachRow, WithStartRow, WithChunkReading
     public function __construct(
         private readonly ImportBatch $batch,
         private readonly string $sheetName,
+        private readonly bool $dryRun = false,
         private readonly int $chunkSize = 250,
     ) {}
 
@@ -48,32 +53,33 @@ class PetraSheetImport implements OnEachRow, WithStartRow, WithChunkReading
 
         if (! $this->isValidRow($mapped)) {
             $this->invalid++;
+
             return;
         }
 
         $group = $this->resolveCarGroup($mapped['model']);
-        $signature = $this->signature($mapped, $group->id);
+        $normalizedSerial = $this->normalizeSerial((string) $mapped['serial_code']);
+        $signature = $this->signature($mapped, $group->id, $normalizedSerial);
 
         if (isset($this->seenSignatures[$signature])) {
             $this->skipped++;
-            return;
-        }
 
-        $exactGlobalMatch = $this->findExactAssayMatch($mapped);
-        if ($exactGlobalMatch !== null) {
-            $this->seenSignatures[$signature] = true;
-            $this->skipped++;
             return;
         }
 
         $sameSerialWithinGroup = Item::query()
             ->where('car_group_id', $group->id)
-            ->where('serial_code', $mapped['serial_code'])
+            ->where(function ($query) use ($normalizedSerial): void {
+                $query->where('normalized_serial', $normalizedSerial)
+                    ->orWhereRaw($this->normalizedSerialSql().' = ?', [$normalizedSerial]);
+            })
             ->orderByDesc('created_at')
             ->get();
 
         if ($sameSerialWithinGroup->isEmpty()) {
-            $this->insertItem($mapped, $group->id);
+            if (! $this->dryRun) {
+                $this->insertItem($mapped, $group->id);
+            }
             $this->seenSignatures[$signature] = true;
             $this->inserted++;
 
@@ -87,24 +93,28 @@ class PetraSheetImport implements OnEachRow, WithStartRow, WithChunkReading
             return;
         }
 
-        DuplicateReview::query()->create([
-            'batch_id' => $this->batch->id,
-            'excel_row' => $row->getIndex(),
-            'excel_sheet' => $this->sheetName,
-            'payload' => [
-                'model' => $mapped['model'],
-                'serial_code' => $mapped['serial_code'],
-                'weight_kg' => $mapped['weight_kg'],
-                'pt_ppm' => $mapped['pt_ppm'],
-                'pd_ppm' => $mapped['pd_ppm'],
-                'rh_ppm' => $mapped['rh_ppm'],
-                'extra_codes' => null,
-                'details' => $mapped['details'],
-                'shape_code' => null,
-            ],
-            'existing_item_id' => $sameSerialWithinGroup->first()->id,
-            'status' => 'pending',
-        ]);
+        if (! $this->dryRun) {
+            DuplicateReview::query()->create([
+                'batch_id' => $this->batch->id,
+                'excel_row' => $row->getIndex(),
+                'excel_sheet' => $this->sheetName,
+                'payload' => [
+                    'model' => $mapped['model'],
+                    'serial_code' => $mapped['serial_code'],
+                    'normalized_serial' => $normalizedSerial,
+                    'weight_kg' => $mapped['weight_kg'],
+                    'pt_ppm' => $mapped['pt_ppm'],
+                    'pd_ppm' => $mapped['pd_ppm'],
+                    'rh_ppm' => $mapped['rh_ppm'],
+                    'extra_codes' => null,
+                    'details' => $mapped['details'],
+                    'shape_code' => null,
+                    'match_basis' => 'normalized_serial',
+                ],
+                'existing_item_id' => $sameSerialWithinGroup->first()->id,
+                'status' => 'pending',
+            ]);
+        }
 
         $this->seenSignatures[$signature] = true;
         $this->flagged++;
@@ -207,18 +217,10 @@ class PetraSheetImport implements OnEachRow, WithStartRow, WithChunkReading
         ]);
     }
 
-    private function findExactAssayMatch(array $data): ?Item
-    {
-        return Item::query()
-            ->where('serial_code', $data['serial_code'])
-            ->where('weight_kg', $data['weight_kg'])
-            ->where('pt_ppm', $data['pt_ppm'])
-            ->where('pd_ppm', $data['pd_ppm'])
-            ->where('rh_ppm', $data['rh_ppm'])
-            ->first();
-    }
-
-    private function hasExactMatchInGroup($items, array $data): bool
+    /**
+     * @param  Collection<int, Item>  $items
+     */
+    private function hasExactMatchInGroup(Collection $items, array $data): bool
     {
         $target = [
             $this->decimal($data['weight_kg'], 3),
@@ -243,11 +245,11 @@ class PetraSheetImport implements OnEachRow, WithStartRow, WithChunkReading
         return false;
     }
 
-    private function signature(array $data, string $groupId): string
+    private function signature(array $data, string $groupId, string $normalizedSerial): string
     {
         return implode('|', [
             $groupId,
-            $data['serial_code'] ?? '',
+            $normalizedSerial,
             $this->decimal($data['weight_kg'], 3),
             $this->decimal($data['pt_ppm'], 4),
             $this->decimal($data['pd_ppm'], 4),
@@ -306,6 +308,19 @@ class PetraSheetImport implements OnEachRow, WithStartRow, WithChunkReading
     private function normalizeGroupName(string $value): string
     {
         $clean = preg_replace('/\s+/u', ' ', trim($value)) ?? '';
+
         return Str::upper($clean);
+    }
+
+    private function normalizeSerial(string $serial): string
+    {
+        $serial = Str::upper(trim($serial));
+
+        return preg_replace('/[\s\-\.\/]+/u', '', $serial) ?? $serial;
+    }
+
+    private function normalizedSerialSql(): string
+    {
+        return "UPPER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(serial_code, ''), ' ', ''), '-', ''), '/', ''), '.', ''))";
     }
 }

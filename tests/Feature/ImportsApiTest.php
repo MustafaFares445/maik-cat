@@ -1,16 +1,21 @@
 <?php
 
+use App\Jobs\ImportBatchJob;
 use App\Models\CarGroup;
 use App\Models\DuplicateReview;
 use App\Models\ExtraCode;
 use App\Models\ImportBatch;
+use App\Models\ImportRowIssue;
 use App\Models\Item;
 use App\Models\User;
+use App\Services\ImportBatchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xls;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 use function Pest\Laravel\getJson;
@@ -37,7 +42,7 @@ function petraHeaders(): array
  */
 function createExcelUpload(array $sheets, string $originalName = 'import.xlsx'): UploadedFile
 {
-    $spreadsheet = new Spreadsheet();
+    $spreadsheet = new Spreadsheet;
     $spreadsheet->removeSheetByIndex(0);
 
     $firstSheet = true;
@@ -61,7 +66,7 @@ function createExcelUpload(array $sheets, string $originalName = 'import.xlsx'):
     }
 
     @unlink($tempBase);
-    $path = $tempBase . '.xlsx';
+    $path = $tempBase.'.xlsx';
 
     $writer = new Xlsx($spreadsheet);
     $writer->save($path);
@@ -75,9 +80,75 @@ function createExcelUpload(array $sheets, string $originalName = 'import.xlsx'):
     );
 }
 
+/**
+ * @param  array<string, array<int, array<int, mixed>>>  $sheets
+ */
+function createXlsUpload(array $sheets, string $originalName = 'import.xls'): UploadedFile
+{
+    $spreadsheet = new Spreadsheet;
+    $spreadsheet->removeSheetByIndex(0);
+
+    $firstSheet = true;
+    foreach ($sheets as $sheetName => $rows) {
+        $sheet = $spreadsheet->createSheet();
+        $sheet->setTitle($sheetName);
+
+        if (! empty($rows)) {
+            $sheet->fromArray($rows, null, 'A1');
+        }
+
+        if ($firstSheet) {
+            $spreadsheet->setActiveSheetIndexByName($sheetName);
+            $firstSheet = false;
+        }
+    }
+
+    $tempBase = tempnam(sys_get_temp_dir(), 'xls_');
+    if ($tempBase === false) {
+        throw new RuntimeException('Could not create temporary file for test workbook.');
+    }
+
+    @unlink($tempBase);
+    $path = $tempBase.'.xls';
+
+    $writer = new Xls($spreadsheet);
+    $writer->save($path);
+
+    return new UploadedFile(
+        $path,
+        $originalName,
+        'application/vnd.ms-excel',
+        null,
+        true
+    );
+}
+
+function queueAndRunImportJob(string $batchId): void
+{
+    $capturedJob = null;
+
+    Bus::assertDispatched(ImportBatchJob::class, function (ImportBatchJob $job) use ($batchId, &$capturedJob): bool {
+        if ($job->batchId !== $batchId) {
+            return false;
+        }
+
+        $capturedJob = $job;
+
+        return true;
+    });
+
+    expect($capturedJob)->toBeInstanceOf(ImportBatchJob::class);
+
+    app(ImportBatchService::class)->processQueuedBatch(
+        $capturedJob->batchId,
+        $capturedJob->storedFilePath
+    );
+}
+
 test('petra import auto-detects header-matching sheet and ignores noisy sheet', function () {
     $user = User::factory()->create();
     Sanctum::actingAs($user);
+    Bus::fake();
 
     $file = createExcelUpload([
         'Noisy' => [
@@ -93,11 +164,20 @@ test('petra import auto-detects header-matching sheet and ignores noisy sheet', 
     $response = post('/api/imports', ['file' => $file]);
 
     $response->assertCreated();
-    $response->assertJsonPath('status', 'completed');
-    $response->assertJsonPath('rowsInserted', 1);
-    $response->assertJsonPath('rowsInvalid', 0);
-    $response->assertJsonPath('rowsFlagged', 0);
-    $response->assertJsonPath('rowsSkipped', 0);
+    $response->assertJsonPath('status', 'queued');
+
+    $batchId = (string) $response->json('batchId');
+    expect($batchId)->not->toBe('');
+
+    queueAndRunImportJob($batchId);
+
+    getJson("/api/imports/{$batchId}")
+        ->assertOk()
+        ->assertJsonPath('status', 'completed')
+        ->assertJsonPath('rowsInserted', 1)
+        ->assertJsonPath('rowsInvalid', 0)
+        ->assertJsonPath('rowsFlagged', 0)
+        ->assertJsonPath('rowsSkipped', 0);
 
     expect(Item::query()->count())->toBe(1);
     $item = Item::query()->firstOrFail();
@@ -114,6 +194,7 @@ test('petra import auto-detects header-matching sheet and ignores noisy sheet', 
 test('petra import creates missing manufacturer group automatically', function () {
     $user = User::factory()->create();
     Sanctum::actingAs($user);
+    Bus::fake();
 
     $file = createExcelUpload([
         'Sheet2' => [
@@ -125,6 +206,9 @@ test('petra import creates missing manufacturer group automatically', function (
     $response = post('/api/imports', ['file' => $file]);
     $response->assertCreated();
 
+    $batchId = (string) $response->json('batchId');
+    queueAndRunImportJob($batchId);
+
     $group = CarGroup::query()->where('excel_sheet_name', 'MY NEW BRAND')->first();
     expect($group)->not->toBeNull()
         ->and($group->name)->toBe('MY NEW BRAND');
@@ -135,6 +219,7 @@ test('petra import creates missing manufacturer group automatically', function (
 test('petra import skips exact duplicate and does not create duplicate review', function () {
     $user = User::factory()->create();
     Sanctum::actingAs($user);
+    Bus::fake();
 
     $group = CarGroup::query()->create([
         'id' => (string) Str::uuid(),
@@ -166,10 +251,18 @@ test('petra import skips exact duplicate and does not create duplicate review', 
     $response = post('/api/imports', ['file' => $file]);
 
     $response->assertCreated();
-    $response->assertJsonPath('rowsInserted', 0);
-    $response->assertJsonPath('rowsSkipped', 1);
-    $response->assertJsonPath('rowsFlagged', 0);
-    $response->assertJsonPath('rowsInvalid', 0);
+    $response->assertJsonPath('status', 'queued');
+
+    $batchId = (string) $response->json('batchId');
+    queueAndRunImportJob($batchId);
+
+    getJson("/api/imports/{$batchId}")
+        ->assertOk()
+        ->assertJsonPath('status', 'completed')
+        ->assertJsonPath('rowsInserted', 0)
+        ->assertJsonPath('rowsSkipped', 1)
+        ->assertJsonPath('rowsFlagged', 0)
+        ->assertJsonPath('rowsInvalid', 0);
 
     expect(DuplicateReview::query()->count())->toBe(0);
     expect(Item::query()->count())->toBe(1);
@@ -180,6 +273,7 @@ test('petra import skips exact duplicate and does not create duplicate review', 
 test('petra import flags conflict duplicates and exposes batch duplicate endpoints', function () {
     $user = User::factory()->create();
     Sanctum::actingAs($user);
+    Bus::fake();
 
     $group = CarGroup::query()->create([
         'id' => (string) Str::uuid(),
@@ -210,17 +304,19 @@ test('petra import flags conflict duplicates and exposes batch duplicate endpoin
 
     $importResponse = post('/api/imports', ['file' => $file]);
     $importResponse->assertCreated();
-    $importResponse->assertJsonPath('rowsInserted', 0);
-    $importResponse->assertJsonPath('rowsFlagged', 1);
-    $importResponse->assertJsonPath('rowsSkipped', 0);
+    $importResponse->assertJsonPath('status', 'queued');
 
     $batchId = (string) $importResponse->json('batchId');
     expect($batchId)->not->toBe('');
 
+    queueAndRunImportJob($batchId);
+
     getJson("/api/imports/{$batchId}")
         ->assertOk()
         ->assertJsonPath('id', $batchId)
+        ->assertJsonPath('rowsInserted', 0)
         ->assertJsonPath('rowsFlagged', 1)
+        ->assertJsonPath('rowsSkipped', 0)
         ->assertJsonPath('duplicatesPending', 1)
         ->assertJsonPath('status', 'completed');
 
@@ -351,6 +447,7 @@ test('duplicate resolve endpoint handles keep overwrite and insert actions', fun
 test('legacy multi-sheet import flow still works with new orchestration', function () {
     $user = User::factory()->create();
     Sanctum::actingAs($user);
+    Bus::fake();
 
     CarGroup::query()->create([
         'id' => (string) Str::uuid(),
@@ -390,10 +487,17 @@ test('legacy multi-sheet import flow still works with new orchestration', functi
 
     $response = post('/api/imports', ['file' => $file]);
     $response->assertCreated();
-    $response->assertJsonPath('status', 'completed');
-    $response->assertJsonPath('rowsInserted', 1);
-    $response->assertJsonPath('rowsFlagged', 0);
-    $response->assertJsonPath('rowsInvalid', 0);
+    $response->assertJsonPath('status', 'queued');
+
+    $batchId = (string) $response->json('batchId');
+    queueAndRunImportJob($batchId);
+
+    getJson("/api/imports/{$batchId}")
+        ->assertOk()
+        ->assertJsonPath('status', 'completed')
+        ->assertJsonPath('rowsInserted', 1)
+        ->assertJsonPath('rowsFlagged', 0)
+        ->assertJsonPath('rowsInvalid', 0);
 
     $item = Item::query()->where('serial_code', 'SER-LEG-1')->first();
     expect($item)->not->toBeNull()
@@ -402,6 +506,216 @@ test('legacy multi-sheet import flow still works with new orchestration', functi
         ->and($item->shape_code)->toBe('SHAPE-X');
 
     expect(ExtraCode::query()->where('item_id', $item->id)->pluck('code')->all())->toBe(['EX1', 'EX2']);
+
+    @unlink($file->getPathname());
+});
+
+test('dry run returns preview status and does not persist items or extra codes', function () {
+    $user = User::factory()->create();
+    Sanctum::actingAs($user);
+
+    CarGroup::query()->create([
+        'id' => (string) Str::uuid(),
+        'name' => 'BMW',
+        'excel_sheet_name' => 'BMW',
+        'region' => 'European',
+    ]);
+
+    $file = createExcelUpload([
+        'BMW' => [
+            ['header row 1'],
+            ['header row 2'],
+            ['header row 3'],
+            [
+                'MODEL-DRY',
+                'SER-DRY-1',
+                1.1,
+                120.0,
+                null,
+                200.0,
+                null,
+                20.0,
+                null,
+                null,
+                'C1/C2',
+                null,
+                'dry run row',
+            ],
+        ],
+    ], 'dry-run.xlsx');
+
+    $response = post('/api/imports', [
+        'file' => $file,
+        'dryRun' => true,
+    ]);
+
+    $response->assertCreated();
+    $response->assertJsonPath('status', 'preview_completed');
+    $response->assertJsonPath('rowsInserted', 1);
+    $response->assertJsonPath('rowsFlagged', 0);
+    $response->assertJsonPath('rowsInvalid', 0);
+    $response->assertJsonPath('rowsSkipped', 0);
+
+    expect(Item::query()->count())->toBe(0);
+    expect(ExtraCode::query()->count())->toBe(0);
+    expect(DuplicateReview::query()->count())->toBe(0);
+
+    @unlink($file->getPathname());
+});
+
+test('xls import detection works without zip archive assumptions', function () {
+    $user = User::factory()->create();
+    Sanctum::actingAs($user);
+
+    $file = createXlsUpload([
+        'CatalogData' => [
+            petraHeaders(),
+            ['SER-XLS-1', 'desc xls', 'Acadia', 1.12, 1200, 450, 90],
+        ],
+    ], 'petra.xls');
+
+    $response = post('/api/imports', [
+        'file' => $file,
+        'dryRun' => true,
+    ]);
+
+    $response->assertCreated();
+    $response->assertJsonPath('status', 'preview_completed');
+    $response->assertJsonPath('rowsInserted', 1);
+    $response->assertJsonPath('rowsInvalid', 0);
+
+    @unlink($file->getPathname());
+});
+
+test('legacy import maps new sheet aliases to existing canonical group', function () {
+    $user = User::factory()->create();
+    Sanctum::actingAs($user);
+    Bus::fake();
+
+    $canonical = CarGroup::query()->create([
+        'id' => (string) Str::uuid(),
+        'name' => 'CHRYSLER',
+        'excel_sheet_name' => 'CHRYSLER',
+        'region' => 'American',
+    ]);
+
+    $file = createExcelUpload([
+        'New Chraisler' => [
+            ['header row 1'],
+            ['header row 2'],
+            ['header row 3'],
+            [
+                'MODEL-CHR',
+                'SER-CHR-1',
+                1.5,
+                111.0,
+                null,
+                222.0,
+                null,
+                33.0,
+                null,
+                null,
+                null,
+                null,
+                'alias sheet mapping row',
+            ],
+        ],
+    ], 'legacy-alias.xlsx');
+
+    $response = post('/api/imports', ['file' => $file]);
+    $response->assertCreated();
+    $response->assertJsonPath('status', 'queued');
+
+    $batchId = (string) $response->json('batchId');
+    queueAndRunImportJob($batchId);
+
+    $item = Item::query()->where('serial_code', 'SER-CHR-1')->firstOrFail();
+    expect($item->car_group_id)->toBe($canonical->id);
+
+    @unlink($file->getPathname());
+});
+
+test('dry run persists invalid row issues and exposes issues endpoint', function () {
+    $user = User::factory()->create();
+    Sanctum::actingAs($user);
+
+    CarGroup::query()->create([
+        'id' => (string) Str::uuid(),
+        'name' => 'BMW',
+        'excel_sheet_name' => 'BMW',
+        'region' => 'European',
+    ]);
+
+    $file = createExcelUpload([
+        'BMW' => [
+            ['Зав. №.', 'Доп. Инф.', 'Произв.', 'Тегло', 'PT', 'PD', 'RH'],
+            ['SER-ISS-1', 'desc', 'BMW', 1.25, '0/0', '1250/2300', '350/400'],
+        ],
+    ], 'legacy-issues-dry-run.xlsx');
+
+    $response = post('/api/imports', [
+        'file' => $file,
+        'dryRun' => true,
+    ]);
+
+    $response->assertCreated();
+    $response->assertJsonPath('status', 'preview_completed');
+    $response->assertJsonPath('rowsInvalid', 1);
+    $response->assertJsonPath('issuesTotal', 1);
+
+    $batchId = (string) $response->json('batchId');
+
+    getJson("/api/imports/{$batchId}")
+        ->assertOk()
+        ->assertJsonPath('issuesTotal', 1)
+        ->assertJsonPath('rowsInvalid', 1);
+
+    getJson("/api/imports/{$batchId}/issues?issueCode=ambiguousAssayValue")
+        ->assertOk()
+        ->assertJsonPath('data.0.issueCode', 'ambiguous_assay_value')
+        ->assertJsonPath('data.0.batchId', $batchId)
+        ->assertJsonPath('data.0.excelSheet', 'BMW');
+
+    expect(ImportRowIssue::query()->count())->toBe(1);
+    expect(Item::query()->count())->toBe(0);
+
+    @unlink($file->getPathname());
+});
+
+test('legacy import skips placeholder sheets like Лист1 and Лист2', function () {
+    $user = User::factory()->create();
+    Sanctum::actingAs($user);
+
+    CarGroup::query()->create([
+        'id' => (string) Str::uuid(),
+        'name' => 'BMW',
+        'excel_sheet_name' => 'BMW',
+        'region' => 'European',
+    ]);
+
+    $file = createExcelUpload([
+        'Лист1' => [[null]],
+        'Лист2' => [[null]],
+        'BMW' => [
+            ['header row 1'],
+            ['header row 2'],
+            ['header row 3'],
+            ['MODEL-PLH', 'SER-PLH-1', 1.2, 100, null, 200, null, 10],
+        ],
+    ], 'legacy-placeholder-sheets.xlsx');
+
+    $response = post('/api/imports', [
+        'file' => $file,
+        'dryRun' => true,
+    ]);
+
+    $response->assertCreated();
+    $response->assertJsonPath('status', 'preview_completed');
+    $response->assertJsonPath('rowsInserted', 1);
+    $response->assertJsonPath('rowsInvalid', 0);
+    $response->assertJsonPath('issuesTotal', 0);
+
+    expect(ImportRowIssue::query()->count())->toBe(0);
 
     @unlink($file->getPathname());
 });

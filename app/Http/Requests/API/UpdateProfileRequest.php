@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\API;
 
+use App\Enums\PreferredLanguage;
 use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -23,6 +24,7 @@ class UpdateProfileRequest extends FormRequest
                 'max:255',
                 Rule::unique(User::class, 'email')->ignore($this->user()?->getKey()),
             ],
+            'preferred_language' => ['sometimes', 'string', Rule::in(PreferredLanguage::values())],
         ];
     }
 }

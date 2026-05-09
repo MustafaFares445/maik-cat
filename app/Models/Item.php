@@ -3,26 +3,29 @@
 namespace App\Models;
 
 use App\Traits\FilterQueries\ItemFilterQuery;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Spatie\Image\Enums\Fit;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class Item extends Model implements HasMedia
 {
     use HasFactory;
     use HasUuids;
-    use ItemFilterQuery;
     use InteractsWithMedia;
+    use ItemFilterQuery;
 
     protected $fillable = [
         'car_group_id',
         'model',
         'serial_code',
+        'normalized_serial',
         'weight_kg',
         'pt_ppm',
         'pd_ppm',
@@ -37,6 +40,24 @@ class Item extends Model implements HasMedia
         'pd_ppm' => 'float',
         'rh_ppm' => 'float',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (self $item): void {
+            $item->normalized_serial = self::normalizeSerialValue($item->serial_code);
+        });
+    }
+
+    public static function normalizeSerialValue(?string $serialCode): string
+    {
+        if ($serialCode === null) {
+            return '';
+        }
+
+        $serial = mb_strtoupper(trim($serialCode), 'UTF-8');
+
+        return preg_replace('/[\s\-\.\/]+/u', '', $serial) ?? $serial;
+    }
 
     public function carGroup(): BelongsTo
     {
@@ -56,5 +77,40 @@ class Item extends Model implements HasMedia
     public function savedByUsers(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'saved_items', 'item_id', 'user_id')->withTimestamps();
+    }
+
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('images')
+            ->useDisk('public')
+            ->acceptsMimeTypes([
+                'image/jpeg',
+                'image/png',
+                'image/webp',
+                'image/avif',
+                'image/svg+xml',
+            ])
+            ->singleFile();
+    }
+
+    public function registerMediaConversions(?Media $media = null): void
+    {
+        $this->addMediaConversion('thumb')
+            ->fit(Fit::Contain, 240, 240)
+            ->format('webp')
+            ->quality(78)
+            ->nonQueued();
+
+        $this->addMediaConversion('card')
+            ->fit(Fit::Contain, 640, 480)
+            ->format('webp')
+            ->quality(82)
+            ->nonQueued();
+
+        $this->addMediaConversion('detail')
+            ->fit(Fit::Contain, 1280, 960)
+            ->format('webp')
+            ->quality(84)
+            ->nonQueued();
     }
 }

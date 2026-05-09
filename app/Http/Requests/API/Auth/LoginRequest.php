@@ -6,6 +6,15 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class LoginRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if ($this->filled('fcmToken') && ! $this->filled('fcm_token')) {
+            $this->merge([
+                'fcm_token' => $this->input('fcmToken'),
+            ]);
+        }
+    }
+
     public function authorize(): bool
     {
         return true;

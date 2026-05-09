@@ -1,17 +1,17 @@
 <?php
 
-use App\Http\Controllers\API\CalculatorController;
 use App\Http\Controllers\API\AppVersionController;
+use App\Http\Controllers\API\AuthController;
+use App\Http\Controllers\API\CalculatorController;
 use App\Http\Controllers\API\CarGroupController;
-use App\Http\Controllers\API\ProfileController;
-use App\Http\Controllers\API\SavedItemController;
-use App\Http\Controllers\API\ItemController;
 use App\Http\Controllers\API\HomeController;
-use App\Http\Controllers\API\NotificationController;
-use App\Http\Controllers\API\MetalsController;
+use App\Http\Controllers\API\ItemController;
 use App\Http\Controllers\API\MarketChartController;
 use App\Http\Controllers\API\MarketNotificationController;
-use App\Http\Controllers\API\AuthController;
+use App\Http\Controllers\API\MetalsController;
+use App\Http\Controllers\API\NotificationController;
+use App\Http\Controllers\API\ProfileController;
+use App\Http\Controllers\API\SavedItemController;
 use App\Http\Controllers\ImportController;
 use Illuminate\Support\Facades\Route;
 
@@ -64,6 +64,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/imports', [ImportController::class, 'store']);
     Route::get('/imports/{batch}', [ImportController::class, 'show']);
     Route::get('/imports/{batch}/duplicates', [ImportController::class, 'duplicates']);
+    Route::get('/imports/{batch}/issues', [ImportController::class, 'issues']);
     Route::patch('/duplicates/{review}', [ImportController::class, 'resolveDuplicate']);
 
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
