@@ -15,7 +15,7 @@ class AuthUserSeeder extends Seeder
         $user = User::query()->updateOrCreate(
             ['email' => 'admin@example.com'],
             [
-                'name' => 'Test User',
+                'name' => 'Admin User',
                 'password' => bcrypt('password'),
                 'is_active' => true,
                 'preferred_language' => 'en',
@@ -25,5 +25,15 @@ class AuthUserSeeder extends Seeder
         if (! $user->hasRole('super_admin')) {
             $user->assignRole('super_admin');
         }
+
+        $appUser = User::query()->updateOrCreate(
+            ['email' => 'test@example.com'],
+            [
+                'name' => 'Test User',
+                'password' => bcrypt('password'),
+                'is_active' => true,
+                'preferred_language' => 'en',
+            ]
+        );
     }
 }
