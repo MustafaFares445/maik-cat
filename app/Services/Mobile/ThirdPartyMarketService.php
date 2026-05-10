@@ -2,131 +2,115 @@
 
 namespace App\Services\Mobile;
 
-use App\Models\MetalPrice;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Http;
-use Throwable;
+use RuntimeException;
 
 class ThirdPartyMarketService
 {
-    public function __construct(private readonly CurrencyConversionService $currencyConversionService) {}
+    public function __construct(
+        private readonly MetalsSpotService $metalsSpotService,
+        private readonly CurrencyConversionService $currencyConversionService,
+    ) {}
 
     public function changes(int $days = 14, string $currency = 'USD'): array
     {
         $days = max(1, min($days, 14));
-        $url = (string) config('services.market_feed.changes_url');
+        $currencyUpper = strtoupper(trim($currency));
 
-        if ($url === '') {
-            return $this->convertChangesCurrency($this->fallbackChanges($days), $currency);
+        $spotUsd = $this->metalsSpotService->all('USD');
+        $tripletUsd = $this->tripletFromSpotRows($spotUsd['data']);
+
+        $fxRate = 1.0;
+        $tripletDisplay = $tripletUsd;
+
+        if ($currencyUpper === 'EUR') {
+            $spotEur = $this->metalsSpotService->all('EUR');
+            $tripletDisplay = $this->tripletFromSpotRows($spotEur['data']);
+            $fxRate = $this->currencyConversionService->rateOrOne('USD', 'EUR');
         }
 
-        try {
-            $response = Http::retry(2, 200)
-                ->timeout((int) config('services.market_feed.timeout', 10))
-                ->acceptJson()
-                ->withToken((string) config('services.market_feed.token'))
-                ->get($url, ['days' => $days]);
+        $rows = collect(range($days - 1, 0))
+            ->map(function (int $offset) use ($tripletUsd, $tripletDisplay, $currencyUpper, $fxRate): array {
+                $date = now()->subDays($offset)->toDateString();
+                $isToday = $offset === 0;
 
-            if (! $response->successful()) {
-                return $this->convertChangesCurrency($this->fallbackChanges($days), $currency);
-            }
+                $row = [
+                    'date' => $date,
+                    'pt_usd_per_oz' => $tripletUsd['pt']['price_oz'],
+                    'pd_usd_per_oz' => $tripletUsd['pd']['price_oz'],
+                    'rh_usd_per_oz' => $tripletUsd['rh']['price_oz'],
+                    'pt_change_percent' => $isToday ? $tripletUsd['pt']['change_pct'] : null,
+                    'pd_change_percent' => $isToday ? $tripletUsd['pd']['change_pct'] : null,
+                    'rh_change_percent' => $isToday ? $tripletUsd['rh']['change_pct'] : null,
+                ];
 
-            return $this->convertChangesCurrency($this->normalizeChanges($response->json(), $days), $currency);
-        } catch (Throwable) {
-            return $this->convertChangesCurrency($this->fallbackChanges($days), $currency);
-        }
+                if ($currencyUpper === 'EUR') {
+                    $row['pt_eur_per_oz'] = $tripletDisplay['pt']['price_oz'];
+                    $row['pd_eur_per_oz'] = $tripletDisplay['pd']['price_oz'];
+                    $row['rh_eur_per_oz'] = $tripletDisplay['rh']['price_oz'];
+                    $row['currency'] = 'EUR';
+                    $row['fx_rate'] = round($fxRate, 6);
+                }
+
+                return $row;
+            })
+            ->sortBy('date')
+            ->values();
+
+        return $this->fillMissingChanges($rows)->all();
     }
 
     public function homepageStats(int $days = 14, string $currency = 'USD'): array
     {
         $changes = $this->changes($days, $currency);
+        $spot = $this->metalsSpotService->all(strtoupper(trim($currency)) === 'EUR' ? 'EUR' : 'USD');
 
         return [
-            'source' => config('services.market_feed.changes_url') ? 'third_party' : 'fallback',
+            'source' => $spot['source'],
             'currency' => strtoupper(trim($currency)) === 'EUR' ? 'EUR' : 'USD',
             'changes' => $changes,
             'summary' => $this->buildSummary(collect($changes)->last() ?: []),
         ];
     }
 
-    private function convertChangesCurrency(array $changes, string $currency): array
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array{pt: array{price_oz: float, change_pct: float}, pd: array{price_oz: float, change_pct: float}, rh: array{price_oz: float, change_pct: float}}
+     */
+    private function tripletFromSpotRows(array $rows): array
     {
-        if (strtoupper(trim($currency)) !== 'EUR') {
-            return $changes;
+        $byKey = collect($rows)->keyBy(fn (array $row): string => (string) ($row['key'] ?? ''));
+
+        $pt = $byKey->get('platinum');
+        $pd = $byKey->get('palladium');
+        $rh = $byKey->get('rhodium');
+
+        if (! is_array($pt) || ! is_array($pd) || ! is_array($rh)) {
+            throw new RuntimeException(MetalsSpotService::UPSTREAM_UNAVAILABLE_MESSAGE);
         }
 
-        $rate = $this->currencyConversionService->rateOrOne('USD', 'EUR');
+        foreach ([$pt, $pd, $rh] as $metal) {
+            $price = (float) ($metal['price_oz'] ?? 0.0);
 
-        return collect($changes)
-            ->map(function (array $row) use ($rate): array {
-                $ptUsd = (float) ($row['pt_usd_per_oz'] ?? 0.0);
-                $pdUsd = (float) ($row['pd_usd_per_oz'] ?? 0.0);
-                $rhUsd = (float) ($row['rh_usd_per_oz'] ?? 0.0);
-
-                return [
-                    ...$row,
-                    'pt_eur_per_oz' => round($ptUsd * $rate, 4),
-                    'pd_eur_per_oz' => round($pdUsd * $rate, 4),
-                    'rh_eur_per_oz' => round($rhUsd * $rate, 4),
-                    'currency' => 'EUR',
-                    'fx_rate' => round($rate, 6),
-                ];
-            })
-            ->values()
-            ->all();
-    }
-
-    private function normalizeChanges(mixed $payload, int $days): array
-    {
-        $rows = collect();
-
-        if (is_array($payload)) {
-            $rows = collect($payload['changes'] ?? $payload);
+            if ($price <= 0.0) {
+                throw new RuntimeException(MetalsSpotService::UPSTREAM_UNAVAILABLE_MESSAGE);
+            }
         }
 
-        $normalized = $rows
-            ->map(fn(mixed $row) => is_array($row) ? $row : [])
-            ->filter(fn(array $row) => ! empty($row))
-            ->values()
-            ->map(function (array $row): array {
-                return [
-                    'date' => (string) ($row['date'] ?? $row['changed_at'] ?? $row['timestamp'] ?? now()->toDateString()),
-                    'pt_usd_per_oz' => (float) ($row['pt_usd_per_oz'] ?? $row['pt_price'] ?? 0),
-                    'pd_usd_per_oz' => (float) ($row['pd_usd_per_oz'] ?? $row['pd_price'] ?? 0),
-                    'rh_usd_per_oz' => (float) ($row['rh_usd_per_oz'] ?? $row['rh_price'] ?? 0),
-                    'pt_change_percent' => $this->nullableFloat($row['pt_change_percent'] ?? $row['pt_change'] ?? null),
-                    'pd_change_percent' => $this->nullableFloat($row['pd_change_percent'] ?? $row['pd_change'] ?? null),
-                    'rh_change_percent' => $this->nullableFloat($row['rh_change_percent'] ?? $row['rh_change'] ?? null),
-                ];
-            })
-            ->sortBy('date')
-            ->values();
-
-        return $this->fillMissingChanges($normalized)->take(-$days)->values()->all();
-    }
-
-    private function fallbackChanges(int $days): array
-    {
-        $rows = MetalPrice::query()
-            ->where('fetched_at', '>=', now()->subDays($days + 2)->startOfDay())
-            ->orderBy('fetched_at')
-            ->get()
-            ->groupBy(fn(MetalPrice $price) => $price->fetched_at->toDateString())
-            ->map(fn(Collection $group) => $group->last())
-            ->values()
-            ->map(function (MetalPrice $price): array {
-                return [
-                    'date' => $price->fetched_at->toDateString(),
-                    'pt_usd_per_oz' => (float) $price->pt_usd_per_oz,
-                    'pd_usd_per_oz' => (float) $price->pd_usd_per_oz,
-                    'rh_usd_per_oz' => (float) $price->rh_usd_per_oz,
-                    'pt_change_percent' => null,
-                    'pd_change_percent' => null,
-                    'rh_change_percent' => null,
-                ];
-            });
-
-        return $this->fillMissingChanges($rows)->take(-$days)->values()->all();
+        return [
+            'pt' => [
+                'price_oz' => round((float) $pt['price_oz'], 4),
+                'change_pct' => round((float) ($pt['change_pct'] ?? 0.0), 4),
+            ],
+            'pd' => [
+                'price_oz' => round((float) $pd['price_oz'], 4),
+                'change_pct' => round((float) ($pd['change_pct'] ?? 0.0), 4),
+            ],
+            'rh' => [
+                'price_oz' => round((float) $rh['price_oz'], 4),
+                'change_pct' => round((float) ($rh['change_pct'] ?? 0.0), 4),
+            ],
+        ];
     }
 
     private function fillMissingChanges(Collection $rows): Collection
@@ -177,14 +161,5 @@ class ThirdPartyMarketService
         }
 
         return round((($to - $from) / $from) * 100, 4);
-    }
-
-    private function nullableFloat(mixed $value): ?float
-    {
-        if ($value === null || $value === '') {
-            return null;
-        }
-
-        return (float) $value;
     }
 }

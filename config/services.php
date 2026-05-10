@@ -35,13 +35,6 @@ return [
         ],
     ],
 
-    'market_feed' => [
-        'home_url' => env('MARKET_FEED_HOME_URL'),
-        'changes_url' => env('MARKET_FEED_CHANGES_URL'),
-        'token' => env('MARKET_FEED_TOKEN'),
-        'timeout' => (int) env('MARKET_FEED_TIMEOUT', 10),
-    ],
-
     'metals' => [
         'cache_ttl' => (int) env('METALS_CACHE_TTL_SECONDS', 120),
         'timeout' => (int) env('METALS_HTTP_TIMEOUT_SECONDS', 8),

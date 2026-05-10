@@ -5,8 +5,8 @@ use App\Models\CarGroup;
 use App\Models\ExtraCode;
 use App\Models\Item;
 use App\Models\MetalPrice;
+use App\Services\Mobile\MetalsSpotService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
 
 use function Pest\Laravel\getJson;
 use function Pest\Laravel\postJson;
@@ -64,43 +64,52 @@ test('item search endpoint accepts text and carGroup', function () {
     $response->assertJsonPath('data.0.id', $matching->id);
 });
 
-test('home endpoint returns last 14 changes from third party feed', function () {
-    config()->set('services.market_feed.changes_url', 'https://feed.test/changes');
+test('home endpoint returns last 14 changes from metal sentinel spot data', function () {
+    $payloadUsd = [
+        'source' => 'metal-sentinel',
+        'cached' => false,
+        'currency' => 'USD',
+        'fx_rate' => 1.0,
+        'updated_at' => now()->toIso8601String(),
+        'data' => [
+            ['key' => 'gold', 'price_oz' => 2000.0, 'change_pct' => 0.0],
+            ['key' => 'silver', 'price_oz' => 25.0, 'change_pct' => 0.0],
+            ['key' => 'platinum', 'price_oz' => 1520.0, 'change_pct' => 0.1],
+            ['key' => 'palladium', 'price_oz' => 1020.0, 'change_pct' => -0.2],
+            ['key' => 'rhodium', 'price_oz' => 4020.0, 'change_pct' => 0.3],
+        ],
+    ];
 
-    $changes = collect(range(1, 20))->map(function (int $i): array {
-        return [
-            'date' => now()->subDays(20 - $i)->toDateString(),
-            'pt_usd_per_oz' => 1500 + $i,
-            'pd_usd_per_oz' => 1000 + $i,
-            'rh_usd_per_oz' => 4000 + $i,
-            'pt_change_percent' => 0.1,
-            'pd_change_percent' => -0.2,
-            'rh_change_percent' => 0.3,
-        ];
-    })->all();
-
-    Http::fake([
-        'feed.test/*' => Http::response(['changes' => $changes], 200),
-    ]);
+    $mock = \Mockery::mock(MetalsSpotService::class);
+    $mock->shouldReceive('all')->with('USD')->andReturn($payloadUsd);
+    app()->instance(MetalsSpotService::class, $mock);
 
     $response = getJson('/api/home/stats');
 
     $response->assertOk();
-    $response->assertJsonPath('stats.source', 'third_party');
+    $response->assertJsonPath('stats.source', 'metal-sentinel');
     $response->assertJsonCount(14, 'stats.changes');
 });
 
-test('charts endpoint returns last 14 daily points from fallback source', function () {
-    config()->set('services.market_feed.changes_url', '');
+test('charts endpoint returns last 14 daily points from metal sentinel spot data', function () {
+    $payloadUsd = [
+        'source' => 'metal-sentinel',
+        'cached' => false,
+        'currency' => 'USD',
+        'fx_rate' => 1.0,
+        'updated_at' => now()->toIso8601String(),
+        'data' => [
+            ['key' => 'gold', 'price_oz' => 2000.0, 'change_pct' => 0.0],
+            ['key' => 'silver', 'price_oz' => 25.0, 'change_pct' => 0.0],
+            ['key' => 'platinum', 'price_oz' => 1555.0, 'change_pct' => 0.5],
+            ['key' => 'palladium', 'price_oz' => 933.0, 'change_pct' => -0.5],
+            ['key' => 'rhodium', 'price_oz' => 4300.0, 'change_pct' => 0.25],
+        ],
+    ];
 
-    foreach (range(0, 15) as $dayOffset) {
-        MetalPrice::factory()->create([
-            'pt_usd_per_oz' => 1500 + $dayOffset,
-            'pd_usd_per_oz' => 1000 + $dayOffset,
-            'rh_usd_per_oz' => 4000 + $dayOffset,
-            'fetched_at' => now()->subDays(15 - $dayOffset),
-        ]);
-    }
+    $mock = \Mockery::mock(MetalsSpotService::class);
+    $mock->shouldReceive('all')->with('USD')->andReturn($payloadUsd);
+    app()->instance(MetalsSpotService::class, $mock);
 
     $response = getJson('/api/charts/metals');
 
@@ -181,23 +190,24 @@ test('similar items endpoint returns same car group items', function () {
 });
 
 test('notifications endpoint returns last 14 change notifications', function () {
-    config()->set('services.market_feed.changes_url', 'https://feed.test/changes');
+    $payloadUsd = [
+        'source' => 'metal-sentinel',
+        'cached' => false,
+        'currency' => 'USD',
+        'fx_rate' => 1.0,
+        'updated_at' => now()->toIso8601String(),
+        'data' => [
+            ['key' => 'gold', 'price_oz' => 2000.0, 'change_pct' => 0.0],
+            ['key' => 'silver', 'price_oz' => 25.0, 'change_pct' => 0.0],
+            ['key' => 'platinum', 'price_oz' => 1210.0, 'change_pct' => 0.1],
+            ['key' => 'palladium', 'price_oz' => 810.0, 'change_pct' => 0.2],
+            ['key' => 'rhodium', 'price_oz' => 3210.0, 'change_pct' => 0.3],
+        ],
+    ];
 
-    $changes = collect(range(1, 16))->map(function (int $i): array {
-        return [
-            'date' => now()->subDays(16 - $i)->toDateString(),
-            'pt_usd_per_oz' => 1200 + $i,
-            'pd_usd_per_oz' => 800 + $i,
-            'rh_usd_per_oz' => 3200 + $i,
-            'pt_change_percent' => 0.1,
-            'pd_change_percent' => 0.2,
-            'rh_change_percent' => 0.3,
-        ];
-    })->all();
-
-    Http::fake([
-        'feed.test/*' => Http::response(['changes' => $changes], 200),
-    ]);
+    $mock = \Mockery::mock(MetalsSpotService::class);
+    $mock->shouldReceive('all')->with('USD')->andReturn($payloadUsd);
+    app()->instance(MetalsSpotService::class, $mock);
 
     $response = getJson('/api/notifications/changes');
 
