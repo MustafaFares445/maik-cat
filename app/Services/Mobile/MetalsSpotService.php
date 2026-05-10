@@ -223,25 +223,16 @@ class MetalsSpotService
     }
 
     /**
-     * Prefer a strictly positive spot; upstream may send price=0 alongside spotPrice.
+     * Spot USD/oz follows upstream ask (troy oz), including common nested envelopes.
      *
      * @param  array<string, mixed>  $node
      */
     private function extractSpotPriceOz(array $node): ?float
     {
-        $priceKeys = ['price', 'spotPrice', 'lastPrice', 'midPrice', 'close', 'spot'];
-
-        $price = $this->firstPositiveNumeric($node, $priceKeys);
-
-        if ($price !== null) {
-            return $price;
-        }
-
-        $bid = $this->firstPositiveNumeric($node, ['bid']);
         $ask = $this->firstPositiveNumeric($node, ['ask']);
 
-        if ($bid !== null && $ask !== null) {
-            return ($bid + $ask) / 2;
+        if ($ask !== null) {
+            return $ask;
         }
 
         foreach (['quote', 'payload', 'spot', 'item', 'result', 'body'] as $nest) {
@@ -249,19 +240,10 @@ class MetalsSpotService
                 continue;
             }
 
-            $nested = $node[$nest];
+            $ask = $this->firstPositiveNumeric($node[$nest], ['ask']);
 
-            $price = $this->firstPositiveNumeric($nested, $priceKeys);
-
-            if ($price !== null) {
-                return $price;
-            }
-
-            $bid = $this->firstPositiveNumeric($nested, ['bid']);
-            $ask = $this->firstPositiveNumeric($nested, ['ask']);
-
-            if ($bid !== null && $ask !== null) {
-                return ($bid + $ask) / 2;
+            if ($ask !== null) {
+                return $ask;
             }
         }
 

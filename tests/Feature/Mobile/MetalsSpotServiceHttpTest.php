@@ -26,10 +26,13 @@ test('fetches and normalizes five metals from Metal Sentinel', function (): void
             return Http::response([], 404);
         }
 
+        $oz = $prices[$symbol];
+
         return Http::response([
             'symbol' => $symbol,
             'currency' => $query['currency'] ?? 'USD',
-            'price' => $prices[$symbol],
+            'price' => $oz - 1,
+            'ask' => $oz,
             'change' => 10,
             'changePercent' => 0.5,
         ], 200);
@@ -61,12 +64,15 @@ test('unwraps RapidAPI ID and results wrapper JSON', function (): void {
             return Http::response([], 404);
         }
 
+        $oz = $prices[$symbol];
+
         return Http::response([
             'ID' => 'trace',
             'results' => [
                 'symbol' => $symbol,
                 'currency' => $query['currency'] ?? 'USD',
-                'price' => $prices[$symbol],
+                'price' => $oz - 1,
+                'ask' => $oz,
                 'change' => 0,
                 'changePercent' => 0,
             ],
@@ -81,14 +87,14 @@ test('unwraps RapidAPI ID and results wrapper JSON', function (): void {
         ->and($gold['price_oz'])->toBe(2100.0);
 });
 
-test('uses positive spotPrice when price field is zero', function (): void {
+test('uses ask when price and spotPrice differ', function (): void {
     Http::fake(function (Request $request) {
         parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
         $symbol = $query['symbol'] ?? '';
 
-        $spotBySymbol = ['AU' => 2400.0, 'AG' => 28.0, 'PT' => 950.0, 'PD' => 1400.0, 'RH' => 4800.0];
+        $askBySymbol = ['AU' => 2400.0, 'AG' => 28.0, 'PT' => 950.0, 'PD' => 1400.0, 'RH' => 4800.0];
 
-        if (! isset($spotBySymbol[$symbol])) {
+        if (! isset($askBySymbol[$symbol])) {
             return Http::response([], 404);
         }
 
@@ -97,8 +103,9 @@ test('uses positive spotPrice when price field is zero', function (): void {
             'results' => [
                 'symbol' => $symbol,
                 'currency' => $query['currency'] ?? 'USD',
-                'price' => 0,
-                'spotPrice' => $spotBySymbol[$symbol],
+                'price' => 100.0,
+                'spotPrice' => 200.0,
+                'ask' => $askBySymbol[$symbol],
                 'change' => 0,
                 'changePercent' => 0,
             ],
@@ -115,7 +122,7 @@ test('uses positive spotPrice when price field is zero', function (): void {
 
 test('second request uses cache for same currency', function (): void {
     Http::fake([
-        '*' => Http::response(['price' => 100.0, 'change' => 0.0, 'changePercent' => 0.0], 200),
+        '*' => Http::response(['ask' => 100.0, 'change' => 0.0, 'changePercent' => 0.0], 200),
     ]);
 
     $service = app(MetalsSpotService::class);
@@ -152,7 +159,7 @@ test('throws when api key is missing', function (): void {
 
 test('refresh clears usd and eur cache keys', function (): void {
     Http::fake([
-        '*' => Http::response(['price' => 100.0, 'change' => 0.0, 'changePercent' => 0.0], 200),
+        '*' => Http::response(['ask' => 100.0, 'change' => 0.0, 'changePercent' => 0.0], 200),
     ]);
 
     $service = app(MetalsSpotService::class);
