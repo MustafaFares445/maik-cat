@@ -15,12 +15,12 @@ beforeEach(function (): void {
     ]);
 });
 
-test('fetches and normalizes five metals from Metal Sentinel', function (): void {
+test('fetches and normalizes PT PD RH from Metal Sentinel using bid', function (): void {
     Http::fake(function (Request $request) {
         parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
         $symbol = $query['symbol'] ?? '';
 
-        $prices = ['AU' => 2000.0, 'AG' => 25.0, 'PT' => 1000.0, 'PD' => 1500.0, 'RH' => 5000.0];
+        $prices = ['PT' => 1000.0, 'PD' => 1500.0, 'RH' => 5000.0];
 
         if (! isset($prices[$symbol])) {
             return Http::response([], 404);
@@ -32,7 +32,7 @@ test('fetches and normalizes five metals from Metal Sentinel', function (): void
             'symbol' => $symbol,
             'currency' => $query['currency'] ?? 'USD',
             'price' => $oz - 1,
-            'ask' => $oz,
+            'bid' => $oz,
             'change' => 10,
             'changePercent' => 0.5,
         ], 200);
@@ -45,12 +45,12 @@ test('fetches and normalizes five metals from Metal Sentinel', function (): void
         ->and($result['cached'])->toBeFalse()
         ->and($result['currency'])->toBe('USD')
         ->and($result['fx_rate'])->toBe(1.0)
-        ->and($result['data'])->toHaveCount(5);
+        ->and($result['data'])->toHaveCount(3);
 
-    $gold = collect($result['data'])->firstWhere('key', 'gold');
-    expect($gold)->not->toBeNull()
-        ->and($gold['price_oz'])->toBe(2000.0)
-        ->and($gold['direction'])->toBe('up');
+    $platinum = collect($result['data'])->firstWhere('key', 'platinum');
+    expect($platinum)->not->toBeNull()
+        ->and($platinum['price_oz'])->toBe(1000.0)
+        ->and($platinum['direction'])->toBe('up');
 });
 
 test('unwraps RapidAPI ID and results wrapper JSON', function (): void {
@@ -58,7 +58,7 @@ test('unwraps RapidAPI ID and results wrapper JSON', function (): void {
         parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
         $symbol = $query['symbol'] ?? '';
 
-        $prices = ['AU' => 2100.0, 'AG' => 26.0, 'PT' => 1100.0, 'PD' => 1600.0, 'RH' => 5100.0];
+        $prices = ['PT' => 1100.0, 'PD' => 1600.0, 'RH' => 5100.0];
 
         if (! isset($prices[$symbol])) {
             return Http::response([], 404);
@@ -72,7 +72,7 @@ test('unwraps RapidAPI ID and results wrapper JSON', function (): void {
                 'symbol' => $symbol,
                 'currency' => $query['currency'] ?? 'USD',
                 'price' => $oz - 1,
-                'ask' => $oz,
+                'bid' => $oz,
                 'change' => 0,
                 'changePercent' => 0,
             ],
@@ -82,19 +82,19 @@ test('unwraps RapidAPI ID and results wrapper JSON', function (): void {
     $service = app(MetalsSpotService::class);
     $result = $service->all('USD');
 
-    $gold = collect($result['data'])->firstWhere('key', 'gold');
-    expect($gold)->not->toBeNull()
-        ->and($gold['price_oz'])->toBe(2100.0);
+    $platinum = collect($result['data'])->firstWhere('key', 'platinum');
+    expect($platinum)->not->toBeNull()
+        ->and($platinum['price_oz'])->toBe(1100.0);
 });
 
-test('uses ask when price and spotPrice differ', function (): void {
+test('uses bid when price and spotPrice differ', function (): void {
     Http::fake(function (Request $request) {
         parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
         $symbol = $query['symbol'] ?? '';
 
-        $askBySymbol = ['AU' => 2400.0, 'AG' => 28.0, 'PT' => 950.0, 'PD' => 1400.0, 'RH' => 4800.0];
+        $bidBySymbol = ['PT' => 950.0, 'PD' => 1400.0, 'RH' => 4800.0];
 
-        if (! isset($askBySymbol[$symbol])) {
+        if (! isset($bidBySymbol[$symbol])) {
             return Http::response([], 404);
         }
 
@@ -105,7 +105,7 @@ test('uses ask when price and spotPrice differ', function (): void {
                 'currency' => $query['currency'] ?? 'USD',
                 'price' => 100.0,
                 'spotPrice' => 200.0,
-                'ask' => $askBySymbol[$symbol],
+                'bid' => $bidBySymbol[$symbol],
                 'change' => 0,
                 'changePercent' => 0,
             ],
@@ -115,14 +115,14 @@ test('uses ask when price and spotPrice differ', function (): void {
     $service = app(MetalsSpotService::class);
     $result = $service->all('USD');
 
-    $gold = collect($result['data'])->firstWhere('key', 'gold');
-    expect($gold)->not->toBeNull()
-        ->and($gold['price_oz'])->toBe(2400.0);
+    $rhodium = collect($result['data'])->firstWhere('key', 'rhodium');
+    expect($rhodium)->not->toBeNull()
+        ->and($rhodium['price_oz'])->toBe(4800.0);
 });
 
 test('second request uses cache for same currency', function (): void {
     Http::fake([
-        '*' => Http::response(['ask' => 100.0, 'change' => 0.0, 'changePercent' => 0.0], 200),
+        '*' => Http::response(['bid' => 100.0, 'change' => 0.0, 'changePercent' => 0.0], 200),
     ]);
 
     $service = app(MetalsSpotService::class);
@@ -130,7 +130,7 @@ test('second request uses cache for same currency', function (): void {
     $service->all('USD');
     $service->all('USD');
 
-    Http::assertSentCount(5);
+    Http::assertSentCount(3);
 });
 
 test('throws when upstream returns error status', function (): void {
@@ -159,7 +159,7 @@ test('throws when api key is missing', function (): void {
 
 test('refresh clears usd and eur cache keys', function (): void {
     Http::fake([
-        '*' => Http::response(['ask' => 100.0, 'change' => 0.0, 'changePercent' => 0.0], 200),
+        '*' => Http::response(['bid' => 100.0, 'change' => 0.0, 'changePercent' => 0.0], 200),
     ]);
 
     $service = app(MetalsSpotService::class);
@@ -167,5 +167,5 @@ test('refresh clears usd and eur cache keys', function (): void {
     $service->all('USD');
     $service->refresh('USD');
 
-    Http::assertSentCount(10);
+    Http::assertSentCount(6);
 });

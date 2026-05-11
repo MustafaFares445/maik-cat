@@ -72,8 +72,6 @@ test('home endpoint returns last 14 changes from metal sentinel spot data', func
         'fx_rate' => 1.0,
         'updated_at' => now()->toIso8601String(),
         'data' => [
-            ['key' => 'gold', 'price_oz' => 2000.0, 'change_pct' => 0.0],
-            ['key' => 'silver', 'price_oz' => 25.0, 'change_pct' => 0.0],
             ['key' => 'platinum', 'price_oz' => 1520.0, 'change_pct' => 0.1],
             ['key' => 'palladium', 'price_oz' => 1020.0, 'change_pct' => -0.2],
             ['key' => 'rhodium', 'price_oz' => 4020.0, 'change_pct' => 0.3],
@@ -99,8 +97,6 @@ test('charts endpoint returns last 14 daily points from metal sentinel spot data
         'fx_rate' => 1.0,
         'updated_at' => now()->toIso8601String(),
         'data' => [
-            ['key' => 'gold', 'price_oz' => 2000.0, 'change_pct' => 0.0],
-            ['key' => 'silver', 'price_oz' => 25.0, 'change_pct' => 0.0],
             ['key' => 'platinum', 'price_oz' => 1555.0, 'change_pct' => 0.5],
             ['key' => 'palladium', 'price_oz' => 933.0, 'change_pct' => -0.5],
             ['key' => 'rhodium', 'price_oz' => 4300.0, 'change_pct' => 0.25],
@@ -230,8 +226,6 @@ test('notifications endpoint returns last 14 change notifications', function () 
         'fx_rate' => 1.0,
         'updated_at' => now()->toIso8601String(),
         'data' => [
-            ['key' => 'gold', 'price_oz' => 2000.0, 'change_pct' => 0.0],
-            ['key' => 'silver', 'price_oz' => 25.0, 'change_pct' => 0.0],
             ['key' => 'platinum', 'price_oz' => 1210.0, 'change_pct' => 0.1],
             ['key' => 'palladium', 'price_oz' => 810.0, 'change_pct' => 0.2],
             ['key' => 'rhodium', 'price_oz' => 3210.0, 'change_pct' => 0.3],

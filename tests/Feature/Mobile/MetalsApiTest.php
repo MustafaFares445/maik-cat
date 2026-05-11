@@ -48,16 +48,17 @@ test('metals spot endpoint filters by metals list', function () {
         'cached' => false,
         'updated_at' => now()->toIso8601String(),
         'data' => [
-            ['key' => 'gold', 'price_oz' => 1, 'price_gram' => 2, 'change_oz' => 0, 'change_pct' => 0, 'direction' => 'flat'],
-            ['key' => 'silver', 'price_oz' => 1, 'price_gram' => 2, 'change_oz' => 0, 'change_pct' => 0, 'direction' => 'flat'],
+            ['key' => 'platinum', 'price_oz' => 1, 'price_gram' => 2, 'change_oz' => 0, 'change_pct' => 0, 'direction' => 'flat'],
+            ['key' => 'palladium', 'price_oz' => 1, 'price_gram' => 2, 'change_oz' => 0, 'change_pct' => 0, 'direction' => 'flat'],
+            ['key' => 'rhodium', 'price_oz' => 1, 'price_gram' => 2, 'change_oz' => 0, 'change_pct' => 0, 'direction' => 'flat'],
         ],
     ]);
 
-    $response = getJson('/api/v1/metals/spot?metals=gold');
+    $response = getJson('/api/v1/metals/spot?metals=platinum');
 
     $response->assertOk();
     $response->assertJsonCount(1, 'data');
-    $response->assertJsonPath('data.0.key', 'gold');
+    $response->assertJsonPath('data.0.key', 'platinum');
     $response->assertJsonPath('data.0.priceOz', 1);
 });
 

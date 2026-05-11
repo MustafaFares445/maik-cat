@@ -20,8 +20,6 @@ class MetalsSpotService
 
     /** @var array<string, array{name_en: string, name_ar: string, symbol: string, api_symbol: string}> */
     private array $meta = [
-        'gold' => ['name_en' => 'Gold', 'name_ar' => 'ذهب', 'symbol' => 'Au', 'api_symbol' => 'AU'],
-        'silver' => ['name_en' => 'Silver', 'name_ar' => 'فضة', 'symbol' => 'Ag', 'api_symbol' => 'AG'],
         'platinum' => ['name_en' => 'Platinum', 'name_ar' => 'بلاتين', 'symbol' => 'Pt', 'api_symbol' => 'PT'],
         'palladium' => ['name_en' => 'Palladium', 'name_ar' => 'بلاديوم', 'symbol' => 'Pd', 'api_symbol' => 'PD'],
         'rhodium' => ['name_en' => 'Rhodium', 'name_ar' => 'روديوم', 'symbol' => 'Rh', 'api_symbol' => 'RH'],
@@ -78,7 +76,7 @@ class MetalsSpotService
 
     private function cacheKey(string $currency): string
     {
-        return 'metals_spot_sentinel_v1:'.strtoupper($currency);
+        return 'metals_spot_sentinel_v2:'.strtoupper($currency);
     }
 
     /**
@@ -223,16 +221,16 @@ class MetalsSpotService
     }
 
     /**
-     * Spot USD/oz follows upstream ask (troy oz), including common nested envelopes.
+     * Spot USD/oz uses upstream bid only (troy oz), including common nested envelopes.
      *
      * @param  array<string, mixed>  $node
      */
     private function extractSpotPriceOz(array $node): ?float
     {
-        $ask = $this->firstPositiveNumeric($node, ['ask']);
+        $bid = $this->firstPositiveNumeric($node, ['bid']);
 
-        if ($ask !== null) {
-            return $ask;
+        if ($bid !== null) {
+            return $bid;
         }
 
         foreach (['quote', 'payload', 'spot', 'item', 'result', 'body'] as $nest) {
@@ -240,10 +238,10 @@ class MetalsSpotService
                 continue;
             }
 
-            $ask = $this->firstPositiveNumeric($node[$nest], ['ask']);
+            $bid = $this->firstPositiveNumeric($node[$nest], ['bid']);
 
-            if ($ask !== null) {
-                return $ask;
+            if ($bid !== null) {
+                return $bid;
             }
         }
 
