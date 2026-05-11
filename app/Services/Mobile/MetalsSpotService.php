@@ -212,7 +212,7 @@ class MetalsSpotService
 
         $price = $this->extractSpotPriceOz($node);
 
-        $changeOz = $this->firstNumeric($node, ['change', 'priceChange', 'dailyChange', 'chg', 'changeAmount']) ?? 0.0;
+        $changeOz = $this->extractChangeOz($node);
         $changePct = $this->firstNumeric($node, ['changePercent', 'percentChange', 'change_pct', 'pctChange', 'changePercentage']) ?? 0.0;
 
         if ($price === null) {
@@ -248,6 +248,34 @@ class MetalsSpotService
         }
 
         return null;
+    }
+
+    /**
+     * Per-ounce change amount from upstream `change` only (may be negative), including nested envelopes.
+     *
+     * @param  array<string, mixed>  $node
+     */
+    private function extractChangeOz(array $node): float
+    {
+        $change = $this->firstNumeric($node, ['change']);
+
+        if ($change !== null) {
+            return $change;
+        }
+
+        foreach (['quote', 'payload', 'spot', 'item', 'result', 'body'] as $nest) {
+            if (! isset($node[$nest]) || ! is_array($node[$nest])) {
+                continue;
+            }
+
+            $change = $this->firstNumeric($node[$nest], ['change']);
+
+            if ($change !== null) {
+                return $change;
+            }
+        }
+
+        return 0.0;
     }
 
     /**

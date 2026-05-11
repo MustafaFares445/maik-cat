@@ -30,10 +30,17 @@ Body:
 ```json
 {
   "weight": 0,
+  "weightUnit": "g",
   "ptPpm": 0,
   "pdPpm": 0,
   "rhPpm": 0,
-  "recoveryRate": 0,
+  "ptUsdPerGram": 0,
+  "pdUsdPerGram": 0,
+  "rhUsdPerGram": 0,
+  "ptRate": 0,
+  "pdRate": 0,
+  "rhRate": 0,
+  "humidityRate": 0,
   "currency": "EUR"
 }
 ```
@@ -48,10 +55,17 @@ Use this endpoint to fill final result (`Price`).
 | Change chips (`Rh/Pd/Pt %`) | `GET /api/v1/metals/spot` | Match by `data[].key`, render `changePct` |
 | 3 cards below title | `GET /api/v1/metals/spot` | `priceGram` for `rhodium`, `palladium`, `platinum` |
 | Weight input (`g / oz`) | UI input | send as `weight` |
+| Weight unit selector (`g / kg`) | UI input | send as `weightUnit` (`g` or `kg`) |
 | PT/ppm input | UI input | send as `ptPpm` |
 | PD/ppm input | UI input | send as `pdPpm` |
 | RH/ppm input | UI input | send as `rhPpm` |
-| Increase rate `%` input | UI input | send as `recoveryRate` |
+| PT rate `%` chip/input | UI input | send as `ptRate` |
+| PD rate `%` chip/input | UI input | send as `pdRate` |
+| RH rate `%` chip/input | UI input | send as `rhRate` |
+| Moisture/Humidity `%` input | UI input | send as `humidityRate` |
+| PT card price (USD) | UI input or loaded card | send as `ptUsdPerGram` |
+| PD card price (USD) | UI input or loaded card | send as `pdUsdPerGram` |
+| RH card price (USD) | UI input or loaded card | send as `rhUsdPerGram` |
 | Currency dropdown | UI input | send as `currency` and also use for metals call |
 | Final price (`Price`) | `POST /api/calculator/estimate` | `estimate.totalEur` when EUR, else `estimate.totalUsd` |
 
@@ -63,8 +77,11 @@ Use this endpoint to fill final result (`Price`).
 
 2. User enters calculator inputs:
 - weight
+- weightUnit
 - ptPpm/pdPpm/rhPpm
-- recoveryRate
+- ptRate/pdRate/rhRate
+- humidityRate
+- ptUsdPerGram/pdUsdPerGram/rhUsdPerGram
 - currency
 
 3. Calculate:
@@ -77,12 +94,12 @@ Use this endpoint to fill final result (`Price`).
   - re-call `GET /api/v1/metals/spot` with new currency
   - re-call `POST /api/calculator/estimate` with new currency
 
-- Any calculator field changed (`weight`, `ptPpm`, `pdPpm`, `rhPpm`, `recoveryRate`):
+- Any calculator field changed (`weight`, `weightUnit`, `ptPpm`, `pdPpm`, `rhPpm`, `ptRate`, `pdRate`, `rhRate`, `humidityRate`, `ptUsdPerGram`, `pdUsdPerGram`, `rhUsdPerGram`):
   - re-call `POST /api/calculator/estimate`
 
 ## Input Rules (App)
 
-- `recoveryRate` is decimal (0 to 1), not raw percent string.
+- `ptRate`, `pdRate`, `rhRate`, and `humidityRate` are decimals (0 to 1).
 - Convert from UI percent:
   - `98%` -> `0.98`
   - `0%` -> `0`
@@ -118,10 +135,17 @@ Use this endpoint to fill final result (`Price`).
 ```json
 {
   "weight": 182,
+  "weightUnit": "g",
   "ptPpm": 120,
   "pdPpm": 350,
   "rhPpm": 12,
-  "recoveryRate": 0.98,
+  "ptRate": 0.98,
+  "pdRate": 0.98,
+  "rhRate": 0.90,
+  "humidityRate": 0.05,
+  "ptUsdPerGram": 59.96,
+  "pdUsdPerGram": 44.30,
+  "rhUsdPerGram": 298.02,
   "currency": "EUR"
 }
 ```

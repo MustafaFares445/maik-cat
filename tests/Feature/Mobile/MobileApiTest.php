@@ -138,13 +138,46 @@ test('calculator endpoint returns estimate breakdown and total', function () {
         'ptPpm' => 1000,
         'pdPpm' => 500,
         'rhPpm' => 0,
-        'recoveryRate' => 1,
+        'ptRate' => 1,
+        'pdRate' => 1,
+        'rhRate' => 1,
         'currency' => 'USD',
     ]);
 
     $response->assertOk();
     $response->assertJsonPath('estimate.currency', 'USD');
     expect((float) $response->json('estimate.totalUsd'))->toBe($expected);
+});
+
+test('calculator endpoint accepts full calculator page fields', function () {
+    MetalPrice::factory()->create([
+        'pt_usd_per_oz' => 1500,
+        'pd_usd_per_oz' => 1500,
+        'rh_usd_per_oz' => 1500,
+        'fetched_at' => now(),
+    ]);
+
+    $response = postJson('/api/calculator/estimate', [
+        'weight' => 2,
+        'weightUnit' => 'kg',
+        'ptPpm' => 1000,
+        'pdPpm' => 500,
+        'rhPpm' => 250,
+        'ptUsdPerGram' => 66.13,
+        'pdUsdPerGram' => 46.30,
+        'rhUsdPerGram' => 280.28,
+        'ptRate' => 0.98,
+        'pdRate' => 0.98,
+        'rhRate' => 0.90,
+        'humidityRate' => 0.1,
+        'currency' => 'USD',
+    ]);
+
+    $response->assertOk();
+    $response->assertJsonPath('estimate.inputs.weightUnit', 'kg');
+    $response->assertJsonPath('estimate.inputs.ptRate', 0.98);
+    $response->assertJsonPath('estimate.inputs.humidityRate', 0.1);
+    expect((float) $response->json('estimate.totalUsd'))->toBeGreaterThan(0);
 });
 
 test('details endpoint returns converter and related entries', function () {

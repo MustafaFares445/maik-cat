@@ -30,7 +30,14 @@ class CalculatorController extends Controller
             pdPpm: (float) $payload['pdPpm'],
             rhPpm: (float) $payload['rhPpm'],
             metalPrice: $metalPrice,
-            recoveryRate: (float) $payload['recoveryRate'],
+            weightUnit: (string) ($payload['weightUnit'] ?? 'g'),
+            ptUsdPerGram: isset($payload['ptUsdPerGram']) ? (float) $payload['ptUsdPerGram'] : null,
+            pdUsdPerGram: isset($payload['pdUsdPerGram']) ? (float) $payload['pdUsdPerGram'] : null,
+            rhUsdPerGram: isset($payload['rhUsdPerGram']) ? (float) $payload['rhUsdPerGram'] : null,
+            ptRate: isset($payload['ptRate']) ? (float) $payload['ptRate'] : null,
+            pdRate: isset($payload['pdRate']) ? (float) $payload['pdRate'] : null,
+            rhRate: isset($payload['rhRate']) ? (float) $payload['rhRate'] : null,
+            humidityRate: (float) ($payload['humidityRate'] ?? 0),
             currency: $request->currency(),
         );
 
