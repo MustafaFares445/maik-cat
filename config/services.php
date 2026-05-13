@@ -36,7 +36,7 @@ return [
     ],
 
     'metals' => [
-        'cache_ttl' => (int) env('METALS_CACHE_TTL_SECONDS', 120),
+        'cache_ttl' => (int) env('METALS_CACHE_TTL_SECONDS', 10),
         'timeout' => (int) env('METALS_HTTP_TIMEOUT_SECONDS', 8),
         'base_url' => env('METAL_SENTINEL_BASE_URL', 'https://metal-sentinel.p.rapidapi.com'),
         'rapidapi_key' => env('METAL_SENTINEL_RAPIDAPI_KEY'),
