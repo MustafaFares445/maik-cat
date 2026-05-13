@@ -75,9 +75,9 @@ class ThirdPartyMarketService
             'source' => $spot['source'],
             'currency' => $normalizedCurrency,
             'changes' => [
-                'pt_change_percent' => round((float) ($ptRow['change_pct'] ?? 0.0), 4),
-                'pd_change_percent' => round((float) ($pdRow['change_pct'] ?? 0.0), 4),
-                'rh_change_percent' => round((float) ($rhRow['change_pct'] ?? 0.0), 4),
+                'pt_change_percent' => round((float) ($ptRow['change_pct'] ?? 0.0), 2),
+                'pd_change_percent' => round((float) ($pdRow['change_pct'] ?? 0.0), 2),
+                'rh_change_percent' => round((float) ($rhRow['change_pct'] ?? 0.0), 2),
             ],
             'summary' => [
                 'pt_bid_per_oz' => $triplet['pt']['price_oz'],
