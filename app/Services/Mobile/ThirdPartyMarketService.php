@@ -65,14 +65,27 @@ class ThirdPartyMarketService
         $normalizedCurrency = strtoupper(trim($currency)) === 'EUR' ? 'EUR' : 'USD';
         $spot = $this->metalsSpotService->all($normalizedCurrency);
         $triplet = $this->tripletFromSpotRows($spot['data']);
+        $byKey = collect($spot['data'])->keyBy(fn (array $row): string => (string) ($row['key'] ?? ''));
+
+        $ptRow = (array) $byKey->get('platinum', []);
+        $pdRow = (array) $byKey->get('palladium', []);
+        $rhRow = (array) $byKey->get('rhodium', []);
 
         return [
             'source' => $spot['source'],
             'currency' => $normalizedCurrency,
+            'changes' => [
+                'pt_change_percent' => round((float) ($ptRow['change_pct'] ?? 0.0), 4),
+                'pd_change_percent' => round((float) ($pdRow['change_pct'] ?? 0.0), 4),
+                'rh_change_percent' => round((float) ($rhRow['change_pct'] ?? 0.0), 4),
+            ],
             'summary' => [
                 'pt_bid_per_oz' => $triplet['pt']['price_oz'],
+                'pt_price_per_gram' => round((float) ($ptRow['price_gram'] ?? 0.0), 4),
                 'pd_bid_per_oz' => $triplet['pd']['price_oz'],
+                'pd_price_per_gram' => round((float) ($pdRow['price_gram'] ?? 0.0), 4),
                 'rh_bid_per_oz' => $triplet['rh']['price_oz'],
+                'rh_price_per_gram' => round((float) ($rhRow['price_gram'] ?? 0.0), 4),
             ],
         ];
     }
