@@ -17,8 +17,7 @@ class HomeController extends Controller
 
     public function stats(HomeStatsRequest $request): JsonResponse
     {
-        $days = $request->days();
-        $stats = $this->marketService->homepageStats($days, $request->currency());
+        $stats = $this->marketService->homepageStats($request->currency());
 
         return response()->json([
             'stats' => $stats,

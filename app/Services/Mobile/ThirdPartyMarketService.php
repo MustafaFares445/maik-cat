@@ -60,16 +60,20 @@ class ThirdPartyMarketService
         return $this->fillMissingChanges($rows)->all();
     }
 
-    public function homepageStats(int $days = 14, string $currency = 'USD'): array
+    public function homepageStats(string $currency = 'USD'): array
     {
-        $changes = $this->changes($days, $currency);
-        $spot = $this->metalsSpotService->all(strtoupper(trim($currency)) === 'EUR' ? 'EUR' : 'USD');
+        $normalizedCurrency = strtoupper(trim($currency)) === 'EUR' ? 'EUR' : 'USD';
+        $spot = $this->metalsSpotService->all($normalizedCurrency);
+        $triplet = $this->tripletFromSpotRows($spot['data']);
 
         return [
             'source' => $spot['source'],
-            'currency' => strtoupper(trim($currency)) === 'EUR' ? 'EUR' : 'USD',
-            'changes' => $changes,
-            'summary' => $this->buildSummary(collect($changes)->last() ?: []),
+            'currency' => $normalizedCurrency,
+            'summary' => [
+                'pt_bid_per_oz' => $triplet['pt']['price_oz'],
+                'pd_bid_per_oz' => $triplet['pd']['price_oz'],
+                'rh_bid_per_oz' => $triplet['rh']['price_oz'],
+            ],
         ];
     }
 

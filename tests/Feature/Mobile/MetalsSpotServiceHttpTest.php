@@ -11,7 +11,7 @@ beforeEach(function (): void {
         'services.metals.base_url' => 'https://metal-sentinel.p.rapidapi.com',
         'services.metals.rapidapi_key' => 'test-key',
         'services.metals.timeout' => 5,
-        'services.metals.cache_ttl' => 120,
+        'services.metals.cache_ttl' => 60,
     ]);
 });
 

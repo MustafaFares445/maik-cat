@@ -31,7 +31,7 @@ class MetalsSpotService
     public function all(string $currency = 'USD'): array
     {
         $currency = strtoupper(trim($currency));
-        $ttl = (int) config('services.metals.cache_ttl', 120);
+        $ttl = (int) config('services.metals.cache_ttl', 60);
         $cacheKey = $this->cacheKey($currency);
 
         $hit = Cache::has($cacheKey);

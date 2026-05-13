@@ -197,9 +197,45 @@ class MobileRealDataSeeder extends Seeder
                     'region' => in_array($sheetName, ['JAPAN', 'KOREA'], true) ? 'Asian' : 'European',
                 ],
             );
+
+            $this->attachGroupImage($result[$sheetName]);
         }
 
         return $result;
+    }
+
+    private function attachGroupImage(CarGroup $group): void
+    {
+        if (! method_exists($group, 'addMediaFromString')) {
+            return;
+        }
+
+        if (method_exists($group, 'getFirstMedia') && $group->getFirstMedia('images')) {
+            return;
+        }
+
+        $region = (string) ($group->region ?? 'Global');
+        $name = (string) ($group->name ?? 'CAR GROUP');
+
+        $color = match ($region) {
+            'Asian' => '#0f6ba8',
+            'American' => '#8b1f2c',
+            default => '#9a4b00',
+        };
+
+        $svg = sprintf(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="100%%" height="100%%" fill="#f4f1ea"/><rect x="60" y="60" width="1080" height="680" rx="40" fill="%s" opacity="0.14"/><text x="100" y="320" font-size="84" font-family="Arial" fill="#2f2f2f">%s</text><text x="100" y="430" font-size="50" font-family="Arial" fill="#4f4f4f">%s region</text><text x="100" y="520" font-size="36" font-family="Arial" fill="#6f6f6f">car group image seed</text></svg>',
+            $color,
+            htmlspecialchars($name, ENT_QUOTES),
+            htmlspecialchars($region, ENT_QUOTES),
+        );
+
+        $fileName = strtolower((string) preg_replace('/[^A-Za-z0-9_-]+/', '-', $group->excel_sheet_name ?: $name)) . '-group.svg';
+
+        $group
+            ->addMediaFromString($svg)
+            ->usingFileName($fileName)
+            ->toMediaCollection('images');
     }
 
     private function attachSvgImage(Item $converter, string $serialCode, string $group): void
