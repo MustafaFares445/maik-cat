@@ -100,3 +100,35 @@ test('calculator service accepts percent-style rates and humidity', function () 
     expect($result['inputs']['humidityRate'])->toBe(0.5);
     expect($result['totalUsd'])->toBe(1937.3);
 });
+
+test('calculator service accepts rates encoded as percent fractions', function () {
+    $metalPrice = MetalPrice::factory()->create([
+        'pt_usd_per_oz' => 1996.00,
+        'pd_usd_per_oz' => 1409.00,
+        'rh_usd_per_oz' => 9450.00,
+        'fetched_at' => now(),
+    ]);
+
+    $service = app(CalculatorService::class);
+    $result = $service->estimate(
+        weight: 182,
+        weightUnit: 'g',
+        ptPpm: 120,
+        pdPpm: 350,
+        rhPpm: 12,
+        metalPrice: $metalPrice,
+        ptUsdPerGram: 64.17,
+        pdUsdPerGram: 45.30,
+        rhUsdPerGram: 303.82,
+        ptRate: 0.0098,
+        pdRate: 0.0098,
+        rhRate: 0.009,
+        humidityRate: 5,
+        currency: 'USD',
+    );
+
+    expect($result['inputs']['ptRate'])->toBe(0.98);
+    expect($result['inputs']['pdRate'])->toBe(0.98);
+    expect($result['inputs']['rhRate'])->toBe(0.9);
+    expect($result['totalUsd'])->toBe(4.56);
+});

@@ -44,9 +44,9 @@ class CalculatorService
         $pdUsdPerGram = max($pdUsdPerGram ?? $metalPrice->pdPerGram(), 0);
         $rhUsdPerGram = max($rhUsdPerGram ?? $metalPrice->rhPerGram(), 0);
 
-        $ptRate = min(max($this->normalizePercentageInput($ptRate), 0), 1);
-        $pdRate = min(max($this->normalizePercentageInput($pdRate), 0), 1);
-        $rhRate = min(max($this->normalizePercentageInput($rhRate), 0), 1);
+        $ptRate = min(max($this->normalizeRecoveryRateInput($ptRate), 0), 1);
+        $pdRate = min(max($this->normalizeRecoveryRateInput($pdRate), 0), 1);
+        $rhRate = min(max($this->normalizeRecoveryRateInput($rhRate), 0), 1);
 
         $ptValue = $ptGrams * $ptUsdPerGram * $ptRate * $dryFactor;
         $pdValue = $pdGrams * $pdUsdPerGram * $pdRate * $dryFactor;
@@ -103,6 +103,19 @@ class CalculatorService
     {
         if ($value > 1.0 && $value <= 100.0) {
             return $value / 100;
+        }
+
+        return $value;
+    }
+
+    private function normalizeRecoveryRateInput(float $value): float
+    {
+        $value = $this->normalizePercentageInput($value);
+
+        // Mobile clients may send rates like "0.98%" as 0.0098.
+        // Recover them back to ratio form (0.98).
+        if ($value > 0.0 && $value <= 0.02) {
+            return $value * 100;
         }
 
         return $value;

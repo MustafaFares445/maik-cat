@@ -106,6 +106,8 @@ Use this endpoint to fill final result (`Price`).
   - `98` -> `0.98`
   - `50` -> `0.5`
   - `0.98` stays `0.98`
+- Recovery-rate compatibility:
+  - if rate arrives as percent-fraction (`0.0098` for `0.98%`), backend normalizes it to `0.98`
 - All ppm and weight values are numeric.
 - Send `currency` as `EUR` or `USD`.
 

@@ -206,6 +206,36 @@ test('calculator endpoint accepts whole-number percent inputs', function () {
     $response->assertJsonPath('estimate.totalUsd', 1937.3);
 });
 
+test('calculator endpoint accepts percent-fraction rate payloads', function () {
+    MetalPrice::factory()->create([
+        'pt_usd_per_oz' => 1996.00,
+        'pd_usd_per_oz' => 1409.00,
+        'rh_usd_per_oz' => 9450.00,
+        'fetched_at' => now(),
+    ]);
+
+    $response = postJson('/api/calculator/estimate', [
+        'weight' => 182,
+        'weightUnit' => 'g',
+        'ptPpm' => 120,
+        'pdPpm' => 350,
+        'rhPpm' => 12,
+        'ptUsdPerGram' => 64.17,
+        'pdUsdPerGram' => 45.30,
+        'rhUsdPerGram' => 303.82,
+        'ptRate' => 0.0098,
+        'pdRate' => 0.0098,
+        'rhRate' => 0.009,
+        'humidityRate' => 5,
+        'currency' => 'USD',
+    ]);
+
+    $response->assertOk();
+    $response->assertJsonPath('estimate.inputs.ptRate', 0.98);
+    $response->assertJsonPath('estimate.inputs.humidityRate', 0.05);
+    $response->assertJsonPath('estimate.totalUsd', 4.56);
+});
+
 test('details endpoint returns converter and related entries', function () {
     $group = CarGroup::factory()->create();
 
