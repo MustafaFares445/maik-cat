@@ -32,6 +32,7 @@ class CalculatorService
         $weightInput = max($weight, 0);
         $weightInGrams = $weightUnit === 'kg' ? ($weightInput * 1000) : $weightInput;
 
+        $humidityRate = $this->normalizePercentageInput($humidityRate);
         $humidityRate = min(max($humidityRate, 0), 1);
         $dryFactor = 1 - $humidityRate;
 
@@ -43,9 +44,9 @@ class CalculatorService
         $pdUsdPerGram = max($pdUsdPerGram ?? $metalPrice->pdPerGram(), 0);
         $rhUsdPerGram = max($rhUsdPerGram ?? $metalPrice->rhPerGram(), 0);
 
-        $ptRate = min(max($ptRate, 0), 1);
-        $pdRate = min(max($pdRate, 0), 1);
-        $rhRate = min(max($rhRate, 0), 1);
+        $ptRate = min(max($this->normalizePercentageInput($ptRate), 0), 1);
+        $pdRate = min(max($this->normalizePercentageInput($pdRate), 0), 1);
+        $rhRate = min(max($this->normalizePercentageInput($rhRate), 0), 1);
 
         $ptValue = $ptGrams * $ptUsdPerGram * $ptRate * $dryFactor;
         $pdValue = $pdGrams * $pdUsdPerGram * $pdRate * $dryFactor;
@@ -96,5 +97,14 @@ class CalculatorService
     private function gramsFromPpm(float $weightInGrams, float $ppm): float
     {
         return ($ppm / 1000000) * $weightInGrams;
+    }
+
+    private function normalizePercentageInput(float $value): float
+    {
+        if ($value > 1.0 && $value <= 100.0) {
+            return $value / 100;
+        }
+
+        return $value;
     }
 }

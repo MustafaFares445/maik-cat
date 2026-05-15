@@ -23,10 +23,10 @@ class CalculatorEstimateRequest extends FormRequest
             'ptUsdPerGram' => ['nullable', 'numeric', 'min:0'],
             'pdUsdPerGram' => ['nullable', 'numeric', 'min:0'],
             'rhUsdPerGram' => ['nullable', 'numeric', 'min:0'],
-            'ptRate' => ['nullable', 'numeric', 'min:0', 'max:1'],
-            'pdRate' => ['nullable', 'numeric', 'min:0', 'max:1'],
-            'rhRate' => ['nullable', 'numeric', 'min:0', 'max:1'],
-            'humidityRate' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'ptRate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'pdRate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'rhRate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'humidityRate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'currency' => ['required', 'string', Rule::in(['USD', 'EUR', 'usd', 'eur'])],
         ];
     }

@@ -176,6 +176,36 @@ test('calculator endpoint accepts full calculator page fields', function () {
     expect((float) $response->json('estimate.totalUsd'))->toBeGreaterThan(0);
 });
 
+test('calculator endpoint accepts whole-number percent inputs', function () {
+    MetalPrice::factory()->create([
+        'pt_usd_per_oz' => 2113.00,
+        'pd_usd_per_oz' => 1460.00,
+        'rh_usd_per_oz' => 9500.00,
+        'fetched_at' => now(),
+    ]);
+
+    $response = postJson('/api/calculator/estimate', [
+        'weight' => 100,
+        'weightUnit' => 'kg',
+        'ptPpm' => 100,
+        'pdPpm' => 100,
+        'rhPpm' => 100,
+        'ptUsdPerGram' => 67.93,
+        'pdUsdPerGram' => 46.94,
+        'rhUsdPerGram' => 305.43,
+        'ptRate' => 98,
+        'pdRate' => 98,
+        'rhRate' => 90,
+        'humidityRate' => 50,
+        'currency' => 'USD',
+    ]);
+
+    $response->assertOk();
+    $response->assertJsonPath('estimate.inputs.ptRate', 0.98);
+    $response->assertJsonPath('estimate.inputs.humidityRate', 0.5);
+    $response->assertJsonPath('estimate.totalUsd', 1937.3);
+});
+
 test('details endpoint returns converter and related entries', function () {
     $group = CarGroup::factory()->create();
 

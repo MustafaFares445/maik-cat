@@ -68,3 +68,35 @@ test('calculator service uses page fields in pricing formula', function () {
     expect($result['inputs']['humidityRate'])->toBe(0.1);
 });
 
+test('calculator service accepts percent-style rates and humidity', function () {
+    $metalPrice = MetalPrice::factory()->create([
+        'pt_usd_per_oz' => 2113.00,
+        'pd_usd_per_oz' => 1460.00,
+        'rh_usd_per_oz' => 9500.00,
+        'fetched_at' => now(),
+    ]);
+
+    $service = app(CalculatorService::class);
+    $result = $service->estimate(
+        weight: 100,
+        weightUnit: 'kg',
+        ptPpm: 100,
+        pdPpm: 100,
+        rhPpm: 100,
+        metalPrice: $metalPrice,
+        ptUsdPerGram: 67.93,
+        pdUsdPerGram: 46.94,
+        rhUsdPerGram: 305.43,
+        ptRate: 98,
+        pdRate: 98,
+        rhRate: 90,
+        humidityRate: 50,
+        currency: 'USD',
+    );
+
+    expect($result['inputs']['ptRate'])->toBe(0.98);
+    expect($result['inputs']['pdRate'])->toBe(0.98);
+    expect($result['inputs']['rhRate'])->toBe(0.9);
+    expect($result['inputs']['humidityRate'])->toBe(0.5);
+    expect($result['totalUsd'])->toBe(1937.3);
+});

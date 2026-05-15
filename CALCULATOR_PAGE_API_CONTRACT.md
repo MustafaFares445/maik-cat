@@ -99,10 +99,13 @@ Use this endpoint to fill final result (`Price`).
 
 ## Input Rules (App)
 
-- `ptRate`, `pdRate`, `rhRate`, and `humidityRate` are decimals (0 to 1).
-- Convert from UI percent:
-  - `98%` -> `0.98`
-  - `0%` -> `0`
+- `ptRate`, `pdRate`, `rhRate`, and `humidityRate` can be sent as:
+  - decimals (`0` to `1`), for example `0.98`, `0.5`
+  - whole percentages (`0` to `100`), for example `98`, `50`
+- Backend normalization:
+  - `98` -> `0.98`
+  - `50` -> `0.5`
+  - `0.98` stays `0.98`
 - All ppm and weight values are numeric.
 - Send `currency` as `EUR` or `USD`.
 
