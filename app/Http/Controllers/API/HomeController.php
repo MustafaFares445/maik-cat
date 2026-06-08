@@ -29,6 +29,7 @@ class HomeController extends Controller
         $userId = $request->user('sanctum')?->getKey();
 
         $topConvertersQuery = Item::query()
+            ->calculablePrice()
             ->with(['carGroup', 'extraCodes'])
             ->latest()
             ->limit(6);

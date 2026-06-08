@@ -162,6 +162,7 @@ class MobileRealDataSeeder extends Seeder
                 [
                     'car_group_id' => $groups[$record['group']]->id,
                     'model' => $record['model'],
+                    'normalized_serial' => Item::normalizeSerialValue($record['serial_code']),
                     'shape_code' => $record['shape_code'],
                     'details' => $record['details'],
                 ],

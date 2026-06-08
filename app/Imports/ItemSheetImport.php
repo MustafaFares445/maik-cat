@@ -104,6 +104,7 @@ class ItemSheetImport implements ToCollection, WithStartRow, WithChunkReading
             'car_group_id' => $this->carGroup->id,
             'model' => $data['model'],
             'serial_code' => $data['serial_code'],
+            'normalized_serial' => Item::normalizeSerialValue($data['serial_code']),
             'weight_kg' => $data['weight_kg'],
             'pt_ppm' => $data['pt_ppm'],
             'pd_ppm' => $data['pd_ppm'],

@@ -6,9 +6,11 @@ use App\Traits\FilterQueries\ItemFilterQuery;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 use Spatie\Image\Enums\Fit;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
@@ -32,6 +34,9 @@ class Item extends Model implements HasMedia
         'rh_ppm',
         'shape_code',
         'details',
+        'source',
+        'source_url',
+        'source_hash',
     ];
 
     protected $casts = [
@@ -41,22 +46,15 @@ class Item extends Model implements HasMedia
         'rh_ppm' => 'float',
     ];
 
-    protected static function booted(): void
+    public static function normalizeSerialValue(mixed $serial): string
     {
-        static::saving(function (self $item): void {
-            $item->normalized_serial = self::normalizeSerialValue($item->serial_code);
-        });
-    }
-
-    public static function normalizeSerialValue(?string $serialCode): string
-    {
-        if ($serialCode === null) {
+        if ($serial === null) {
             return '';
         }
 
-        $serial = mb_strtoupper(trim($serialCode), 'UTF-8');
+        $value = Str::upper(trim((string) $serial));
 
-        return preg_replace('/[\s\-\.\/]+/u', '', $serial) ?? $serial;
+        return preg_replace('/[\s\-\.\/]+/u', '', $value) ?? $value;
     }
 
     public function carGroup(): BelongsTo
@@ -72,6 +70,15 @@ class Item extends Model implements HasMedia
     public function priceCalculations(): HasMany
     {
         return $this->hasMany(PriceCalculation::class, 'item_id');
+    }
+
+    public function scopeCalculablePrice(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('weight_kg')
+            ->whereNotNull('pt_ppm')
+            ->whereNotNull('pd_ppm')
+            ->whereNotNull('rh_ppm');
     }
 
     public function savedByUsers(): BelongsToMany

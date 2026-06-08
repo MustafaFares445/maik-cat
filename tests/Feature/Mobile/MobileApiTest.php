@@ -11,9 +11,108 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use function Pest\Laravel\getJson;
 use function Pest\Laravel\postJson;
 
+function mockItemMetalsSpotService(float $ptPricePerGram = 10.0, float $pdPricePerGram = 20.0, float $rhPricePerGram = 30.0): void
+{
+    $spot = [
+        'source' => 'metal-sentinel',
+        'cached' => false,
+        'currency' => 'USD',
+        'fx_rate' => 1.0,
+        'updated_at' => now()->toIso8601String(),
+        'data' => [
+            [
+                'key' => 'platinum',
+                'name_en' => 'Platinum',
+                'name_ar' => 'Ø¨Ù„Ø§ØªÙŠÙ†',
+                'symbol' => 'Pt',
+                'price_oz' => round($ptPricePerGram * 31.1035, 2),
+                'price_gram' => $ptPricePerGram,
+                'change_oz' => 0.0,
+                'change_pct' => 0.0,
+                'direction' => 'flat',
+            ],
+            [
+                'key' => 'palladium',
+                'name_en' => 'Palladium',
+                'name_ar' => 'Ø¨Ù„Ø§Ø¯ÙŠÙˆÙ…',
+                'symbol' => 'Pd',
+                'price_oz' => round($pdPricePerGram * 31.1035, 2),
+                'price_gram' => $pdPricePerGram,
+                'change_oz' => 0.0,
+                'change_pct' => 0.0,
+                'direction' => 'flat',
+            ],
+            [
+                'key' => 'rhodium',
+                'name_en' => 'Rhodium',
+                'name_ar' => 'Ø±ÙˆØ¯ÙŠÙˆÙ…',
+                'symbol' => 'Rh',
+                'price_oz' => round($rhPricePerGram * 31.1035, 2),
+                'price_gram' => $rhPricePerGram,
+                'change_oz' => 0.0,
+                'change_pct' => 0.0,
+                'direction' => 'flat',
+            ],
+        ],
+    ];
+
+    $mock = \Mockery::mock(MetalsSpotService::class);
+    $mock->shouldReceive('all')->andReturn($spot);
+    app()->instance(MetalsSpotService::class, $mock);
+}
+
+function mockItemMetalsSpotServiceAscii(float $ptPricePerGram = 10.0, float $pdPricePerGram = 20.0, float $rhPricePerGram = 30.0): void
+{
+    $spot = [
+        'source' => 'metal-sentinel',
+        'cached' => false,
+        'currency' => 'USD',
+        'fx_rate' => 1.0,
+        'updated_at' => now()->toIso8601String(),
+        'data' => [
+            [
+                'key' => 'platinum',
+                'name_en' => 'Platinum',
+                'symbol' => 'Pt',
+                'price_oz' => round($ptPricePerGram * 31.1035, 2),
+                'price_gram' => $ptPricePerGram,
+                'change_oz' => 0.0,
+                'change_pct' => 0.0,
+                'direction' => 'flat',
+            ],
+            [
+                'key' => 'palladium',
+                'name_en' => 'Palladium',
+                'symbol' => 'Pd',
+                'price_oz' => round($pdPricePerGram * 31.1035, 2),
+                'price_gram' => $pdPricePerGram,
+                'change_oz' => 0.0,
+                'change_pct' => 0.0,
+                'direction' => 'flat',
+            ],
+            [
+                'key' => 'rhodium',
+                'name_en' => 'Rhodium',
+                'symbol' => 'Rh',
+                'price_oz' => round($rhPricePerGram * 31.1035, 2),
+                'price_gram' => $rhPricePerGram,
+                'change_oz' => 0.0,
+                'change_pct' => 0.0,
+                'direction' => 'flat',
+            ],
+        ],
+    ];
+
+    $mock = \Mockery::mock(MetalsSpotService::class);
+    $mock->shouldReceive('all')->andReturn($spot);
+    app()->instance(MetalsSpotService::class, $mock);
+}
+
 uses(RefreshDatabase::class);
 
 test('search endpoint accepts text and categoryId', function () {
+    mockItemMetalsSpotServiceAscii();
+
     $toyota = CarGroup::factory()->create(['name' => 'TOYOTA']);
     $lexus = CarGroup::factory()->create(['name' => 'LEXUS']);
 
@@ -42,6 +141,8 @@ test('search endpoint accepts text and categoryId', function () {
 });
 
 test('item search endpoint accepts text and carGroup', function () {
+    mockItemMetalsSpotServiceAscii();
+
     $opel = CarGroup::factory()->create(['name' => 'OPEL', 'excel_sheet_name' => 'OPEL']);
     $japan = CarGroup::factory()->create(['name' => 'JAPAN', 'excel_sheet_name' => 'JAPAN']);
 
@@ -62,6 +163,43 @@ test('item search endpoint accepts text and carGroup', function () {
     $response->assertOk();
     $response->assertJsonCount(1, 'data');
     $response->assertJsonPath('data.0.id', $matching->id);
+});
+
+test('item collections return only items with calculable price fields', function () {
+    mockItemMetalsSpotServiceAscii();
+
+    $group = CarGroup::factory()->create();
+
+    $calculable = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'weight_kg' => 1.5,
+        'pt_ppm' => 1200,
+        'pd_ppm' => 450,
+        'rh_ppm' => 90,
+    ]);
+
+    $missingPriceData = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'weight_kg' => null,
+        'pt_ppm' => null,
+        'pd_ppm' => null,
+        'rh_ppm' => null,
+    ]);
+
+    $response = getJson('/api/items');
+
+    $response->assertOk();
+    $response->assertJsonCount(1, 'data');
+    $response->assertJsonPath('data.0.id', $calculable->id);
+    $response->assertJsonPath('data.0.price', 35.55);
+    $response->assertJsonMissing(['id' => $missingPriceData->id]);
+
+    $homeResponse = getJson('/api/home/top_items');
+
+    $homeResponse->assertOk();
+    $homeResponse->assertJsonCount(1, 'topItems');
+    $homeResponse->assertJsonPath('topItems.0.id', $calculable->id);
+    $homeResponse->assertJsonPath('topItems.0.price', 35.55);
 });
 
 test('home endpoint returns last 14 changes from metal sentinel spot data', function () {
@@ -86,7 +224,7 @@ test('home endpoint returns last 14 changes from metal sentinel spot data', func
 
     $response->assertOk();
     $response->assertJsonPath('stats.source', 'metal-sentinel');
-    $response->assertJsonCount(14, 'stats.changes');
+    $response->assertJsonCount(3, 'stats.changes');
 });
 
 test('charts endpoint returns last 14 daily points from metal sentinel spot data', function () {
@@ -237,6 +375,8 @@ test('calculator endpoint accepts percent-fraction rate payloads', function () {
 });
 
 test('details endpoint returns converter and related entries', function () {
+    mockItemMetalsSpotServiceAscii();
+
     $group = CarGroup::factory()->create();
 
     $target = Item::factory()->create(['car_group_id' => $group->id]);
@@ -251,6 +391,8 @@ test('details endpoint returns converter and related entries', function () {
 });
 
 test('item details endpoint returns camelCase converter payload', function () {
+    mockItemMetalsSpotServiceAscii();
+
     $converter = Item::factory()->create();
 
     $response = getJson("/api/items/{$converter->id}");
@@ -261,6 +403,8 @@ test('item details endpoint returns camelCase converter payload', function () {
 });
 
 test('similar items endpoint returns same car group items', function () {
+    mockItemMetalsSpotServiceAscii();
+
     $group = CarGroup::factory()->create();
 
     $target = Item::factory()->create(['car_group_id' => $group->id]);

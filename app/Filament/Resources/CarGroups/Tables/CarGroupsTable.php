@@ -21,7 +21,8 @@ class CarGroupsTable
                     ->label('Image')
                     ->circular()
                     ->size(44)
-                    ->getStateUsing(fn (CarGroup $record): string => $record->getFirstMediaUrl('images')),
+                    ->getStateUsing(fn (CarGroup $record): string => $record->getFirstMediaUrl('logo')
+                        ?: $record->getFirstMediaUrl('images')),
                 TextColumn::make('name')
                     ->searchable()
                     ->sortable()

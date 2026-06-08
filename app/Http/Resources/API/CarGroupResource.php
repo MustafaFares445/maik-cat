@@ -11,7 +11,8 @@ class CarGroupResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $imageUrl = $this->resource->getFirstMediaUrl('images');
+        $imageUrl = $this->resource->getFirstMediaUrl('logo')
+            ?: $this->resource->getFirstMediaUrl('images');
 
         return [
             'id' => $this->id,

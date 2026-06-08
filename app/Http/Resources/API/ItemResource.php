@@ -3,6 +3,7 @@
 namespace App\Http\Resources\API;
 
 use App\Models\Item;
+use App\Services\Mobile\ItemPriceService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -26,15 +27,8 @@ class ItemResource extends JsonResource
                 ?: $imageUrl;
         }
 
-        $ptPrice = config('metals.pt_price', 0);
-        $pdPrice = config('metals.pd_price', 0);
-        $rhPrice = config('metals.rh_price', 0);
-
-        $price = ($this->weight_kg / 1000) * (
-            ($this->pt_ppm * $ptPrice) +
-            ($this->pd_ppm * $pdPrice) +
-            ($this->rh_ppm * $rhPrice)
-        );
+        $currency = strtoupper((string) $request->query('currency', 'USD'));
+        $price = app(ItemPriceService::class)->priceFor($this->resource, $currency);
 
         return [
             'id' => $this->id,

@@ -33,6 +33,7 @@ class ItemController extends Controller
         $this->applySavedItemFlagToModel($item, $userId);
 
         $relatedQuery = Item::query()
+            ->calculablePrice()
             ->with(['carGroup', 'extraCodes'])
             ->where('car_group_id', $item->car_group_id)
             ->whereKeyNot($item->id)
@@ -56,6 +57,7 @@ class ItemController extends Controller
         $limit = max(1, min((int) $request->integer('limit', 8), 20));
 
         $similarQuery = Item::query()
+            ->calculablePrice()
             ->with(['carGroup', 'extraCodes'])
             ->where('car_group_id', $item->car_group_id)
             ->whereKeyNot($item->id)

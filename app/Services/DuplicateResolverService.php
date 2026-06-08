@@ -55,6 +55,7 @@ class DuplicateResolverService
         $converter->update([
             'model' => $payload['model'],
             'serial_code' => $payload['serial_code'],
+            'normalized_serial' => Item::normalizeSerialValue($payload['serial_code'] ?? null),
             'weight_kg' => $payload['weight_kg'],
             'pt_ppm' => $payload['pt_ppm'],
             'pd_ppm' => $payload['pd_ppm'],
@@ -77,6 +78,7 @@ class DuplicateResolverService
             'car_group_id' => $existing->car_group_id,
             'model' => $payload['model'],
             'serial_code' => $payload['serial_code'],
+            'normalized_serial' => Item::normalizeSerialValue($payload['serial_code'] ?? null),
             'weight_kg' => $payload['weight_kg'],
             'pt_ppm' => $payload['pt_ppm'],
             'pd_ppm' => $payload['pd_ppm'],

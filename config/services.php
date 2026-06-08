@@ -48,6 +48,17 @@ return [
         'cache_ttl' => (int) env('CURRENCY_CACHE_TTL_SECONDS', 1800),
     ],
 
+    'gemini' => [
+        'api_key' => env('GEMINI_API_KEY'),
+        'base_url' => env('GEMINI_API_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
+        'image_model' => env('GEMINI_IMAGE_MODEL', 'gemini-2.5-flash-image'),
+        'image_timeout' => (int) env('GEMINI_IMAGE_TIMEOUT_SECONDS', 90),
+        'image_retry_times' => (int) env('GEMINI_IMAGE_RETRY_TIMES', 2),
+        'image_retry_sleep_ms' => (int) env('GEMINI_IMAGE_RETRY_SLEEP_MS', 1000),
+        'image_download_timeout' => (int) env('GEMINI_IMAGE_DOWNLOAD_TIMEOUT_SECONDS', 30),
+        'image_cost_usd' => (float) env('GEMINI_IMAGE_COST_USD', 0.039387),
+    ],
+
     'firebase' => [
         'credentials' => storage_path(env('FIREBASE_CREDENTIALS', 'firebase.json')),
         'project_id' => env('FIREBASE_PROJECT_ID'),

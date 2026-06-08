@@ -12,7 +12,7 @@ trait ItemFilterQuery
 {
     public static function getQuery(): QueryBuilder
     {
-        return QueryBuilder::for(static::query()->with('carGroup'))
+        return QueryBuilder::for(static::query()->calculablePrice()->with('carGroup'))
             ->allowedFilters(
                 AllowedFilter::exact('category_id', 'car_group_id'),
                 AllowedFilter::callback('text', static function (Builder $query, string $value): void {

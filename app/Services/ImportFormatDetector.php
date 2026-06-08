@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Support\Excel\WindowReadFilter;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use RuntimeException;
 use Throwable;
 
@@ -48,45 +50,109 @@ class ImportFormatDetector
             throw new RuntimeException('Cannot inspect uploaded file.');
         }
 
-        $spreadsheet = null;
+        $sheetInfos = $this->worksheetInfos($filePath);
 
         try {
-            $reader = IOFactory::createReaderForFile($filePath);
-            $reader->setReadDataOnly(true);
-            $spreadsheet = $reader->load($filePath);
+            foreach ($sheetInfos as $sheetInfo) {
+                $sheetName = $this->worksheetName($sheetInfo);
+                if ($sheetName === null) {
+                    continue;
+                }
+
+                $rowLimit = max(1, min(3, (int) ($sheetInfo['totalRows'] ?? 3)));
+                [$spreadsheet, $sheet] = $this->loadWorksheetWindow($filePath, $sheetName, 1, $rowLimit, 25);
+
+                try {
+                    $headers = $this->sheetHeaders($sheet->toArray(null, false, false, false));
+                    $normalizedHeaders = array_flip(array_map(
+                        fn (string $header): string => $this->normalizeHeader($header),
+                        $headers
+                    ));
+
+                    if (! $this->isPetraHeaders($normalizedHeaders)) {
+                        continue;
+                    }
+
+                    return [
+                        'format' => self::FORMAT_PETRA,
+                        'sheet_name' => $sheetName,
+                    ];
+                } finally {
+                    if ($spreadsheet instanceof Spreadsheet) {
+                        $spreadsheet->disconnectWorksheets();
+                    }
+                }
+            }
         } catch (Throwable $e) {
             throw new RuntimeException('Could not read Excel file.', previous: $e);
         }
 
+        return ['format' => self::FORMAT_LEGACY];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function worksheetInfos(string $filePath): array
+    {
         try {
-            $required = array_flip(array_map(
-                fn (string $header): string => $this->normalizeHeader($header),
-                self::PETRA_REQUIRED_HEADERS
-            ));
+            $reader = IOFactory::createReaderForFile($filePath);
+            $reader->setReadDataOnly(true);
 
-            foreach ($spreadsheet->getWorksheetIterator() as $sheet) {
-                $headers = $this->sheetHeaders($sheet->toArray(null, false, false, false));
-                $normalizedHeaders = array_flip(array_map(
-                    fn (string $header): string => $this->normalizeHeader($header),
-                    $headers
-                ));
+            return $reader->listWorksheetInfo($filePath);
+        } catch (Throwable $e) {
+            throw new RuntimeException('Could not inspect workbook structure.', previous: $e);
+        }
+    }
 
-                if (! empty(array_diff_key($required, $normalizedHeaders))) {
-                    continue;
-                }
+    /**
+     * @param  array<string, mixed>  $sheetInfo
+     */
+    private function worksheetName(array $sheetInfo): ?string
+    {
+        $name = (string) ($sheetInfo['worksheetName'] ?? $sheetInfo['sheetName'] ?? '');
 
-                return [
-                    'format' => self::FORMAT_PETRA,
-                    'sheet_name' => $sheet->getTitle(),
-                ];
-            }
-        } finally {
-            if ($spreadsheet instanceof Spreadsheet) {
-                $spreadsheet->disconnectWorksheets();
-            }
+        return trim($name) !== '' ? $name : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $normalizedHeaders
+     */
+    private function isPetraHeaders(array $normalizedHeaders): bool
+    {
+        $required = array_flip(array_map(
+            fn (string $header): string => $this->normalizeHeader($header),
+            self::PETRA_REQUIRED_HEADERS
+        ));
+
+        return empty(array_diff_key($required, $normalizedHeaders));
+    }
+
+    /**
+     * @return array{0: Spreadsheet, 1: Worksheet}
+     */
+    private function loadWorksheetWindow(string $filePath, string $sheetName, int $startRow, int $endRow, int $maxColumn): array
+    {
+        $reader = IOFactory::createReaderForFile($filePath);
+        $reader->setReadDataOnly(true);
+
+        if (method_exists($reader, 'setReadEmptyCells')) {
+            $reader->setReadEmptyCells(false);
         }
 
-        return ['format' => self::FORMAT_LEGACY];
+        $reader->setLoadSheetsOnly([$sheetName]);
+        $reader->setReadFilter(new WindowReadFilter($startRow, $endRow, $maxColumn));
+
+        $spreadsheet = $reader->load($filePath);
+        $sheet = $spreadsheet->getSheetByName($sheetName);
+
+        if (! $sheet instanceof Worksheet) {
+            $spreadsheet->disconnectWorksheets();
+
+            throw new RuntimeException('Could not load worksheet: '.$sheetName);
+        }
+
+        return [$spreadsheet, $sheet];
     }
 
     /**

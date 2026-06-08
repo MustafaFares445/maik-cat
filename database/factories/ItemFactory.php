@@ -15,10 +15,13 @@ class ItemFactory extends Factory
 
     public function definition(): array
     {
+        $serialCode = fake()->bothify('####-####');
+
         return [
             'car_group_id' => CarGroup::factory(),
             'model' => strtoupper(fake()->bothify('MODEL-###')),
-            'serial_code' => fake()->bothify('####-####'),
+            'serial_code' => $serialCode,
+            'normalized_serial' => Item::normalizeSerialValue($serialCode),
             'weight_kg' => fake()->randomFloat(3, 0.3, 4.8),
             'pt_ppm' => fake()->randomFloat(4, 10, 2500),
             'pd_ppm' => fake()->randomFloat(4, 10, 1800),

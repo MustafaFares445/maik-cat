@@ -28,7 +28,8 @@ class CarGroupForm
                         Placeholder::make('current_image')
                             ->label('Current image')
                             ->content(function (?CarGroup $record): HtmlString {
-                                $url = $record?->getFirstMediaUrl('images');
+                                $url = $record?->getFirstMediaUrl('logo')
+                                    ?: $record?->getFirstMediaUrl('images');
 
                                 return new HtmlString(
                                     sprintf(
@@ -37,7 +38,8 @@ class CarGroupForm
                                     ),
                                 );
                             })
-                            ->hidden(fn (?CarGroup $record): bool => blank($record?->getFirstMediaUrl('images')))
+                            ->hidden(fn (?CarGroup $record): bool => blank($record?->getFirstMediaUrl('logo')
+                                ?: $record?->getFirstMediaUrl('images')))
                             ->columnSpanFull(),
                         FileUpload::make('car_group_image')
                             ->label('Image')

@@ -16,7 +16,15 @@ class CarGroup extends Model implements HasMedia
     use HasUuids;
     use InteractsWithMedia;
 
-    protected $fillable = ['name', 'excel_sheet_name', 'region', 'parent_id'];
+    protected $fillable = [
+        'name',
+        'slug',
+        'excel_sheet_name',
+        'region',
+        'parent_id',
+        'source',
+        'source_url',
+    ];
 
     public function parent(): BelongsTo
     {
@@ -35,6 +43,17 @@ class CarGroup extends Model implements HasMedia
 
     public function registerMediaCollections(): void
     {
+        $this->addMediaCollection('logo')
+            ->useDisk('public')
+            ->acceptsMimeTypes([
+                'image/jpeg',
+                'image/png',
+                'image/webp',
+                'image/avif',
+                'image/svg+xml',
+            ])
+            ->singleFile();
+
         $this->addMediaCollection('images')
             ->useDisk('public')
             ->acceptsMimeTypes([

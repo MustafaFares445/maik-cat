@@ -36,6 +36,7 @@ class MobileFakeDataSeeder extends Seeder
                 $converter->car_group_id = $groups->random()->id;
                 $converter->serial_code = 'FX-' . now()->format('ymd') . '-' . str_pad((string) $index, 4, '0', STR_PAD_LEFT);
                 $converter->model = strtoupper('MODEL-' . Str::random(5));
+                $converter->normalized_serial = Item::normalizeSerialValue($converter->serial_code);
                 $converter->save();
 
                 ExtraCode::factory()->count(random_int(1, 3))->create([
