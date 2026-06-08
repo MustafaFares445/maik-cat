@@ -33,7 +33,7 @@ class ItemResource extends JsonResource
         return [
             'id' => $this->id,
             'model' => $this->model,
-            'serial_code' => $this->serial_code,
+            'serial_code' => $this->normalized_serial,
             'weight_kg' => $this->weight_kg,
             'pt_ppm' => $this->pt_ppm,
             'pd_ppm' => $this->pd_ppm,
