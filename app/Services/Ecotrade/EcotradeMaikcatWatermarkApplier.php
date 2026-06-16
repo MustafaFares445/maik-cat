@@ -3,55 +3,187 @@
 namespace App\Services\Ecotrade;
 
 use RuntimeException;
-use Spatie\Image\Image;
 
 class EcotradeMaikcatWatermarkApplier
 {
-    public function apply(string $imagePath, string $text = 'maikcat'): void
+    public function apply(string $imagePath): void
     {
-        $text = trim($text) !== '' ? trim($text) : 'maikcat';
-        $fontPath = $this->fontPath();
-        $image = Image::load($imagePath);
-        $width = $image->getWidth();
-        $height = $image->getHeight();
+        [$image, $mimeType] = $this->loadImage($imagePath);
+        $watermark = null;
 
-        $fontSize = max(12, min(44, (int) floor($width / 13)));
-        $stepX = max(130, $fontSize * max(strlen($text), 6) * 3);
-        $stepY = max(90, $fontSize * 4);
-        $offset = (int) floor($stepX / 3);
+        try {
+            $this->sharpenImage($image);
+            $watermark = $this->buildWatermarkLayer(imagesx($image), imagesy($image));
 
-        for ($y = (int) floor($stepY / 2); $y < ($height + $stepY); $y += $stepY) {
-            for ($x = -$offset; $x < ($width + $stepX); $x += $stepX) {
-                $image->text(
-                    text: $text,
-                    fontSize: $fontSize,
-                    color: 'rgba(65, 65, 65, 0.22)',
-                    x: $x,
-                    y: $y,
-                    angle: -25,
-                    fontPath: $fontPath,
-                );
+            imagealphablending($image, true);
+            imagesavealpha($image, true);
+
+            if (! imagecopy($image, $watermark, 0, 0, 0, 0, imagesx($image), imagesy($image))) {
+                throw new RuntimeException('Unable to apply Maikcat watermark to image: '.$imagePath);
+            }
+
+            $this->saveImage($image, $imagePath, $mimeType);
+        } finally {
+            imagedestroy($image);
+
+            if ($watermark instanceof \GdImage) {
+                imagedestroy($watermark);
             }
         }
-
-        $image->save($imagePath);
     }
 
-    private function fontPath(): string
+    private function sharpenImage(\GdImage $image): void
     {
-        $candidates = [
-            base_path('resources/fonts/arial.ttf'),
-            'C:\\Windows\\Fonts\\arial.ttf',
-            '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-            '/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf',
+        $kernel = [
+            [0, -1, 0],
+            [-1, 5, -1],
+            [0, -1, 0],
         ];
 
-        foreach ($candidates as $candidate) {
-            if (is_file($candidate)) {
-                return $candidate;
-            }
+        if (! imageconvolution($image, $kernel, 1, 0)) {
+            throw new RuntimeException('Unable to sharpen Maikcat watermarked image.');
+        }
+    }
+
+    private function watermarkImagePath(): string
+    {
+        $path = resource_path('images/ecotrade/maikcat-watermark.png');
+
+        if (is_file($path)) {
+            return $path;
         }
 
-        throw new RuntimeException('No TrueType font is available for local Maikcat watermarking.');
+        throw new RuntimeException('Local Maikcat watermark image is missing: '.$path);
+    }
+
+    /**
+     * @return array{0: \GdImage, 1: string}
+     */
+    private function loadImage(string $imagePath): array
+    {
+        $imageInfo = getimagesize($imagePath);
+        $mimeType = is_array($imageInfo) ? (string) ($imageInfo['mime'] ?? '') : '';
+
+        $image = match ($mimeType) {
+            'image/jpeg' => imagecreatefromjpeg($imagePath),
+            'image/png' => imagecreatefrompng($imagePath),
+            'image/webp' => function_exists('imagecreatefromwebp') ? imagecreatefromwebp($imagePath) : false,
+            'image/avif' => function_exists('imagecreatefromavif') ? imagecreatefromavif($imagePath) : false,
+            default => false,
+        };
+
+        if ($image === false) {
+            throw new RuntimeException('Unsupported image type for Maikcat watermark: '.$mimeType);
+        }
+
+        imagepalettetotruecolor($image);
+        imagealphablending($image, false);
+        imagesavealpha($image, true);
+
+        return [$image, $mimeType];
+    }
+
+    private function saveImage(\GdImage $image, string $imagePath, string $mimeType): void
+    {
+        $saved = match ($mimeType) {
+            'image/jpeg' => imagejpeg($image, $imagePath, 92),
+            'image/png' => imagepng($image, $imagePath),
+            'image/webp' => function_exists('imagewebp') ? imagewebp($image, $imagePath, 90) : false,
+            'image/avif' => function_exists('imageavif') ? imageavif($image, $imagePath, 80) : false,
+            default => false,
+        };
+
+        if ($saved === false) {
+            throw new RuntimeException('Unable to save Maikcat watermarked image: '.$imagePath);
+        }
+    }
+
+    private function buildWatermarkLayer(int $width, int $height): \GdImage
+    {
+        $source = $this->loadWatermarkAsset();
+        $canvas = null;
+
+        try {
+            $canvas = $this->transparentCanvas($width, $height);
+            $sourceWidth = imagesx($source);
+            $sourceHeight = imagesy($source);
+
+            for ($top = 0; $top < $height; $top += $sourceHeight) {
+                for ($left = 0; $left < $width; $left += $sourceWidth) {
+                    if (! imagecopy($canvas, $source, $left, $top, 0, 0, $sourceWidth, $sourceHeight)) {
+                        throw new RuntimeException('Unable to place local Maikcat watermark image.');
+                    }
+                }
+            }
+
+            return $canvas;
+        } catch (\Throwable $exception) {
+            if ($canvas instanceof \GdImage) {
+                imagedestroy($canvas);
+            }
+
+            throw $exception;
+        } finally {
+            imagedestroy($source);
+        }
+    }
+
+    private function loadWatermarkAsset(): \GdImage
+    {
+        $sourcePath = $this->watermarkImagePath();
+        $source = imagecreatefrompng($sourcePath);
+
+        if ($source === false) {
+            throw new RuntimeException('Unable to load local Maikcat watermark image: '.$sourcePath);
+        }
+
+        imagepalettetotruecolor($source);
+        imagealphablending($source, false);
+        imagesavealpha($source, true);
+        $this->removeCheckerboardBackground($source);
+
+        return $source;
+    }
+
+    private function transparentCanvas(int $width, int $height): \GdImage
+    {
+        $canvas = imagecreatetruecolor($width, $height);
+
+        if ($canvas === false) {
+            throw new RuntimeException('Unable to create Maikcat watermark canvas.');
+        }
+
+        imagealphablending($canvas, false);
+        imagesavealpha($canvas, true);
+
+        $transparent = imagecolorallocatealpha($canvas, 255, 255, 255, 127);
+        imagefill($canvas, 0, 0, $transparent);
+
+        return $canvas;
+    }
+
+    private function removeCheckerboardBackground(\GdImage $image): void
+    {
+        $width = imagesx($image);
+        $height = imagesy($image);
+        $visibleInk = imagecolorallocatealpha($image, 34, 34, 34, 92);
+        $transparent = imagecolorallocatealpha($image, 255, 255, 255, 127);
+
+        for ($y = 0; $y < $height; $y++) {
+            for ($x = 0; $x < $width; $x++) {
+                $color = imagecolorat($image, $x, $y);
+                $red = ($color >> 16) & 0xFF;
+                $green = ($color >> 8) & 0xFF;
+                $blue = $color & 0xFF;
+
+                if ($red > 235 && $green > 235 && $blue > 235) {
+                    imagesetpixel($image, $x, $y, $visibleInk);
+
+                    continue;
+                }
+
+                imagesetpixel($image, $x, $y, $transparent);
+            }
+        }
     }
 }

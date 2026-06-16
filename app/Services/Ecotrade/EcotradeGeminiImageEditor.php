@@ -24,14 +24,23 @@ class EcotradeGeminiImageEditor
         $retryTimes = max(0, (int) config('services.gemini.image_retry_times', 2));
         $retrySleep = max(0, (int) config('services.gemini.image_retry_sleep_ms', 1000));
 
+        $url = rtrim($baseUrl, '/') . '/models/' . $model . ':generateContent';
+
         $response = Http::timeout($timeout)
             ->retry($retryTimes, $retrySleep)
-            ->post($baseUrl.'/models/'.$model.':generateContent?key='.$apiKey, [
+            ->withHeaders([
+                'x-goog-api-key' => $apiKey,
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
+            ])
+            ->post($url, [
                 'contents' => [
                     [
                         'role' => 'user',
                         'parts' => [
-                            ['text' => $prompt],
+                            [
+                                'text' => $prompt,
+                            ],
                             [
                                 'inline_data' => [
                                     'mime_type' => $mimeType,
@@ -42,7 +51,7 @@ class EcotradeGeminiImageEditor
                     ],
                 ],
                 'generationConfig' => [
-                    'responseModalities' => ['IMAGE'],
+                    'responseModalities' => ['TEXT', 'IMAGE'],
                 ],
             ]);
 
@@ -59,7 +68,7 @@ class EcotradeGeminiImageEditor
         $image = $this->extractImage($payload);
 
         if ($image === null) {
-            throw new RuntimeException('Gemini image edit response did not contain image bytes.');
+            throw new EcotradeGeminiImageUnavailableException($this->extractText($payload));
         }
 
         return $image;
@@ -87,6 +96,23 @@ class EcotradeGeminiImageEditor
                 $inlineData = $part['inlineData'] ?? $part['inline_data'] ?? null;
 
                 if (! is_array($inlineData)) {
+                    $uri = $part['fileUri']
+                        ?? $part['downloadUri']
+                        ?? $part['fileData']['fileUri']
+                        ?? $part['file_data']['file_uri']
+                        ?? $part['uri']
+                        ?? null;
+
+                    if (! is_string($uri) || trim($uri) === '') {
+                        continue;
+                    }
+
+                    $downloaded = $this->downloadImageUri($uri);
+
+                    if ($downloaded !== null) {
+                        return $downloaded;
+                    }
+
                     continue;
                 }
 
@@ -112,5 +138,75 @@ class EcotradeGeminiImageEditor
         }
 
         return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function extractText(array $payload): ?string
+    {
+        foreach (($payload['candidates'] ?? []) as $candidate) {
+            if (! is_array($candidate)) {
+                continue;
+            }
+
+            $content = $candidate['content'] ?? null;
+            $parts = is_array($content) ? ($content['parts'] ?? []) : [];
+
+            foreach ($parts as $part) {
+                if (! is_array($part)) {
+                    continue;
+                }
+
+                $text = $part['text'] ?? null;
+
+                if (is_string($text) && trim($text) !== '') {
+                    return trim($text);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{bytes: string, mime_type: string}|null
+     */
+    private function downloadImageUri(string $uri): ?array
+    {
+        try {
+            $response = Http::timeout(max(1, (int) config('services.gemini.image_download_timeout', 30)))
+                ->get($uri);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if ($response->failed()) {
+            return null;
+        }
+
+        $bytes = $response->body();
+
+        if ($bytes === '') {
+            return null;
+        }
+
+        return [
+            'bytes' => $bytes,
+            'mime_type' => $this->detectMimeType($bytes, (string) $response->header('Content-Type')),
+        ];
+    }
+
+    private function detectMimeType(string $bytes, string $header): string
+    {
+        $header = strtolower(trim(strtok($header, ';') ?: ''));
+
+        if (str_starts_with($header, 'image/')) {
+            return $header;
+        }
+
+        $detected = finfo_buffer(finfo_open(FILEINFO_MIME_TYPE), $bytes) ?: null;
+
+        return is_string($detected) && str_starts_with($detected, 'image/') ? $detected : 'image/png';
     }
 }

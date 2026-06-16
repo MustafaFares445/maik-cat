@@ -5,6 +5,7 @@ namespace App\Services\Ecotrade;
 use App\Data\EcotradeProductImageCandidate;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
@@ -20,13 +21,21 @@ class EcotradeProductImageImporter
         $watermarkMode = $this->normalizeWatermarkMode($watermarkMode);
         $source = $this->downloadSourceImage($candidate->sourceImageUrl);
         $prompt = $this->buildPrompt($watermarkMode, $watermarkText);
-        $edited = $this->gemini->edit($source['bytes'], $source['mime_type'], $prompt);
+        $geminiResult = 'edited';
+
+        try {
+            $edited = $this->gemini->edit($source['bytes'], $source['mime_type'], $prompt);
+        } catch (EcotradeGeminiImageUnavailableException) {
+            $edited = $source;
+            $geminiResult = 'source_fallback';
+        }
+
         $extension = $this->extensionForMimeType($edited['mime_type']);
         $path = $this->writeTempFile($edited['bytes'], $extension);
 
         try {
             if ($watermarkMode === 'spatie') {
-                $this->watermarkApplier->apply($path, $watermarkText);
+                $this->watermarkApplier->apply($path);
             }
 
             if ($replaceExisting) {
@@ -35,17 +44,19 @@ class EcotradeProductImageImporter
 
             return $candidate->item
                 ->addMedia($path)
-                ->usingName((string) ($candidate->item->serial_code ?: $candidate->item->model ?: 'Ecotrade product image'))
-                ->usingFileName($this->fileName($candidate, $extension))
+                ->usingName($this->mediaName($candidate))
+                ->usingFileName($this->fileName($candidate, $extension, $watermarkMode))
                 ->withCustomProperties([
                     'source' => 'ecotrade',
                     'source_url' => $candidate->sourceImageUrl,
                     'source_hash' => $candidate->product->sourceHash,
                     'gemini_model' => config('services.gemini.image_model', 'gemini-2.5-flash-image'),
+                    'gemini_result' => $geminiResult,
                     'gemini_processed_at' => now()->toISOString(),
-                    'gemini_prompt_version' => 'ecotrade-product-watermark-v1',
+                    'gemini_prompt_version' => 'ecotrade-product-preserve-v2',
                     'watermark_mode' => $watermarkMode,
-                    'watermark_text' => $watermarkMode === 'none' ? null : $watermarkText,
+                    'watermark_text' => $watermarkMode === 'ai' ? $watermarkText : null,
+                    'watermark_asset' => $watermarkMode === 'spatie' ? 'resources/images/ecotrade/maikcat-watermark.png' : null,
                     'maikcat_watermark' => $watermarkMode !== 'none',
                 ])
                 ->toMediaCollection('images');
@@ -84,22 +95,22 @@ class EcotradeProductImageImporter
     private function buildPrompt(string $watermarkMode, string $watermarkText): string
     {
         $watermarkInstruction = match ($watermarkMode) {
-            'ai' => "\nAfter removing the old watermark, add multiple visible repeated watermarks with the exact text \"{$watermarkText}\" similar to the original Ecotrade/Ecocate watermark pattern. Do not add any other text.",
-            default => "\nDo not add any new logos, branding, text, watermarks, labels, or extra objects.",
+            'ai' => "\nAdd multiple visible repeated watermarks with the exact text \"{$watermarkText}\". Keep them semi-transparent and do not cover, hide, remove, blur, or replace any existing watermark, logo, copyright notice, signature, label, or attribution mark.",
+            default => "\nDo not add any new logos, branding, text, watermarks, labels, or extra objects in the Gemini edit.",
         };
 
         return trim(<<<PROMPT
-Edit the attached product image to remove all visible watermark artifacts.
+Prepare the attached product photo for catalog display while preserving the original image ownership and attribution marks.
 
 Goal:
-Create a clean product image with no visible old watermark text, symbols, repeated logo marks, haze, ghosting, or semi-transparent overlay.
+Create a realistic product image suitable for an e-commerce catalog without changing what the product is and without removing or obscuring source attribution.
 
 Image context:
 The image shows an isolated rusty automotive exhaust/catalytic converter component on a plain white or light background. The part has a silver/gray cylindrical body, rusty brown corrosion, flanges, bolts/studs, seams, a small threaded port on top, and a curved outlet section.
 
 Editing requirements:
-Remove the watermark completely from the product surface and background.
-Reconstruct the hidden areas naturally using surrounding texture, color, rust, shadows, and metal details.
+Preserve any existing copyright notices, logos, signatures, watermarks, labels, or attribution marks already present in the source image.
+Do not remove, hide, blur, cover, replace, imitate, or alter any existing watermark, logo, copyright notice, signature, label, or attribution mark.
 Preserve the exact object shape, silhouette, angle, perspective, and proportions.
 Preserve the original rusty metal texture and natural corrosion patterns.
 Preserve the original lighting, shadows, contrast, and product-photo style.
@@ -111,9 +122,8 @@ Do not crop important parts of the object.
 Keep the result realistic, natural, and suitable for an e-commerce product image.{$watermarkInstruction}
 
 Quality requirements:
-The final image should look like the original product photo, but without the old watermark.
-The cleaned areas should blend smoothly with the surrounding pixels.
-No obvious blur patches, smears, duplicated texture, AI artifacts, or fake-looking reconstruction should remain.
+The final image should look like the original product photo with source attribution preserved.
+No obvious blur patches, smears, duplicated texture, AI artifacts, or fake-looking reconstruction should be introduced.
 Keep the same composition and preferably the same aspect ratio as the original image.
 
 Output:
@@ -125,7 +135,7 @@ PROMPT);
     {
         $mode = strtolower(trim($mode));
 
-        return in_array($mode, ['spatie', 'ai', 'none'], true) ? $mode : 'spatie';
+        return in_array($mode, ['spatie', 'ai', 'none'], true) ? $mode : 'none';
     }
 
     private function detectMimeType(string $bytes, string $header): string
@@ -167,11 +177,31 @@ PROMPT);
         return $target;
     }
 
-    private function fileName(EcotradeProductImageCandidate $candidate, string $extension): string
+    private function fileName(EcotradeProductImageCandidate $candidate, string $extension, string $watermarkMode): string
     {
-        $serial = preg_replace('/[^A-Za-z0-9]+/', '-', (string) $candidate->item->serial_code) ?: 'ecotrade-product';
-        $serial = trim(strtolower($serial), '-');
+        $name = $this->mediaName($candidate);
+        $name = Str::slug($name) ?: 'ecotrade-product';
+        $suffix = $watermarkMode === 'none' ? '' : '-maikcat';
 
-        return $serial.'-gemini-maikcat.'.$extension;
+        return $name.$suffix.'.'.$extension;
+    }
+
+    private function mediaName(EcotradeProductImageCandidate $candidate): string
+    {
+        $productName = trim((string) $candidate->product->productName);
+
+        if ($productName !== '') {
+            return $productName;
+        }
+
+        $itemName = trim((string) $candidate->item->model);
+
+        if ($itemName !== '') {
+            return $itemName;
+        }
+
+        $serial = trim((string) $candidate->item->serial_code);
+
+        return $serial !== '' ? $serial : 'Ecotrade product image';
     }
 }

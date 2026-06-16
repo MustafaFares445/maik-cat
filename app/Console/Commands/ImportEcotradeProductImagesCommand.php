@@ -2,10 +2,10 @@
 
 namespace App\Console\Commands;
 
-use App\Data\EcotradeProductImageCandidate;
 use App\Services\Ecotrade\EcotradeJsonReader;
 use App\Services\Ecotrade\EcotradeProductImageCandidateResolver;
 use App\Services\Ecotrade\EcotradeProductImageImporter;
+use App\Services\Ecotrade\EcotradeProductImageProgressStore;
 use Illuminate\Console\Command;
 use RuntimeException;
 use Throwable;
@@ -21,10 +21,11 @@ class ImportEcotradeProductImagesCommand extends Command
         {--sleep-ms=0 : Milliseconds to sleep after each processed image}
         {--max-cost-usd= : Required paid-run cost ceiling; test mode defaults to one-image cost}
         {--replace-existing : Replace item images that already exist}
-        {--watermark=spatie : Watermark strategy: spatie, ai, or none}
+        {--fresh : Ignore any saved progress checkpoint for this source file and options}
+        {--watermark=none : Watermark strategy: spatie, ai, or none}
         {--watermark-ai : Ask Gemini to add repeated Maikcat watermark text after cleanup}
-        {--watermark-spatie : Add repeated Maikcat watermark text locally before saving to Spatie media}
-        {--watermark-text=maikcat : Text used when watermarking is enabled}';
+        {--watermark-spatie : Add the local Maikcat watermark image before saving to Spatie media}
+        {--watermark-text=maikcat : Text used when --watermark-ai is enabled}';
 
     protected $description = 'Process priceable Ecotrade item images through Gemini and attach the final image to Spatie media';
 
@@ -32,12 +33,14 @@ class ImportEcotradeProductImagesCommand extends Command
         EcotradeJsonReader $reader,
         EcotradeProductImageCandidateResolver $resolver,
         EcotradeProductImageImporter $importer,
+        EcotradeProductImageProgressStore $progressStore,
     ): int {
         try {
             $path = $this->resolvePath((string) $this->argument('path'));
             $dryRun = (bool) $this->option('dry-run');
             $testMode = (bool) $this->option('test');
             $replaceExisting = (bool) $this->option('replace-existing');
+            $fresh = (bool) $this->option('fresh');
             $watermark = $this->watermarkMode(
                 (string) $this->option('watermark'),
                 (bool) $this->option('watermark-ai'),
@@ -47,13 +50,39 @@ class ImportEcotradeProductImagesCommand extends Command
             $limit = $this->limit($testMode);
             $chunkSize = max(1, (int) $this->option('chunk'));
             $sleepMs = max(0, (int) $this->option('sleep-ms'));
+            $progressKey = $this->progressKey($path, $replaceExisting, $watermark, $watermarkText);
 
-            $resolved = $resolver->resolve($reader->read($path), $replaceExisting, $limit);
+            if ($fresh && ! $testMode) {
+                $progressStore->forget($progressKey);
+            }
+
+            $progress = $testMode ? [
+                'completed_item_ids' => [],
+                'completed_source_hashes' => [],
+            ] : $progressStore->load($progressKey);
+
+            $resolved = $resolver->resolve(
+                $reader->read($path),
+                $replaceExisting,
+                $limit,
+                $progress['completed_item_ids'],
+                $progress['completed_source_hashes'],
+            );
             $summary = $resolved['summary'];
             $candidates = $resolved['candidates'];
             $estimatedCost = $this->estimatedCost(count($candidates));
 
-            $this->printPlan($path, $dryRun, $testMode, $replaceExisting, $watermark, $summary, $estimatedCost);
+            $this->printPlan(
+                $path,
+                $dryRun,
+                $testMode,
+                $replaceExisting,
+                $fresh,
+                $watermark,
+                $summary,
+                $estimatedCost,
+                count($progress['completed_item_ids']),
+            );
 
             if ($dryRun) {
                 $this->comment('Dry run completed without Gemini calls or media writes.');
@@ -85,6 +114,10 @@ class ImportEcotradeProductImagesCommand extends Command
                     try {
                         $media = $importer->import($candidate, $watermark, $watermarkText, $replaceExisting);
                         $imported++;
+
+                        if (! $testMode) {
+                            $progressStore->markCompleted($progressKey, $candidate);
+                        }
 
                         if ($testMode) {
                             $testResult = [
@@ -140,9 +173,11 @@ class ImportEcotradeProductImagesCommand extends Command
         bool $dryRun,
         bool $testMode,
         bool $replaceExisting,
+        bool $fresh,
         string $watermark,
         array $summary,
         float $estimatedCost,
+        int $completedCount,
     ): void {
         $this->newLine();
         $this->line('Ecotrade Product Image Import');
@@ -150,6 +185,8 @@ class ImportEcotradeProductImagesCommand extends Command
         $this->line('Dry run: '.($dryRun ? 'yes' : 'no'));
         $this->line('Test mode: '.($testMode ? 'yes' : 'no'));
         $this->line('Replace existing: '.($replaceExisting ? 'yes' : 'no'));
+        $this->line('Fresh run: '.($fresh ? 'yes' : 'no'));
+        $this->line('Completed checkpoint items: '.$completedCount);
         $this->line('Watermark: '.$watermark);
         $this->newLine();
 
@@ -248,5 +285,19 @@ class ImportEcotradeProductImagesCommand extends Command
         }
 
         throw new RuntimeException('Ecotrade JSON file not found: '.$path);
+    }
+
+    private function progressKey(string $path, bool $replaceExisting, string $watermark, string $watermarkText): string
+    {
+        $fingerprint = implode('|', [
+            'ecotrade-product-images',
+            $path,
+            is_file($path) ? (string) (sha1_file($path) ?: '') : $path,
+            $replaceExisting ? 'replace-existing' : 'keep-existing',
+            strtolower(trim($watermark)),
+            trim($watermarkText),
+        ]);
+
+        return sha1($fingerprint);
     }
 }

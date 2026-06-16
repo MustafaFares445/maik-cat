@@ -12,12 +12,20 @@ class EcotradeProductImageCandidateResolver
 
     /**
      * @param  array<int, array<string, mixed>>  $records
+     * @param  array<int, string>  $completedItemIds
+     * @param  array<int, string>  $completedSourceHashes
      * @return array{
      *     summary: array<string, int>,
      *     candidates: list<EcotradeProductImageCandidate>
      * }
      */
-    public function resolve(array $records, bool $replaceExisting = false, ?int $limit = null): array
+    public function resolve(
+        array $records,
+        bool $replaceExisting = false,
+        ?int $limit = null,
+        array $completedItemIds = [],
+        array $completedSourceHashes = [],
+    ): array
     {
         $summary = [
             'records_total' => count($records),
@@ -27,6 +35,7 @@ class EcotradeProductImageCandidateResolver
             'records_without_main_image' => 0,
             'matched_items' => 0,
             'priceable_items' => 0,
+            'skipped_checkpointed' => 0,
             'skipped_not_priceable' => 0,
             'skipped_existing_image' => 0,
             'candidates_available' => 0,
@@ -61,6 +70,8 @@ class EcotradeProductImageCandidateResolver
         }
 
         $candidates = [];
+        $completedItemIds = array_fill_keys(array_filter(array_map('strval', $completedItemIds)), true);
+        $completedSourceHashes = array_fill_keys(array_filter(array_map('strval', $completedSourceHashes)), true);
 
         foreach (array_chunk(array_values($productsByHash), 1000) as $productChunk) {
             $hashChunk = array_values(array_filter(array_map(
@@ -96,6 +107,15 @@ class EcotradeProductImageCandidateResolver
                 }
 
                 $summary['matched_items']++;
+
+                $itemId = (string) $item->id;
+                $sourceHash = is_string($item->source_hash) ? $item->source_hash : null;
+
+                if (isset($completedItemIds[$itemId]) || ($sourceHash !== null && isset($completedSourceHashes[$sourceHash]))) {
+                    $summary['skipped_checkpointed']++;
+
+                    continue;
+                }
 
                 if (! $this->isPriceable($item)) {
                     $summary['skipped_not_priceable']++;

@@ -7,6 +7,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 uses(RefreshDatabase::class);
 
@@ -68,9 +69,9 @@ function ecotradeImageImportHash(string $brandSlug, string $serialCode, string $
     return sha1(mb_strtolower($brandSlug).'|'.mb_strtoupper($serialCode).'|'.mb_strtolower($productUrl));
 }
 
-function ecotradeImageImportItem(array $record, array $overrides = []): Item
+function ecotradeImageImportItem(array $record, array $overrides = [], ?CarGroup $group = null): Item
 {
-    $group = CarGroup::factory()->create([
+    $group ??= CarGroup::factory()->create([
         'name' => 'Acura',
         'excel_sheet_name' => 'ACURA',
         'slug' => 'acura',
@@ -138,6 +139,141 @@ test('paid full run requires an explicit max cost guard', function () {
     @unlink($jsonPath);
 });
 
+test('the command remembers completed items and resumes after a partial run', function () {
+    $group = CarGroup::factory()->create([
+        'name' => 'Acura',
+        'excel_sheet_name' => 'ACURA',
+        'slug' => 'acura-resume',
+        'source' => 'ecotrade',
+    ]);
+
+    $recordOne = ecotradeImageImportRecord([
+        'product_url' => 'https://www.ecotradegroup.com/en/product/acura/acura-mdx-04-front-a',
+        'serial_code' => 'ACURA MDX 04 FRONT A',
+        'product_name' => 'ACURA MDX 04 FRONT A',
+        'image_urls' => ['https://images.test/source/acura-a.png'],
+        'main_image_url' => 'https://images.test/source/acura-a.png',
+    ]);
+    $recordTwo = ecotradeImageImportRecord([
+        'product_url' => 'https://www.ecotradegroup.com/en/product/acura/acura-mdx-04-front-b',
+        'serial_code' => 'ACURA MDX 04 FRONT B',
+        'product_name' => 'ACURA MDX 04 FRONT B',
+        'image_urls' => ['https://images.test/source/acura-b.png'],
+        'main_image_url' => 'https://images.test/source/acura-b.png',
+    ]);
+
+    $itemOne = ecotradeImageImportItem($recordOne, [], $group);
+    $itemTwo = ecotradeImageImportItem($recordTwo, [], $group);
+    $jsonPath = ecotradeImageImportTempFile(json_encode([$recordOne, $recordTwo], JSON_THROW_ON_ERROR), '.json');
+    $sourceOneBytes = ecotradeImageImportPngBytes();
+    $sourceTwoBytes = ecotradeImageImportPngBytes(340, 240);
+    $editedOneBytes = ecotradeImageImportPngBytes(360, 240);
+    $editedTwoBytes = ecotradeImageImportPngBytes(380, 260);
+
+    Http::fake([
+        'https://images.test/source/acura-a.png' => Http::response($sourceOneBytes, 200, [
+            'Content-Type' => 'image/png',
+        ]),
+        'https://images.test/source/acura-b.png' => Http::response($sourceTwoBytes, 200, [
+            'Content-Type' => 'image/png',
+        ]),
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent*' => Http::sequence()
+            ->push([
+                'candidates' => [
+                    [
+                        'content' => [
+                            'parts' => [
+                                [
+                                    'inlineData' => [
+                                        'mimeType' => 'image/png',
+                                        'data' => base64_encode($editedOneBytes),
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ], 200)
+            ->push([
+                'candidates' => [
+                    [
+                        'content' => [
+                            'parts' => [
+                                [
+                                    'inlineData' => [
+                                        'mimeType' => 'image/png',
+                                        'data' => base64_encode($editedTwoBytes),
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ], 200),
+    ]);
+
+    $this->artisan('ecotrade:import-product-images', [
+        'path' => $jsonPath,
+        '--limit' => 1,
+        '--chunk' => 1,
+        '--max-cost-usd' => '0.05',
+    ])
+        ->expectsOutputToContain('Completed checkpoint items: 0')
+        ->expectsOutputToContain('Imported: 1')
+        ->assertExitCode(0);
+
+    $processedItem = $itemOne->refresh()->getFirstMedia('images') ? $itemOne : $itemTwo;
+    $pendingItem = $processedItem->is($itemOne) ? $itemTwo : $itemOne;
+
+    expect($processedItem->refresh()->getFirstMedia('images'))->not->toBeNull()
+        ->and($pendingItem->refresh()->getFirstMedia('images'))->toBeNull();
+
+    $processedItem->refresh()->getMedia('images')->each(
+        static fn (Media $media): bool => (bool) $media->delete()
+    );
+
+    expect($processedItem->refresh()->getFirstMedia('images'))->toBeNull();
+
+    Http::fake([
+        $pendingItem->source_url => Http::response($sourceTwoBytes, 200, [
+            'Content-Type' => 'image/png',
+        ]),
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent*' => Http::response([
+            'candidates' => [
+                [
+                    'content' => [
+                        'parts' => [
+                            [
+                                'inlineData' => [
+                                    'mimeType' => 'image/png',
+                                    'data' => base64_encode($editedTwoBytes),
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ], 200),
+    ]);
+
+    $this->artisan('ecotrade:import-product-images', [
+        'path' => $jsonPath,
+        '--chunk' => 1,
+        '--max-cost-usd' => '0.05',
+    ])
+        ->expectsOutputToContain('Completed checkpoint items: 1')
+        ->expectsOutputToContain('skipped checkpointed: 1')
+        ->expectsOutputToContain('Imported: 1')
+        ->assertExitCode(0);
+
+    expect($processedItem->refresh()->getFirstMedia('images'))->toBeNull()
+        ->and($pendingItem->refresh()->getFirstMedia('images'))->not->toBeNull();
+
+    Http::assertSentCount(2);
+
+    @unlink($jsonPath);
+});
+
 test('test mode processes one image and stores the Gemini result in item media', function () {
     $record = ecotradeImageImportRecord();
     $item = ecotradeImageImportItem($record);
@@ -179,10 +315,103 @@ test('test mode processes one image and stores the Gemini result in item media',
     $media = $item->refresh()->getFirstMedia('images');
 
     expect($media)->not->toBeNull()
+        ->and($media->file_name)->toBe('acura-mdx-04-front-maikcat.png')
         ->and($media->getCustomProperty('source'))->toBe('ecotrade')
         ->and($media->getCustomProperty('source_url'))->toBe('https://images.test/source/acura.png')
         ->and($media->getCustomProperty('gemini_model'))->toBe('gemini-2.5-flash-image')
         ->and($media->getCustomProperty('watermark_mode'))->toBe('spatie')
+        ->and($media->getCustomProperty('watermark_asset'))->toBe('resources/images/ecotrade/maikcat-watermark.png')
+        ->and($media->getCustomProperty('watermark_text'))->toBeNull()
+        ->and($media->getCustomProperty('maikcat_watermark'))->toBeTrue();
+
+    Http::assertSentCount(2);
+
+    @unlink($jsonPath);
+});
+
+test('test mode accepts uri-delivered Gemini images', function () {
+    $record = ecotradeImageImportRecord();
+    $item = ecotradeImageImportItem($record);
+    $jsonPath = ecotradeImageImportTempFile(json_encode([$record], JSON_THROW_ON_ERROR), '.json');
+    $sourceBytes = ecotradeImageImportPngBytes();
+    $editedBytes = ecotradeImageImportPngBytes(360, 240);
+
+    Http::fake([
+        'https://images.test/source/acura.png' => Http::response($sourceBytes, 200, [
+            'Content-Type' => 'image/png',
+        ]),
+        'https://images.test/output/acura-edited.png' => Http::response($editedBytes, 200, [
+            'Content-Type' => 'image/png',
+        ]),
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent*' => Http::response([
+            'candidates' => [
+                [
+                    'content' => [
+                        'parts' => [
+                            [
+                                'fileUri' => 'https://images.test/output/acura-edited.png',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ], 200),
+    ]);
+
+    $this->artisan('ecotrade:import-product-images', [
+        'path' => $jsonPath,
+        '--test' => true,
+    ])
+        ->expectsOutputToContain('Test mode: yes')
+        ->assertExitCode(0);
+
+    $media = $item->refresh()->getFirstMedia('images');
+
+    expect($media)->not->toBeNull()
+        ->and($media->getCustomProperty('source'))->toBe('ecotrade');
+
+    Http::assertSentCount(3);
+
+    @unlink($jsonPath);
+});
+
+test('test mode falls back to source image when Gemini returns text only', function () {
+    $record = ecotradeImageImportRecord();
+    $item = ecotradeImageImportItem($record);
+    $jsonPath = ecotradeImageImportTempFile(json_encode([$record], JSON_THROW_ON_ERROR), '.json');
+    $sourceBytes = ecotradeImageImportPngBytes();
+
+    Http::fake([
+        'https://images.test/source/acura.png' => Http::response($sourceBytes, 200, [
+            'Content-Type' => 'image/png',
+        ]),
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent*' => Http::response([
+            'candidates' => [
+                [
+                    'content' => [
+                        'parts' => [
+                            [
+                                'text' => 'I cannot fulfill a watermark-removal request.',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ], 200),
+    ]);
+
+    $this->artisan('ecotrade:import-product-images', [
+        'path' => $jsonPath,
+        '--test' => true,
+    ])
+        ->expectsOutputToContain('Test mode: yes')
+        ->expectsOutputToContain('Test result:')
+        ->assertExitCode(0);
+
+    $media = $item->refresh()->getFirstMedia('images');
+
+    expect($media)->not->toBeNull()
+        ->and($media->getCustomProperty('gemini_result'))->toBe('source_fallback')
         ->and($media->getCustomProperty('maikcat_watermark'))->toBeTrue();
 
     Http::assertSentCount(2);
@@ -235,7 +464,9 @@ test('ai watermark mode sends maikcat instruction to Gemini', function () {
     ])->assertExitCode(0);
 
     expect($geminiPrompt)->toContain('maikcat')
-        ->and($geminiPrompt)->toContain('add multiple visible repeated watermarks');
+        ->and($geminiPrompt)->toContain('Add multiple visible repeated watermarks')
+        ->and($geminiPrompt)->toContain('Preserve crisp focus, edge definition, and fine surface texture')
+        ->and($geminiPrompt)->toContain('do not add any source attribution');
 
     @unlink($jsonPath);
 });
