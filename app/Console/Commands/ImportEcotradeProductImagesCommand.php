@@ -22,7 +22,7 @@ class ImportEcotradeProductImagesCommand extends Command
         {--max-cost-usd= : Required paid-run cost ceiling; test mode defaults to one-image cost}
         {--replace-existing : Replace item images that already exist}
         {--fresh : Ignore any saved progress checkpoint for this source file and options}
-        {--watermark=none : Watermark strategy: spatie, ai, or none}
+        {--watermark=spatie : Watermark strategy: spatie, ai, or none}
         {--watermark-ai : Ask Gemini to add repeated Maikcat watermark text after cleanup}
         {--watermark-spatie : Add the local Maikcat watermark image before saving to Spatie media}
         {--watermark-text=maikcat : Text used when --watermark-ai is enabled}';
