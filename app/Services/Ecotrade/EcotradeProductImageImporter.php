@@ -56,7 +56,7 @@ class EcotradeProductImageImporter
                     'gemini_prompt_version' => 'ecotrade-product-clean-v3',
                     'watermark_mode' => $watermarkMode,
                     'watermark_text' => $watermarkMode === 'ai' ? $watermarkText : null,
-                    'watermark_asset' => $watermarkMode === 'spatie' ? 'resources/images/ecotrade/maikcat-watermark.png' : null,
+                    'watermark_asset' => $watermarkMode === 'spatie' ? 'resources/images/ecotrade/maikcat-transparent-v2.png' : null,
                     'maikcat_watermark' => $watermarkMode !== 'none',
                 ])
                 ->toMediaCollection('images');

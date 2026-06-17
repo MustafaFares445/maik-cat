@@ -65,36 +65,6 @@ function ecotradeWatermarkSolidPng(int $width = 360, int $height = 240): string
     return $target;
 }
 
-function ecotradeWatermarkWhitePng(int $width = 360, int $height = 240): string
-{
-    $image = imagecreatetruecolor($width, $height);
-
-    if ($image === false) {
-        throw new RuntimeException('Failed to create a temporary image for watermark testing.');
-    }
-
-    $background = imagecolorallocate($image, 255, 255, 255);
-    imagefill($image, 0, 0, $background);
-
-    $path = tempnam(sys_get_temp_dir(), 'ecotrade_watermark_white_');
-
-    if ($path === false) {
-        imagedestroy($image);
-
-        throw new RuntimeException('Failed to allocate a temporary path for watermark testing.');
-    }
-
-    $target = $path.'.png';
-    @unlink($path);
-
-    ob_start();
-    imagepng($image);
-    file_put_contents($target, (string) ob_get_clean());
-    imagedestroy($image);
-
-    return $target;
-}
-
 /**
  * @return array{red: float, green: float, blue: float}
  */
@@ -130,7 +100,7 @@ function ecotradeWatermarkAverageRgb(string $path): array
     ];
 }
 
-function ecotradeWatermarkDarkSampleCount(string $path): int
+function ecotradeWatermarkLightSampleCount(string $path, int $minGreen): int
 {
     $image = imagecreatefrompng($path);
 
@@ -140,14 +110,12 @@ function ecotradeWatermarkDarkSampleCount(string $path): int
 
     $count = 0;
 
-    for ($y = 0; $y < imagesy($image); $y += 10) {
-        for ($x = 0; $x < imagesx($image); $x += 10) {
+    for ($y = 0; $y < imagesy($image); $y += 4) {
+        for ($x = 0; $x < imagesx($image); $x += 4) {
             $color = imagecolorat($image, $x, $y);
-            $red = ($color >> 16) & 0xFF;
             $green = ($color >> 8) & 0xFF;
-            $blue = $color & 0xFF;
 
-            if ($red < 245 || $green < 245 || $blue < 245) {
+            if ($green >= $minGreen) {
                 $count++;
             }
         }
@@ -158,12 +126,10 @@ function ecotradeWatermarkDarkSampleCount(string $path): int
     return $count;
 }
 
-test('maikcat watermark applier uses the bundled watermark image asset', function () {
+test('maikcat watermark applier stamps the image while preserving its dimensions', function () {
     $sourcePath = ecotradeWatermarkTempPng();
     $beforeHash = md5_file($sourcePath);
     $beforeSize = getimagesize($sourcePath);
-
-    expect(is_file(resource_path('images/ecotrade/maikcat-watermark.png')))->toBeTrue();
 
     app(EcotradeMaikcatWatermarkApplier::class)->apply($sourcePath);
 
@@ -177,12 +143,14 @@ test('maikcat watermark applier uses the bundled watermark image asset', functio
     @unlink($sourcePath);
 });
 
-test('maikcat watermark stays visible on a light background', function () {
-    $sourcePath = ecotradeWatermarkWhitePng();
+test('maikcat watermark is visible over a dark product area', function () {
+    // Solid red base (green channel ~32); the semi-transparent white watermark blends in
+    // and raises the green channel where it overlays the part.
+    $sourcePath = ecotradeWatermarkSolidPng();
 
     app(EcotradeMaikcatWatermarkApplier::class)->apply($sourcePath);
 
-    expect(ecotradeWatermarkDarkSampleCount($sourcePath))->toBeGreaterThan(0);
+    expect(ecotradeWatermarkLightSampleCount($sourcePath, 90))->toBeGreaterThan(0);
 
     @unlink($sourcePath);
 });
