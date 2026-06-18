@@ -320,7 +320,7 @@ test('test mode processes one image and stores the Gemini result in item media',
         ->and($media->getCustomProperty('source_url'))->toBe('https://images.test/source/acura.png')
         ->and($media->getCustomProperty('gemini_model'))->toBe('gemini-2.5-flash-image')
         ->and($media->getCustomProperty('watermark_mode'))->toBe('spatie')
-        ->and($media->getCustomProperty('watermark_asset'))->toBe('resources/images/ecotrade/maikcat-watermark.png')
+        ->and($media->getCustomProperty('watermark_asset'))->toBe('resources/images/ecotrade/maikcat-transparent-v2.png')
         ->and($media->getCustomProperty('watermark_text'))->toBeNull()
         ->and($media->getCustomProperty('maikcat_watermark'))->toBeTrue();
 

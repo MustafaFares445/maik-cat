@@ -53,10 +53,10 @@ class EcotradeProductImageImporter
                     'gemini_model' => config('services.gemini.image_model', 'gemini-2.5-flash-image'),
                     'gemini_result' => $geminiResult,
                     'gemini_processed_at' => now()->toISOString(),
-                    'gemini_prompt_version' => 'ecotrade-product-preserve-v2',
+                    'gemini_prompt_version' => 'ecotrade-product-clean-v3',
                     'watermark_mode' => $watermarkMode,
                     'watermark_text' => $watermarkMode === 'ai' ? $watermarkText : null,
-                    'watermark_asset' => $watermarkMode === 'spatie' ? 'resources/images/ecotrade/maikcat-watermark.png' : null,
+                    'watermark_asset' => $watermarkMode === 'spatie' ? 'resources/images/ecotrade/maikcat-transparent-v2.png' : null,
                     'maikcat_watermark' => $watermarkMode !== 'none',
                 ])
                 ->toMediaCollection('images');
@@ -95,36 +95,40 @@ class EcotradeProductImageImporter
     private function buildPrompt(string $watermarkMode, string $watermarkText): string
     {
         $watermarkInstruction = match ($watermarkMode) {
-            'ai' => "\nAdd multiple visible repeated watermarks with the exact text \"{$watermarkText}\". Keep them semi-transparent and do not cover, hide, remove, blur, or replace any existing watermark, logo, copyright notice, signature, label, or attribution mark.",
-            default => "\nDo not add any new logos, branding, text, watermarks, labels, or extra objects in the Gemini edit.",
+            'ai' => "\nRemove the original supplier watermark, logo, signature, label, and copyright notice, and do not add any source attribution other than the requested mark. Add multiple visible repeated watermarks with the exact text \"{$watermarkText}\", semi-transparent and evenly spaced across the image.",
+            default => "\nRemove the original supplier watermark, logo, signature, label, copyright notice, and any source attribution. Do not add any new logos, branding, text, or watermarks; a separate watermark is applied afterwards.",
         };
 
         return trim(<<<PROMPT
-Prepare the attached product photo for catalog display while preserving the original image ownership and attribution marks.
+Prepare the attached product photo for a clean e-commerce catalog listing.
 
 Goal:
-Create a realistic product image suitable for an e-commerce catalog without changing what the product is and without removing or obscuring source attribution.
+Improve the image quality and remove the original supplier watermark while keeping the physical product exactly as it appears in the source photo.
 
 Image context:
 The image shows an isolated rusty automotive exhaust/catalytic converter component on a plain white or light background. The part has a silver/gray cylindrical body, rusty brown corrosion, flanges, bolts/studs, seams, a small threaded port on top, and a curved outlet section.
 
-Editing requirements:
-Preserve any existing copyright notices, logos, signatures, watermarks, labels, or attribution marks already present in the source image.
-Do not remove, hide, blur, cover, replace, imitate, or alter any existing watermark, logo, copyright notice, signature, label, or attribution mark.
+Enhancement requirements:
+Preserve crisp focus, edge definition, and fine surface texture.
+Improve sharpness, clarity, lighting balance, and overall image quality.
+Reduce noise and compression artifacts without smoothing away real surface detail.
+
+Product fidelity requirements (critical):
 Preserve the exact object shape, silhouette, angle, perspective, and proportions.
 Preserve the original rusty metal texture and natural corrosion patterns.
-Preserve the original lighting, shadows, contrast, and product-photo style.
-Preserve the plain white/light background.
+Keep every real bolt, stud, hole, weld, seam, threaded port, scratch, and dent exactly as shown.
 Do not change the product type or redesign the component.
-Do not make the object look new, polished, or cleaner than the original.
-Do not remove real rust, scratches, dirt, seams, bolts, holes, or product details.
+Do not make the object look new, polished, repaired, or cleaner than the original.
+Do not invent, reconstruct, or hallucinate any detail that is not present in the source photo.
 Do not crop important parts of the object.
-Keep the result realistic, natural, and suitable for an e-commerce product image.{$watermarkInstruction}
+Preserve the plain white/light background.
+
+Watermark requirements:{$watermarkInstruction}
 
 Quality requirements:
-The final image should look like the original product photo with source attribution preserved.
+The final image must show the same physical product as the source photo, only cleaner and sharper.
 No obvious blur patches, smears, duplicated texture, AI artifacts, or fake-looking reconstruction should be introduced.
-Keep the same composition and preferably the same aspect ratio as the original image.
+Keep the same composition and aspect ratio as the original image.
 
 Output:
 Return only the edited image.
