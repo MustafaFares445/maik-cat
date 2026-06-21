@@ -129,10 +129,8 @@ class ImportEcotradeProductImagesCommand extends Command
                             ];
                         }
                     } catch (Throwable $exception) {
-                        report($exception);
                         $failed++;
-                        $this->newLine();
-                        $this->error('Image failed for item '.$candidate->item->id.': '.$exception->getMessage());
+                        $this->reportCandidateFailure($candidate->item->id, $exception);
                     }
 
                     $bar->advance();
@@ -150,6 +148,10 @@ class ImportEcotradeProductImagesCommand extends Command
             $this->line('- Imported: '.$imported);
             $this->line('- Failed: '.$failed);
 
+            if ($failed > 0) {
+                $this->warn('Some images failed and were skipped. Review the errors above and rerun the command to retry the remaining items.');
+            }
+
             if (is_array($testResult)) {
                 $this->newLine();
                 $this->line('Test result:');
@@ -160,7 +162,11 @@ class ImportEcotradeProductImagesCommand extends Command
                 $this->line('- Media URL: '.$testResult['media_url']);
             }
 
-            return $failed > 0 ? self::FAILURE : self::SUCCESS;
+            if ($failed > 0 && $imported === 0) {
+                return self::FAILURE;
+            }
+
+            return self::SUCCESS;
         } catch (Throwable $exception) {
             $this->error('Ecotrade product image import failed: '.$exception->getMessage());
 
@@ -299,5 +305,17 @@ class ImportEcotradeProductImagesCommand extends Command
         ]);
 
         return sha1($fingerprint);
+    }
+
+    private function reportCandidateFailure(int|string $itemId, Throwable $exception): void
+    {
+        try {
+            report($exception);
+        } catch (Throwable) {
+            // Ignore secondary reporting failures so one bad image never aborts the batch.
+        }
+
+        $this->newLine();
+        $this->error('Image failed for item '.$itemId.': '.$exception->getMessage());
     }
 }

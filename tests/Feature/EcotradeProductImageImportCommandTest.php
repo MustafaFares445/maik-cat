@@ -274,6 +274,78 @@ test('the command remembers completed items and resumes after a partial run', fu
     @unlink($jsonPath);
 });
 
+test('the command continues after one image download fails and still completes the batch', function () {
+    $group = CarGroup::factory()->create([
+        'name' => 'Acura',
+        'excel_sheet_name' => 'ACURA',
+        'slug' => 'acura-continue',
+        'source' => 'ecotrade',
+    ]);
+
+    $recordOne = ecotradeImageImportRecord([
+        'product_url' => 'https://www.ecotradegroup.com/en/product/acura/acura-mdx-04-front-curl-fail',
+        'serial_code' => 'ACURA MDX 04 FRONT CURL FAIL',
+        'product_name' => 'ACURA MDX 04 FRONT CURL FAIL',
+        'image_urls' => ['https://images.test/source/acura-curl-fail.png'],
+        'main_image_url' => 'https://images.test/source/acura-curl-fail.png',
+    ]);
+    $recordTwo = ecotradeImageImportRecord([
+        'product_url' => 'https://www.ecotradegroup.com/en/product/acura/acura-mdx-04-front-continue',
+        'serial_code' => 'ACURA MDX 04 FRONT CONTINUE',
+        'product_name' => 'ACURA MDX 04 FRONT CONTINUE',
+        'image_urls' => ['https://images.test/source/acura-continue.png'],
+        'main_image_url' => 'https://images.test/source/acura-continue.png',
+    ]);
+
+    $itemOne = ecotradeImageImportItem($recordOne, [], $group);
+    $itemTwo = ecotradeImageImportItem($recordTwo, [], $group);
+    $jsonPath = ecotradeImageImportTempFile(json_encode([$recordOne, $recordTwo], JSON_THROW_ON_ERROR), '.json');
+    $sourceTwoBytes = ecotradeImageImportPngBytes(340, 240);
+    $editedTwoBytes = ecotradeImageImportPngBytes(380, 260);
+
+    Http::fake([
+        'https://images.test/source/acura-curl-fail.png' => Http::failedConnection('cURL error 28: Operation timed out'),
+        'https://images.test/source/acura-continue.png' => Http::response($sourceTwoBytes, 200, [
+            'Content-Type' => 'image/png',
+        ]),
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent*' => Http::response([
+            'candidates' => [
+                [
+                    'content' => [
+                        'parts' => [
+                            [
+                                'inlineData' => [
+                                    'mimeType' => 'image/png',
+                                    'data' => base64_encode($editedTwoBytes),
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ], 200),
+    ]);
+
+    $this->artisan('ecotrade:import-product-images', [
+        'path' => $jsonPath,
+        '--chunk' => 1,
+        '--max-cost-usd' => '0.10',
+    ])
+        ->expectsOutputToContain('Image failed for item '.$itemOne->id)
+        ->expectsOutputToContain('Processed: 2')
+        ->expectsOutputToContain('Imported: 1')
+        ->expectsOutputToContain('Failed: 1')
+        ->expectsOutputToContain('Some images failed and were skipped.')
+        ->assertExitCode(0);
+
+    expect($itemOne->refresh()->getFirstMedia('images'))->toBeNull()
+        ->and($itemTwo->refresh()->getFirstMedia('images'))->not->toBeNull();
+
+    Http::assertSentCount(3);
+
+    @unlink($jsonPath);
+});
+
 test('test mode processes one image and stores the Gemini result in item media', function () {
     $record = ecotradeImageImportRecord();
     $item = ecotradeImageImportItem($record);
