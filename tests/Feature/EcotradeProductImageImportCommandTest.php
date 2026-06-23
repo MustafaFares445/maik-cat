@@ -346,6 +346,116 @@ test('the command continues after one image download fails and still completes t
     @unlink($jsonPath);
 });
 
+test('retry incomplete only reprocesses failed checkpoint items without touching completed ones', function () {
+    $group = CarGroup::factory()->create([
+        'name' => 'Acura',
+        'excel_sheet_name' => 'ACURA',
+        'slug' => 'acura-retry-failed',
+        'source' => 'ecotrade',
+    ]);
+
+    $failedRecord = ecotradeImageImportRecord([
+        'product_url' => 'https://www.ecotradegroup.com/en/product/acura/acura-mdx-04-front-retry-failed',
+        'serial_code' => 'ACURA MDX 04 FRONT RETRY FAILED',
+        'product_name' => 'ACURA MDX 04 FRONT RETRY FAILED',
+        'image_urls' => ['https://images.test/source/acura-retry-failed.png'],
+        'main_image_url' => 'https://images.test/source/acura-retry-failed.png',
+    ]);
+    $completedRecord = ecotradeImageImportRecord([
+        'product_url' => 'https://www.ecotradegroup.com/en/product/acura/acura-mdx-04-front-retry-complete',
+        'serial_code' => 'ACURA MDX 04 FRONT RETRY COMPLETE',
+        'product_name' => 'ACURA MDX 04 FRONT RETRY COMPLETE',
+        'image_urls' => ['https://images.test/source/acura-retry-complete.png'],
+        'main_image_url' => 'https://images.test/source/acura-retry-complete.png',
+    ]);
+
+    $failedItem = ecotradeImageImportItem($failedRecord, [], $group);
+    $completedItem = ecotradeImageImportItem($completedRecord, [], $group);
+    $jsonPath = ecotradeImageImportTempFile(json_encode([$failedRecord, $completedRecord], JSON_THROW_ON_ERROR), '.json');
+    $sourceBytes = ecotradeImageImportPngBytes(340, 240);
+    $editedBytes = ecotradeImageImportPngBytes(380, 260);
+    $failedSourceAttempts = 0;
+
+    Http::fake(function (Request $request) use ($sourceBytes, $editedBytes, &$failedSourceAttempts) {
+        if ($request->url() === 'https://images.test/source/acura-retry-failed.png') {
+            if ($failedSourceAttempts === 0) {
+                $failedSourceAttempts++;
+
+                return Http::failedConnection('cURL error 28: Operation timed out');
+            }
+
+            return Http::response($sourceBytes, 200, [
+                'Content-Type' => 'image/png',
+            ]);
+        }
+
+        if ($request->url() === 'https://images.test/source/acura-retry-complete.png') {
+            return Http::response($sourceBytes, 200, [
+                'Content-Type' => 'image/png',
+            ]);
+        }
+
+        if (str_contains($request->url(), 'generativelanguage.googleapis.com')) {
+            return Http::response([
+                'candidates' => [
+                    [
+                        'content' => [
+                            'parts' => [
+                                [
+                                    'inlineData' => [
+                                        'mimeType' => 'image/png',
+                                        'data' => base64_encode($editedBytes),
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ], 200);
+        }
+
+        return Http::response([], 404);
+    });
+
+    $this->artisan('ecotrade:import-product-images', [
+        'path' => $jsonPath,
+        '--chunk' => 1,
+        '--max-cost-usd' => '0.10',
+    ])
+        ->expectsOutputToContain('Imported: 1')
+        ->expectsOutputToContain('Failed: 1')
+        ->assertExitCode(0);
+
+    $this->artisan('ecotrade:import-product-images', [
+        'path' => $jsonPath,
+        '--chunk' => 1,
+        '--retry-incomplete-only' => true,
+        '--max-cost-usd' => '0.05',
+    ])
+        ->expectsOutputToContain('Retry incomplete only: yes')
+        ->expectsOutputToContain('Completed checkpoint items: 1')
+        ->expectsOutputToContain('Failed checkpoint items: 1')
+        ->expectsOutputToContain('Imported: 1')
+        ->expectsOutputToContain('Failed: 0')
+        ->assertExitCode(0);
+
+    expect($failedItem->refresh()->getFirstMedia('images'))->not->toBeNull()
+        ->and($completedItem->refresh()->getFirstMedia('images'))->not->toBeNull();
+
+    Http::assertSentCount(5);
+
+    $this->artisan('ecotrade:import-product-images', [
+        'path' => $jsonPath,
+        '--retry-incomplete-only' => true,
+        '--dry-run' => true,
+    ])
+        ->expectsOutputToContain('Failed checkpoint items: 0')
+        ->expectsOutputToContain('candidates selected: 0')
+        ->assertExitCode(0);
+
+    @unlink($jsonPath);
+});
+
 test('test mode processes one image and stores the Gemini result in item media', function () {
     $record = ecotradeImageImportRecord();
     $item = ecotradeImageImportItem($record);

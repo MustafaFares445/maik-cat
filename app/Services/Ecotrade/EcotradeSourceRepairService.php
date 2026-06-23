@@ -16,6 +16,7 @@ class EcotradeSourceRepairService
         private readonly EcotradeJsonReader $reader,
         private readonly EcotradeRecordNormalizer $normalizer,
         private readonly EcotradeBrandImporter $brandImporter,
+        private readonly EcotradeDetailsTextResolver $detailsTextResolver,
     ) {}
 
     /**
@@ -160,17 +161,12 @@ class EcotradeSourceRepairService
      */
     private function sourceUpdates(Item $item, EcotradeProductData $data, CarGroup $brand): array
     {
-        $details = json_encode(
-            $data->detailsPayload(),
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-        );
-
         $updates = [
             'car_group_id' => $brand->id,
             'model' => $data->productName,
             'serial_code' => $data->serialCode,
             'normalized_serial' => Item::normalizeSerialValue($data->serialCode),
-            'details' => $details,
+            'details' => $this->detailsTextResolver->resolve($data->raw),
             'source' => 'ecotrade',
             'source_url' => $data->productUrl,
             'source_hash' => $data->sourceHash,

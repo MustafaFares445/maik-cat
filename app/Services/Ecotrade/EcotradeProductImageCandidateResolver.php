@@ -12,8 +12,16 @@ class EcotradeProductImageCandidateResolver
 
     /**
      * @param  array<int, array<string, mixed>>  $records
-     * @param  array<int, string>  $completedItemIds
-     * @param  array<int, string>  $completedSourceHashes
+     * @param  array{
+     *     replace_existing?: bool,
+     *     limit?: int|null,
+     *     completed_item_ids?: array<int, string>,
+     *     completed_source_hashes?: array<int, string>,
+     *     failed_item_ids?: array<int, string>,
+     *     failed_source_hashes?: array<int, string>,
+     *     failed_checkpoint_available?: bool,
+     *     retry_incomplete_only?: bool
+     * }  $options
      * @return array{
      *     summary: array<string, int>,
      *     candidates: list<EcotradeProductImageCandidate>
@@ -21,12 +29,20 @@ class EcotradeProductImageCandidateResolver
      */
     public function resolve(
         array $records,
-        bool $replaceExisting = false,
-        ?int $limit = null,
-        array $completedItemIds = [],
-        array $completedSourceHashes = [],
+        array $options = [],
     ): array
     {
+        $replaceExisting = (bool) ($options['replace_existing'] ?? false);
+        $limit = isset($options['limit']) && is_numeric($options['limit'])
+            ? max(1, (int) $options['limit'])
+            : null;
+        $completedItemIds = $this->lookupSet($options['completed_item_ids'] ?? []);
+        $completedSourceHashes = $this->lookupSet($options['completed_source_hashes'] ?? []);
+        $failedItemIds = $this->lookupSet($options['failed_item_ids'] ?? []);
+        $failedSourceHashes = $this->lookupSet($options['failed_source_hashes'] ?? []);
+        $failedCheckpointAvailable = (bool) ($options['failed_checkpoint_available'] ?? false);
+        $retryIncompleteOnly = (bool) ($options['retry_incomplete_only'] ?? false);
+
         $summary = [
             'records_total' => count($records),
             'records_valid' => 0,
@@ -36,6 +52,7 @@ class EcotradeProductImageCandidateResolver
             'matched_items' => 0,
             'priceable_items' => 0,
             'skipped_checkpointed' => 0,
+            'skipped_not_failed_checkpoint' => 0,
             'skipped_not_priceable' => 0,
             'skipped_existing_image' => 0,
             'candidates_available' => 0,
@@ -70,8 +87,6 @@ class EcotradeProductImageCandidateResolver
         }
 
         $candidates = [];
-        $completedItemIds = array_fill_keys(array_filter(array_map('strval', $completedItemIds)), true);
-        $completedSourceHashes = array_fill_keys(array_filter(array_map('strval', $completedSourceHashes)), true);
 
         foreach (array_chunk(array_values($productsByHash), 1000) as $productChunk) {
             $hashChunk = array_values(array_filter(array_map(
@@ -117,6 +132,17 @@ class EcotradeProductImageCandidateResolver
                     continue;
                 }
 
+                if (
+                    $retryIncompleteOnly
+                    && $failedCheckpointAvailable
+                    && ! isset($failedItemIds[$itemId])
+                    && ($sourceHash === null || ! isset($failedSourceHashes[$sourceHash]))
+                ) {
+                    $summary['skipped_not_failed_checkpoint']++;
+
+                    continue;
+                }
+
                 if (! $this->isPriceable($item)) {
                     $summary['skipped_not_priceable']++;
 
@@ -146,6 +172,15 @@ class EcotradeProductImageCandidateResolver
             'summary' => $summary,
             'candidates' => $candidates,
         ];
+    }
+
+    /**
+     * @param  array<int, string>  $values
+     * @return array<string, true>
+     */
+    private function lookupSet(array $values): array
+    {
+        return array_fill_keys(array_filter(array_map('strval', $values)), true);
     }
 
     private function isPriceable(Item $item): bool

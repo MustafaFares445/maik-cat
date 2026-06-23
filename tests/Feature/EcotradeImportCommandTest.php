@@ -117,12 +117,7 @@ test('imports Ecotrade brands, products, and brand logos', function () {
         ->and($alfaRomeo->getFirstMedia('logo'))->not->toBeNull();
 
     $item = Item::query()->where('source_hash', sha1('acura|ACURA MDX 04 FRONT|https://www.ecotradegroup.com/en/product/acura/acura-mdx-04-front'))->firstOrFail();
-    $details = json_decode((string) $item->details, true, 512, JSON_THROW_ON_ERROR);
-
-    expect($details['brand_slug'])->toBe('acura')
-        ->and($details['image_urls'])->toBe([
-            'https://www.ecotradegroup.com/cache/product_thumb/uploads/products/32248/path-10d-.png',
-        ])
+    expect($item->details)->toBe('ACURA MDX 04 FRONT')
         ->and($item->media()->count())->toBe(0);
 
     @unlink($jsonPath);

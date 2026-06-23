@@ -22,6 +22,8 @@ class ImportEcotradeProductImagesCommand extends Command
         {--max-cost-usd= : Required paid-run cost ceiling; test mode defaults to one-image cost}
         {--replace-existing : Replace item images that already exist}
         {--fresh : Ignore any saved progress checkpoint for this source file and options}
+        {--retry-incomplete-only : Retry only incomplete items for this source file and options}
+        {--retry-failed-only : Retry only items recorded as failed in a previous run for this source file and options}
         {--watermark=spatie : Watermark strategy: spatie, ai, or none}
         {--watermark-ai : Ask Gemini to add repeated Maikcat watermark text after cleanup}
         {--watermark-spatie : Add the local Maikcat watermark image before saving to Spatie media}
@@ -41,6 +43,8 @@ class ImportEcotradeProductImagesCommand extends Command
             $testMode = (bool) $this->option('test');
             $replaceExisting = (bool) $this->option('replace-existing');
             $fresh = (bool) $this->option('fresh');
+            $retryIncompleteOnly = (bool) $this->option('retry-incomplete-only')
+                || (bool) $this->option('retry-failed-only');
             $watermark = $this->watermarkMode(
                 (string) $this->option('watermark'),
                 (bool) $this->option('watermark-ai'),
@@ -59,14 +63,23 @@ class ImportEcotradeProductImagesCommand extends Command
             $progress = $testMode ? [
                 'completed_item_ids' => [],
                 'completed_source_hashes' => [],
+                'failed_item_ids' => [],
+                'failed_source_hashes' => [],
             ] : $progressStore->load($progressKey);
 
             $resolved = $resolver->resolve(
                 $reader->read($path),
-                $replaceExisting,
-                $limit,
-                $progress['completed_item_ids'],
-                $progress['completed_source_hashes'],
+                [
+                    'replace_existing' => $replaceExisting,
+                    'limit' => $limit,
+                    'completed_item_ids' => $progress['completed_item_ids'],
+                    'completed_source_hashes' => $progress['completed_source_hashes'],
+                    'failed_item_ids' => $progress['failed_item_ids'],
+                    'failed_source_hashes' => $progress['failed_source_hashes'],
+                    'failed_checkpoint_available' => $progress['failed_item_ids'] !== []
+                        || $progress['failed_source_hashes'] !== [],
+                    'retry_incomplete_only' => $retryIncompleteOnly,
+                ],
             );
             $summary = $resolved['summary'];
             $candidates = $resolved['candidates'];
@@ -78,10 +91,12 @@ class ImportEcotradeProductImagesCommand extends Command
                 $testMode,
                 $replaceExisting,
                 $fresh,
+                $retryIncompleteOnly,
                 $watermark,
                 $summary,
                 $estimatedCost,
                 count($progress['completed_item_ids']),
+                count($progress['failed_item_ids']),
             );
 
             if ($dryRun) {
@@ -130,6 +145,11 @@ class ImportEcotradeProductImagesCommand extends Command
                         }
                     } catch (Throwable $exception) {
                         $failed++;
+
+                        if (! $testMode) {
+                            $progressStore->markFailed($progressKey, $candidate);
+                        }
+
                         $this->reportCandidateFailure($candidate->item->id, $exception);
                     }
 
@@ -149,7 +169,7 @@ class ImportEcotradeProductImagesCommand extends Command
             $this->line('- Failed: '.$failed);
 
             if ($failed > 0) {
-                $this->warn('Some images failed and were skipped. Review the errors above and rerun the command to retry the remaining items.');
+                $this->warn('Some images failed and were skipped. Review the errors above and rerun the command with --retry-incomplete-only to retry only the remaining incomplete checkpoint items.');
             }
 
             if (is_array($testResult)) {
@@ -180,10 +200,12 @@ class ImportEcotradeProductImagesCommand extends Command
         bool $testMode,
         bool $replaceExisting,
         bool $fresh,
+        bool $retryIncompleteOnly,
         string $watermark,
         array $summary,
         float $estimatedCost,
         int $completedCount,
+        int $failedCheckpointCount,
     ): void {
         $this->newLine();
         $this->line('Ecotrade Product Image Import');
@@ -192,7 +214,9 @@ class ImportEcotradeProductImagesCommand extends Command
         $this->line('Test mode: '.($testMode ? 'yes' : 'no'));
         $this->line('Replace existing: '.($replaceExisting ? 'yes' : 'no'));
         $this->line('Fresh run: '.($fresh ? 'yes' : 'no'));
+        $this->line('Retry incomplete only: '.($retryIncompleteOnly ? 'yes' : 'no'));
         $this->line('Completed checkpoint items: '.$completedCount);
+        $this->line('Failed checkpoint items: '.$failedCheckpointCount);
         $this->line('Watermark: '.$watermark);
         $this->newLine();
 

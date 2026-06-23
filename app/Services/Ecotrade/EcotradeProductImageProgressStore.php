@@ -15,43 +15,53 @@ final class EcotradeProductImageProgressStore
     /**
      * @return array{
      *     completed_item_ids: list<string>,
-     *     completed_source_hashes: list<string>
+     *     completed_source_hashes: list<string>,
+     *     failed_item_ids: list<string>,
+     *     failed_source_hashes: list<string>
      * }
      */
     public function load(string $key): array
     {
-        $state = $this->readState($key);
-
-        return [
-            'completed_item_ids' => array_values(array_filter(array_map(
-                static fn (mixed $value): string => (string) $value,
-                $state['completed_item_ids'] ?? [],
-            ))),
-            'completed_source_hashes' => array_values(array_filter(array_map(
-                static fn (mixed $value): string => (string) $value,
-                $state['completed_source_hashes'] ?? [],
-            ))),
-        ];
+        return $this->normalizeState($this->readState($key));
     }
 
     public function markCompleted(string $key, EcotradeProductImageCandidate $candidate): void
     {
-        $state = $this->readState($key);
+        $state = $this->normalizeState($this->readState($key));
         $itemId = (string) $candidate->item->id;
         $sourceHash = (string) $candidate->product->sourceHash;
 
-        $state['completed_item_ids'] = array_values(array_unique(array_merge(
-            array_filter(array_map('strval', $state['completed_item_ids'] ?? [])),
-            [$itemId],
-        )));
+        $state['completed_item_ids'] = $this->rememberValue($state['completed_item_ids'], $itemId);
+        $state['completed_source_hashes'] = $this->rememberValue($state['completed_source_hashes'], $sourceHash);
+        $state['failed_item_ids'] = $this->forgetValue($state['failed_item_ids'], $itemId);
+        $state['failed_source_hashes'] = $this->forgetValue($state['failed_source_hashes'], $sourceHash);
+        $state['updated_at'] = now()->toISOString();
+        $state['completed_count'] = count($state['completed_item_ids']);
+        $state['failed_count'] = count($state['failed_item_ids']);
 
-        $state['completed_source_hashes'] = array_values(array_unique(array_merge(
-            array_filter(array_map('strval', $state['completed_source_hashes'] ?? [])),
-            [$sourceHash],
-        )));
+        $this->writeState($key, $state);
+    }
+
+    public function markFailed(string $key, EcotradeProductImageCandidate $candidate): void
+    {
+        $state = $this->normalizeState($this->readState($key));
+        $itemId = (string) $candidate->item->id;
+        $sourceHash = (string) $candidate->product->sourceHash;
+
+        if (! in_array($itemId, $state['completed_item_ids'], true)) {
+            $state['failed_item_ids'] = $this->rememberValue($state['failed_item_ids'], $itemId);
+        }
+
+        if (
+            $sourceHash !== ''
+            && ! in_array($sourceHash, $state['completed_source_hashes'], true)
+        ) {
+            $state['failed_source_hashes'] = $this->rememberValue($state['failed_source_hashes'], $sourceHash);
+        }
 
         $state['updated_at'] = now()->toISOString();
         $state['completed_count'] = count($state['completed_item_ids']);
+        $state['failed_count'] = count($state['failed_item_ids']);
 
         $this->writeState($key, $state);
     }
@@ -73,19 +83,13 @@ final class EcotradeProductImageProgressStore
         $path = $this->pathForKey($key);
 
         if (! is_file($path)) {
-            return [
-                'completed_item_ids' => [],
-                'completed_source_hashes' => [],
-            ];
+            return $this->emptyState();
         }
 
         $decoded = json_decode((string) file_get_contents($path), true);
 
         if (! is_array($decoded)) {
-            return [
-                'completed_item_ids' => [],
-                'completed_source_hashes' => [],
-            ];
+            return $this->emptyState();
         }
 
         return $decoded;
@@ -112,5 +116,83 @@ final class EcotradeProductImageProgressStore
     private function pathForKey(string $key): string
     {
         return storage_path(self::DIRECTORY.'/'.$key.'.json');
+    }
+
+    /**
+     * @param  array<string, mixed>  $state
+     * @return array{
+     *     completed_item_ids: list<string>,
+     *     completed_source_hashes: list<string>,
+     *     failed_item_ids: list<string>,
+     *     failed_source_hashes: list<string>
+     * }
+     */
+    private function normalizeState(array $state): array
+    {
+        return [
+            'completed_item_ids' => $this->normalizeValues($state['completed_item_ids'] ?? []),
+            'completed_source_hashes' => $this->normalizeValues($state['completed_source_hashes'] ?? []),
+            'failed_item_ids' => $this->normalizeValues($state['failed_item_ids'] ?? []),
+            'failed_source_hashes' => $this->normalizeValues($state['failed_source_hashes'] ?? []),
+        ];
+    }
+
+    /**
+     * @return array{
+     *     completed_item_ids: list<string>,
+     *     completed_source_hashes: list<string>,
+     *     failed_item_ids: list<string>,
+     *     failed_source_hashes: list<string>
+     * }
+     */
+    private function emptyState(): array
+    {
+        return [
+            'completed_item_ids' => [],
+            'completed_source_hashes' => [],
+            'failed_item_ids' => [],
+            'failed_source_hashes' => [],
+        ];
+    }
+
+    /**
+     * @param  array<int, mixed>  $values
+     * @return list<string>
+     */
+    private function normalizeValues(array $values): array
+    {
+        return array_values(array_filter(array_map(
+            static fn (mixed $value): string => (string) $value,
+            $values,
+        )));
+    }
+
+    /**
+     * @param  list<string>  $values
+     * @return list<string>
+     */
+    private function rememberValue(array $values, string $value): array
+    {
+        if ($value === '') {
+            return $values;
+        }
+
+        return array_values(array_unique([...$values, $value]));
+    }
+
+    /**
+     * @param  list<string>  $values
+     * @return list<string>
+     */
+    private function forgetValue(array $values, string $value): array
+    {
+        if ($value === '') {
+            return $values;
+        }
+
+        return array_values(array_filter(
+            $values,
+            static fn (string $current): bool => $current !== $value,
+        ));
     }
 }

@@ -9,6 +9,10 @@ use App\Models\Item;
 
 class EcotradeProductImporter
 {
+    public function __construct(
+        private readonly EcotradeDetailsTextResolver $detailsTextResolver,
+    ) {}
+
     public function import(EcotradeProductData $data, CarGroup $brand, ImportBatch $batch): Item
     {
         $payload = [
@@ -21,10 +25,7 @@ class EcotradeProductImporter
             'pd_ppm' => null,
             'rh_ppm' => null,
             'shape_code' => null,
-            'details' => json_encode(
-                $data->detailsPayload(),
-                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-            ),
+            'details' => $this->detailsTextResolver->resolve($data->raw),
             'source' => 'ecotrade',
             'source_url' => $data->productUrl,
             'source_hash' => $data->sourceHash,

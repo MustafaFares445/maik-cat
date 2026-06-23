@@ -19,8 +19,9 @@ class ItemController extends Controller
         $userId = $request->user('sanctum')?->getKey();
 
         $itemsQuery = Item::getQuery()
+            ->with('media')
             ->calculablePrice();
-            
+
         $this->applySavedItemFlag($itemsQuery, $userId);
 
         $items = $itemsQuery->paginate($request->integer('per_page', 20));

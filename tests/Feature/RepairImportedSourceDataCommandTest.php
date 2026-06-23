@@ -121,15 +121,12 @@ test('repairs Ecotrade serial and source hash from the json source file', functi
             ->assertExitCode(0);
 
         $item->refresh();
-        $details = json_decode((string) $item->details, true, 512, JSON_THROW_ON_ERROR);
-
         expect($item->model)->toBe('ACURA MDX 04 FRONT')
             ->and($item->serial_code)->toBe('ACURA MDX 04 FRONT')
             ->and($item->normalized_serial)->toBe(Item::normalizeSerialValue('ACURA MDX 04 FRONT'))
             ->and($item->source_url)->toBe($record['product_url'])
             ->and($item->source_hash)->toBe(sha1('acura|'.mb_strtoupper('ACURA MDX 04 FRONT').'|'.mb_strtolower($record['product_url'])))
-            ->and($details['serial_code'])->toBe('ACURA MDX 04 FRONT')
-            ->and($details['brand_slug'])->toBe('acura');
+            ->and($item->details)->toBe('ACURA MDX 04 FRONT');
     } finally {
         @unlink($jsonPath);
     }
