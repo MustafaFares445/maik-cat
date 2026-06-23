@@ -30,7 +30,7 @@ class HomeController extends Controller
 
         $topConvertersQuery = Item::query()
             ->calculablePrice()
-            ->with(['carGroup', 'extraCodes'])
+            ->with(['carGroup', 'extraCodes' , 'media'])
             ->latest()
             ->limit(6);
 
