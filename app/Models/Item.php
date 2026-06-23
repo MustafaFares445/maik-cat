@@ -87,6 +87,24 @@ class Item extends Model implements HasMedia
             ->whereNotNull('rh_ppm');
     }
 
+    public function scopeApiVisible(Builder $query): Builder
+    {
+        return $query
+            ->calculablePrice()
+            ->whereHas('media', static function (Builder $mediaQuery): void {
+                $mediaQuery->where('collection_name', 'images');
+            });
+    }
+
+    public function isApiVisible(): bool
+    {
+        return $this->weight_kg !== null
+            && $this->pt_ppm !== null
+            && $this->pd_ppm !== null
+            && $this->rh_ppm !== null
+            && $this->hasMedia('images');
+    }
+
     public function getImageUrlAttribute(): ?string
     {
         return $this->resolveImageUrl('card');

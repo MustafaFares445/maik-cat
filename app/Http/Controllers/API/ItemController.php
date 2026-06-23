@@ -17,9 +17,7 @@ class ItemController extends Controller
     {
         $userId = $request->user('sanctum')?->getKey();
 
-        $itemsQuery = Item::getQuery()
-            ->with('media')
-            ->calculablePrice();
+        $itemsQuery = Item::getQuery();
 
         $this->applySavedItemFlag($itemsQuery, $userId);
 
@@ -32,7 +30,7 @@ class ItemController extends Controller
                 'runId' => 'initial',
                 'hypothesisId' => 'A,C',
                 'location' => 'app/Http/Controllers/API/ItemController.php:28',
-                'message' => 'Items index query returned calculable-price candidates',
+                'message' => 'Items index query returned API-visible candidates',
                 'data' => [
                     'count' => $items->count(),
                     'total' => $items->total(),
@@ -75,12 +73,13 @@ class ItemController extends Controller
     {
         $userId = $request->user('sanctum')?->getKey();
 
-        $item->load(['carGroup', 'extraCodes']);
+        $item->load(['carGroup', 'extraCodes', 'media']);
+        abort_unless($item->isApiVisible(), 404);
         $this->applySavedItemFlagToModel($item, $userId);
 
         $relatedQuery = Item::query()
-            ->calculablePrice()
-            ->with(['carGroup', 'extraCodes'])
+            ->apiVisible()
+            ->with(['carGroup', 'extraCodes', 'media'])
             ->where('car_group_id', $item->car_group_id)
             ->whereKeyNot($item->id)
             ->limit(5);
@@ -102,9 +101,11 @@ class ItemController extends Controller
 
         $limit = max(1, min((int) $request->integer('limit', 8), 20));
 
+        abort_unless($item->isApiVisible(), 404);
+
         $similarQuery = Item::query()
-            ->calculablePrice()
-            ->with(['carGroup', 'extraCodes'])
+            ->apiVisible()
+            ->with(['carGroup', 'extraCodes', 'media'])
             ->where('car_group_id', $item->car_group_id)
             ->whereKeyNot($item->id)
             ->orderByDesc('pt_ppm')

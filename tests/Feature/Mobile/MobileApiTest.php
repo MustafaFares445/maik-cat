@@ -134,6 +134,18 @@ function mobileApiPngPath(): string
     return $path;
 }
 
+function mobileApiAttachImage(Item $item): string
+{
+    $path = mobileApiPngPath();
+    $item->addMedia($path)->toMediaCollection('images');
+
+    return $path;
+}
+
+beforeEach(function (): void {
+    Storage::fake('public');
+});
+
 uses(RefreshDatabase::class);
 
 test('search endpoint accepts text and categoryId', function () {
@@ -148,22 +160,29 @@ test('search endpoint accepts text and categoryId', function () {
         'model' => 'PRIUS HYBRID',
     ]);
 
-    ExtraCode::factory()->create([
-        'item_id' => $matching->id,
-        'code' => 'PR-ALT-01',
-    ]);
+    $imagePath = mobileApiAttachImage($matching);
 
-    Item::factory()->create([
-        'car_group_id' => $lexus->id,
-        'serial_code' => '83910-1210',
-        'model' => 'COROLLA SENSOR',
-    ]);
+    try {
+        ExtraCode::factory()->create([
+            'item_id' => $matching->id,
+            'code' => 'PR-ALT-01',
+        ]);
 
-    $response = getJson("/api/items?text=PR-ALT-01&categoryId={$toyota->id}");
+        Item::factory()->create([
+            'car_group_id' => $lexus->id,
+            'serial_code' => '83910-1210',
+            'model' => 'COROLLA SENSOR',
+        ]);
 
-    $response->assertOk();
-    $response->assertJsonCount(1, 'data');
-    $response->assertJsonPath('data.0.id', $matching->id);
+        $response = getJson("/api/items?text=PR-ALT-01&categoryId={$toyota->id}");
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $matching->id);
+        expect($response->json('data.0.imageUrl'))->toBeString()->not->toBe('');
+    } finally {
+        @unlink($imagePath);
+    }
 });
 
 test('item search endpoint accepts text and carGroup', function () {
@@ -178,22 +197,28 @@ test('item search endpoint accepts text and carGroup', function () {
         'model' => 'VAUXHAL',
     ]);
 
-    Item::factory()->create([
-        'car_group_id' => $japan->id,
-        'serial_code' => 'GM10',
-        'model' => 'TOYOTA PRIUS',
-    ]);
+    $imagePath = mobileApiAttachImage($matching);
 
-    $response = getJson('/api/items?text=GM10&carGroup=OPEL');
+    try {
+        Item::factory()->create([
+            'car_group_id' => $japan->id,
+            'serial_code' => 'GM10',
+            'model' => 'TOYOTA PRIUS',
+        ]);
 
-    $response->assertOk();
-    $response->assertJsonCount(1, 'data');
-    $response->assertJsonPath('data.0.id', $matching->id);
+        $response = getJson('/api/items?text=GM10&carGroup=OPEL');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $matching->id);
+        expect($response->json('data.0.imageUrl'))->toBeString()->not->toBe('');
+    } finally {
+        @unlink($imagePath);
+    }
 });
 
-test('item collections return only items with calculable price fields', function () {
+test('item collections return only calculable items with at least one image', function () {
     mockItemMetalsSpotServiceAscii();
-    Storage::fake('public');
 
     $group = CarGroup::factory()->create();
 
@@ -205,11 +230,16 @@ test('item collections return only items with calculable price fields', function
         'rh_ppm' => 90,
     ]);
 
-    $imagePath = mobileApiPngPath();
+    $imagePath = mobileApiAttachImage($calculable);
+    $hiddenCalculable = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'weight_kg' => 1.5,
+        'pt_ppm' => 1200,
+        'pd_ppm' => 450,
+        'rh_ppm' => 90,
+    ]);
 
     try {
-        $calculable->addMedia($imagePath)->toMediaCollection('images');
-
         $missingPriceData = Item::factory()->create([
             'car_group_id' => $group->id,
             'weight_kg' => null,
@@ -227,6 +257,7 @@ test('item collections return only items with calculable price fields', function
         expect($response->json('data.0.imageUrl'))->toBeString()->not->toBe('');
         expect($response->json('data.0.imageThumbUrl'))->toBeString()->not->toBe('');
         expect($response->json('data.0.imageDetailUrl'))->toBeString()->not->toBe('');
+        $response->assertJsonMissing(['id' => $hiddenCalculable->id]);
         $response->assertJsonMissing(['id' => $missingPriceData->id]);
 
         $homeResponse = getJson('/api/home/top_items');
@@ -235,6 +266,7 @@ test('item collections return only items with calculable price fields', function
         $homeResponse->assertJsonCount(1, 'topItems');
         $homeResponse->assertJsonPath('topItems.0.id', $calculable->id);
         $homeResponse->assertJsonPath('topItems.0.price', 35.55);
+        expect($homeResponse->json('topItems.0.imageUrl'))->toBeString()->not->toBe('');
     } finally {
         @unlink($imagePath);
     }
@@ -419,25 +451,40 @@ test('details endpoint returns converter and related entries', function () {
 
     $target = Item::factory()->create(['car_group_id' => $group->id]);
     $related = Item::factory()->create(['car_group_id' => $group->id]);
+    $targetImagePath = mobileApiAttachImage($target);
+    $relatedImagePath = mobileApiAttachImage($related);
 
-    $response = getJson("/api/items/{$target->id}");
+    try {
+        $response = getJson("/api/items/{$target->id}");
 
-    $response->assertOk();
-    $response->assertJsonPath('data.id', $target->id);
-    $response->assertJsonPath('data.carGroup.id', $group->id);
-    $response->assertJsonPath('related.0.id', $related->id);
+        $response->assertOk();
+        $response->assertJsonPath('data.id', $target->id);
+        $response->assertJsonPath('data.carGroup.id', $group->id);
+        expect($response->json('data.imageUrl'))->toBeString()->not->toBe('');
+        $response->assertJsonPath('related.0.id', $related->id);
+        expect($response->json('related.0.imageUrl'))->toBeString()->not->toBe('');
+    } finally {
+        @unlink($targetImagePath);
+        @unlink($relatedImagePath);
+    }
 });
 
 test('item details endpoint returns camelCase converter payload', function () {
     mockItemMetalsSpotServiceAscii();
 
     $converter = Item::factory()->create();
+    $converterImagePath = mobileApiAttachImage($converter);
 
-    $response = getJson("/api/items/{$converter->id}");
+    try {
+        $response = getJson("/api/items/{$converter->id}");
 
-    $response->assertOk();
-    $response->assertJsonPath('data.id', $converter->id);
-    $response->assertJsonPath('data.serialCode', $converter->normalized_serial);
+        $response->assertOk();
+        $response->assertJsonPath('data.id', $converter->id);
+        $response->assertJsonPath('data.serialCode', $converter->normalized_serial);
+        expect($response->json('data.imageUrl'))->toBeString()->not->toBe('');
+    } finally {
+        @unlink($converterImagePath);
+    }
 });
 
 test('similar items endpoint returns same car group items', function () {
@@ -447,17 +494,28 @@ test('similar items endpoint returns same car group items', function () {
 
     $target = Item::factory()->create(['car_group_id' => $group->id]);
     $similar = Item::factory()->count(3)->create(['car_group_id' => $group->id]);
+    $targetImagePath = mobileApiAttachImage($target);
+    $similarImagePaths = $similar->map(fn (Item $item): string => mobileApiAttachImage($item))->all();
     Item::factory()->create();
 
-    $response = getJson("/api/items/{$target->id}/similar");
+    try {
+        $response = getJson("/api/items/{$target->id}/similar");
 
-    $response->assertOk();
-    $response->assertJsonCount(3, 'data');
-    $response->assertJsonPath('data.0.carGroup.id', $group->id);
-    $response->assertJsonMissing(['id' => $target->id]);
-    $response->assertJsonFragment(['id' => $similar[0]->id]);
-    $response->assertJsonFragment(['id' => $similar[1]->id]);
-    $response->assertJsonFragment(['id' => $similar[2]->id]);
+        $response->assertOk();
+        $response->assertJsonCount(3, 'data');
+        $response->assertJsonPath('data.0.carGroup.id', $group->id);
+        $response->assertJsonMissing(['id' => $target->id]);
+        $response->assertJsonFragment(['id' => $similar[0]->id]);
+        $response->assertJsonFragment(['id' => $similar[1]->id]);
+        $response->assertJsonFragment(['id' => $similar[2]->id]);
+        expect($response->json('data.0.imageUrl'))->toBeString()->not->toBe('');
+    } finally {
+        @unlink($targetImagePath);
+
+        foreach ($similarImagePaths as $path) {
+            @unlink($path);
+        }
+    }
 });
 
 test('notifications endpoint returns last 14 change notifications', function () {

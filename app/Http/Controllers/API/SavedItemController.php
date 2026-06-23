@@ -18,7 +18,8 @@ class SavedItemController extends Controller
         $user = $request->user();
 
         $items = $user->savedItems()
-            ->with(['carGroup', 'extraCodes'])
+            ->apiVisible()
+            ->with(['carGroup', 'extraCodes', 'media'])
             ->withExists([
                 'savedByUsers as saved_item' => fn(Builder $builder) => $builder->where('users.id', $user->getKey()),
             ])
