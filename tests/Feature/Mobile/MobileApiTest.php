@@ -7,6 +7,7 @@ use App\Models\Item;
 use App\Models\MetalPrice;
 use App\Services\Mobile\MetalsSpotService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 
 use function Pest\Laravel\getJson;
 use function Pest\Laravel\postJson;
@@ -108,6 +109,31 @@ function mockItemMetalsSpotServiceAscii(float $ptPricePerGram = 10.0, float $pdP
     app()->instance(MetalsSpotService::class, $mock);
 }
 
+function mobileApiPngPath(): string
+{
+    $base = tempnam(sys_get_temp_dir(), 'mobile_api_item_');
+
+    if ($base === false) {
+        throw new RuntimeException('Failed to create a temporary image file.');
+    }
+
+    @unlink($base);
+
+    $path = $base.'.png';
+
+    $image = imagecreatetruecolor(48, 48);
+    $background = imagecolorallocate($image, 232, 232, 232);
+    $accent = imagecolorallocate($image, 92, 92, 92);
+
+    imagefill($image, 0, 0, $background);
+    imagefilledellipse($image, 24, 24, 30, 30, $accent);
+
+    imagepng($image, $path);
+    imagedestroy($image);
+
+    return $path;
+}
+
 uses(RefreshDatabase::class);
 
 test('search endpoint accepts text and categoryId', function () {
@@ -167,6 +193,7 @@ test('item search endpoint accepts text and carGroup', function () {
 
 test('item collections return only items with calculable price fields', function () {
     mockItemMetalsSpotServiceAscii();
+    Storage::fake('public');
 
     $group = CarGroup::factory()->create();
 
@@ -178,28 +205,39 @@ test('item collections return only items with calculable price fields', function
         'rh_ppm' => 90,
     ]);
 
-    $missingPriceData = Item::factory()->create([
-        'car_group_id' => $group->id,
-        'weight_kg' => null,
-        'pt_ppm' => null,
-        'pd_ppm' => null,
-        'rh_ppm' => null,
-    ]);
+    $imagePath = mobileApiPngPath();
 
-    $response = getJson('/api/items');
+    try {
+        $calculable->addMedia($imagePath)->toMediaCollection('images');
 
-    $response->assertOk();
-    $response->assertJsonCount(1, 'data');
-    $response->assertJsonPath('data.0.id', $calculable->id);
-    $response->assertJsonPath('data.0.price', 35.55);
-    $response->assertJsonMissing(['id' => $missingPriceData->id]);
+        $missingPriceData = Item::factory()->create([
+            'car_group_id' => $group->id,
+            'weight_kg' => null,
+            'pt_ppm' => null,
+            'pd_ppm' => null,
+            'rh_ppm' => null,
+        ]);
 
-    $homeResponse = getJson('/api/home/top_items');
+        $response = getJson('/api/items');
 
-    $homeResponse->assertOk();
-    $homeResponse->assertJsonCount(1, 'topItems');
-    $homeResponse->assertJsonPath('topItems.0.id', $calculable->id);
-    $homeResponse->assertJsonPath('topItems.0.price', 35.55);
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $calculable->id);
+        $response->assertJsonPath('data.0.price', 35.55);
+        expect($response->json('data.0.imageUrl'))->toBeString()->not->toBe('');
+        expect($response->json('data.0.imageThumbUrl'))->toBeString()->not->toBe('');
+        expect($response->json('data.0.imageDetailUrl'))->toBeString()->not->toBe('');
+        $response->assertJsonMissing(['id' => $missingPriceData->id]);
+
+        $homeResponse = getJson('/api/home/top_items');
+
+        $homeResponse->assertOk();
+        $homeResponse->assertJsonCount(1, 'topItems');
+        $homeResponse->assertJsonPath('topItems.0.id', $calculable->id);
+        $homeResponse->assertJsonPath('topItems.0.price', 35.55);
+    } finally {
+        @unlink($imagePath);
+    }
 });
 
 test('home endpoint returns last 14 changes from metal sentinel spot data', function () {
@@ -399,7 +437,7 @@ test('item details endpoint returns camelCase converter payload', function () {
 
     $response->assertOk();
     $response->assertJsonPath('data.id', $converter->id);
-    $response->assertJsonPath('data.serialCode', $converter->serial_code);
+    $response->assertJsonPath('data.serialCode', $converter->normalized_serial);
 });
 
 test('similar items endpoint returns same car group items', function () {

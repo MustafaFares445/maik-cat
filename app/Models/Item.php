@@ -46,6 +46,12 @@ class Item extends Model implements HasMedia
         'rh_ppm' => 'float',
     ];
 
+    protected $appends = [
+        'image_url',
+        'image_thumb_url',
+        'image_detail_url',
+    ];
+
     public static function normalizeSerialValue(mixed $serial): string
     {
         if ($serial === null) {
@@ -79,6 +85,21 @@ class Item extends Model implements HasMedia
             ->whereNotNull('pt_ppm')
             ->whereNotNull('pd_ppm')
             ->whereNotNull('rh_ppm');
+    }
+
+    public function getImageUrlAttribute(): ?string
+    {
+        return $this->resolveImageUrl('card');
+    }
+
+    public function getImageThumbUrlAttribute(): ?string
+    {
+        return $this->resolveImageUrl('thumb', $this->image_url);
+    }
+
+    public function getImageDetailUrlAttribute(): ?string
+    {
+        return $this->resolveImageUrl('detail', $this->image_url);
     }
 
     public function savedByUsers(): BelongsToMany
@@ -119,5 +140,22 @@ class Item extends Model implements HasMedia
             ->format('webp')
             ->quality(84)
             ->nonQueued();
+    }
+
+    private function resolveImageUrl(string $conversion, ?string $fallback = null): ?string
+    {
+        $url = $this->getFirstMediaUrl('images', $conversion);
+
+        if ($url !== '') {
+            return $url;
+        }
+
+        $url = $this->getFirstMediaUrl('images');
+
+        if ($url !== '') {
+            return $url;
+        }
+
+        return $fallback;
     }
 }

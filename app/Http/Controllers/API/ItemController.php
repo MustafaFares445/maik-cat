@@ -8,13 +8,12 @@ use App\Http\Resources\API\ItemResource;
 use App\Models\Item;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Database\Eloquent\Builder;
 use Throwable;
 
 class ItemController extends Controller
 {
-    public function index(ItemFilterRequest $request): AnonymousResourceCollection
+    public function index(ItemFilterRequest $request): JsonResponse
     {
         $userId = $request->user('sanctum')?->getKey();
 
@@ -52,7 +51,24 @@ class ItemController extends Controller
         }
         // #endregion
 
-        return ItemResource::collection($items);
+        return response()->json([
+            'data' => ItemResource::collection($items->getCollection())->resolve(),
+            'links' => [
+                'first' => $items->url(1),
+                'last' => $items->url($items->lastPage()),
+                'prev' => $items->previousPageUrl(),
+                'next' => $items->nextPageUrl(),
+            ],
+            'meta' => [
+                'current_page' => $items->currentPage(),
+                'from' => $items->firstItem(),
+                'last_page' => $items->lastPage(),
+                'path' => $items->path(),
+                'per_page' => $items->perPage(),
+                'to' => $items->lastItem(),
+                'total' => $items->total(),
+            ],
+        ]);
     }
 
     public function show(Request $request, Item $item): JsonResponse

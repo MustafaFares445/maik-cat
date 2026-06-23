@@ -12,21 +12,6 @@ class ItemResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $imageUrl = null;
-        $imageThumbUrl = null;
-        $imageDetailUrl = null;
-
-        if (method_exists($this->resource, 'getFirstMediaUrl')) {
-            $imageUrl = $this->resource->getFirstMediaUrl('images', 'card')
-                ?: $this->resource->getFirstMediaUrl('images');
-
-            $imageThumbUrl = $this->resource->getFirstMediaUrl('images', 'thumb')
-                ?: $imageUrl;
-
-            $imageDetailUrl = $this->resource->getFirstMediaUrl('images', 'detail')
-                ?: $imageUrl;
-        }
-
         $currency = strtoupper((string) $request->query('currency', 'USD'));
         $price = app(ItemPriceService::class)->priceFor($this->resource, $currency);
 
@@ -42,9 +27,9 @@ class ItemResource extends JsonResource
             'details' => $this->details,
             'car_group' => CarGroupResource::make($this->whenLoaded('carGroup')),
             'extra_codes' => $this->whenLoaded('extraCodes', fn () => $this->extraCodes->pluck('code')->values()),
-            'image_url' => $imageUrl,
-            'image_thumb_url' => $imageThumbUrl,
-            'image_detail_url' => $imageDetailUrl,
+            'image_url' => $this->image_url,
+            'image_thumb_url' => $this->image_thumb_url,
+            'image_detail_url' => $this->image_detail_url,
             'saved_item' => (bool) ($this->saved_item ?? false),
             'price' => round($price, 2),
         ];
