@@ -1,1 +1,1 @@
-Temporary note for price fix.
+Temporary note for price fix updated.
