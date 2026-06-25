@@ -20,7 +20,8 @@ class ItemPriceService
         $currency = $this->normalizeCurrency($currency);
         $prices = $this->metalPrices($currency);
 
-        $weightKg = max((float) ($item->weight_kg ?? 0), 0.0);
+        $rawWeightKg = max((float) ($item->weight_kg ?? 0), 0.0);
+        $weightKg = $rawWeightKg > 50.0 ? ($rawWeightKg / 1000.0) : $rawWeightKg;
         $ptPpm = max((float) ($item->pt_ppm ?? 0), 0.0);
         $pdPpm = max((float) ($item->pd_ppm ?? 0), 0.0);
         $rhPpm = max((float) ($item->rh_ppm ?? 0), 0.0);
@@ -30,6 +31,7 @@ class ItemPriceService
             'item_id' => $item->getKey(),
             'currency' => $currency,
             'weight_kg' => $weightKg,
+            'raw_weight_kg' => $rawWeightKg,
             'pt_ppm' => $ptPpm,
             'pd_ppm' => $pdPpm,
             'rh_ppm' => $rhPpm,
@@ -42,6 +44,7 @@ class ItemPriceService
             $this->debugLog('initial', 'A,D', 'app/Services/Mobile/ItemPriceService.php:43', 'Item price returned zero because item values are not positive', [
                 'item_id' => $item->getKey(),
                 'weight_kg' => $weightKg,
+                'raw_weight_kg' => $rawWeightKg,
                 'pt_ppm' => $ptPpm,
                 'pd_ppm' => $pdPpm,
                 'rh_ppm' => $rhPpm,
@@ -64,6 +67,8 @@ class ItemPriceService
             'item_id' => $item->getKey(),
             'raw_price' => $price,
             'rounded_price' => $roundedPrice,
+            'weight_kg' => $weightKg,
+            'raw_weight_kg' => $rawWeightKg,
             'prices' => $prices,
         ]);
         // #endregion
