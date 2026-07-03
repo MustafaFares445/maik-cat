@@ -21,7 +21,8 @@ class ItemPriceService
         $currency = $this->normalizeCurrency($currency);
         $prices = $this->metalPrices($currency);
 
-        $weightKg = max((float) ($item->weight_kg ?? 0), 0.0);
+        $rawWeightKg = max((float) ($item->weight_kg ?? 0), 0.0);
+        $weightKg = $rawWeightKg > 50.0 ? ($rawWeightKg / 1000.0) : $rawWeightKg;
         $ptPpm = max((float) ($item->pt_ppm ?? 0), 0.0);
         $pdPpm = max((float) ($item->pd_ppm ?? 0), 0.0);
         $rhPpm = max((float) ($item->rh_ppm ?? 0), 0.0);
