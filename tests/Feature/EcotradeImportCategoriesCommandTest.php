@@ -185,9 +185,18 @@ test('fresh resets existing Ecotrade categories before rebuilding', function () 
         'source_url' => $record['brand_page_url'],
     ]);
 
+    $legacyGroup = CarGroup::query()->create([
+        'id' => (string) Str::uuid(),
+        'name' => 'Legacy Group',
+        'excel_sheet_name' => 'LEGACY GROUP',
+        'region' => null,
+        'source' => null,
+        'slug' => 'legacy-group',
+    ]);
+
     $item = Item::query()->create([
         'id' => (string) Str::uuid(),
-        'car_group_id' => $staleGroup->id,
+        'car_group_id' => $legacyGroup->id,
         'model' => 'Old Model',
         'serial_code' => 'OLD SERIAL',
         'normalized_serial' => Item::normalizeSerialValue('OLD SERIAL'),
@@ -207,11 +216,12 @@ test('fresh resets existing Ecotrade categories before rebuilding', function () 
             'path' => $jsonPath,
             '--fresh' => true,
         ])
-            ->expectsOutputToContain('groups_reset: 1')
+            ->expectsOutputToContain('groups_reset: 2')
             ->expectsOutputToContain('items_linked: 1')
             ->assertExitCode(0);
 
         expect(CarGroup::query()->where('slug', 'acura-old')->doesntExist())->toBeTrue()
+            ->and(CarGroup::query()->where('slug', 'legacy-group')->doesntExist())->toBeTrue()
             ->and(CarGroup::query()->where('slug', 'ecotrade-unlinked')->exists())->toBeTrue();
 
         $brand = CarGroup::query()

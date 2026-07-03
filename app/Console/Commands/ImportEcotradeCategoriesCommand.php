@@ -52,7 +52,7 @@ class ImportEcotradeCategoriesCommand extends Command
                 $fallbackGroup = $this->ensureFallbackGroup();
 
                 if ($fresh) {
-                    $totals['groups_reset'] += $this->resetEcotradeCategories($fallbackGroup->id);
+                    $totals['groups_reset'] += $this->resetAllCarGroups($fallbackGroup->id);
                 }
             }
 
@@ -318,10 +318,13 @@ class ImportEcotradeCategoriesCommand extends Command
         );
     }
 
-    private function resetEcotradeCategories(string $fallbackGroupId): int
+    private function resetAllCarGroups(string $fallbackGroupId): int
     {
+        Item::query()
+            ->where('car_group_id', '!=', $fallbackGroupId)
+            ->update(['car_group_id' => $fallbackGroupId]);
+
         $groups = \App\Models\CarGroup::query()
-            ->where('source', 'ecotrade')
             ->where('id', '!=', $fallbackGroupId)
             ->get();
 
@@ -429,26 +432,15 @@ class ImportEcotradeCategoriesCommand extends Command
             return [$this->resolvePath($path)];
         }
 
-        $candidates = [
-            'ecotrade_products_all.json',
-            'maik.xlsx',
-        ];
-
-        $paths = [];
-
-        foreach ($candidates as $candidate) {
+        foreach (['maik.xlsx', 'ecotrade_products_all.json'] as $candidate) {
             try {
-                $paths[] = $this->resolvePath($candidate);
+                return [$this->resolvePath($candidate)];
             } catch (RuntimeException) {
                 continue;
             }
         }
 
-        if ($paths === []) {
-            throw new RuntimeException('No default Ecotrade import files were found in the repository.');
-        }
-
-        return $paths;
+        throw new RuntimeException('No default Ecotrade import files were found in the repository.');
     }
 
     private function isWorkbookPath(string $path): bool
