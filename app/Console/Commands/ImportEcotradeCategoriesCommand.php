@@ -17,7 +17,7 @@ use Throwable;
 class ImportEcotradeCategoriesCommand extends Command
 {
     protected $signature = 'ecotrade:import-categories
-        {path : Path to Ecotrade JSON file}
+        {path? : Path to Ecotrade JSON or Excel file}
         {--dry-run : Validate and show summary without writing to DB}
         {--fresh : Reset existing Ecotrade categories before import}
         {--unlink-missing : Move Ecotrade items not present in the JSON into the Ecotrade Unlinked group}
@@ -37,12 +37,11 @@ class ImportEcotradeCategoriesCommand extends Command
         try {
             $this->applyMemoryLimit((string) $this->option('memory-limit'));
 
-            $path = $this->resolvePath((string) $this->argument('path'));
+            $paths = $this->resolveInputPaths();
             $dryRun = (bool) $this->option('dry-run');
             $fresh = (bool) $this->option('fresh');
             $unlinkMissing = (bool) $this->option('unlink-missing');
             $chunkSize = max(1, (int) $this->option('chunk'));
-            $isWorkbook = $this->isWorkbookPath($path);
 
             $files = [];
             $totals = array_fill_keys($this->reportKeys(), 0);
@@ -57,21 +56,23 @@ class ImportEcotradeCategoriesCommand extends Command
                 }
             }
 
-            $files[] = $isWorkbook
-                ? $workbookImporter->import($path, $dryRun)
-                : $this->processFile(
-                    $path,
-                    $reader,
-                    $normalizer,
-                    $brandImporter,
-                    $dryRun,
-                    $chunkSize,
-                );
+            foreach ($paths as $path) {
+                $files[] = $this->isWorkbookPath($path)
+                    ? $workbookImporter->import($path, $dryRun)
+                    : $this->processFile(
+                        $path,
+                        $reader,
+                        $normalizer,
+                        $brandImporter,
+                        $dryRun,
+                        $chunkSize,
+                    );
+            }
 
             if ($unlinkMissing && $fallbackGroup instanceof \App\Models\CarGroup) {
                 $totals['items_unlinked'] += $this->unlinkMissingItems(
                     $fallbackGroup->id,
-                    $files[0]['matched_item_ids'] ?? [],
+                    $this->matchedItemIdsFromReports($files),
                     $dryRun,
                 );
             }
@@ -82,8 +83,10 @@ class ImportEcotradeCategoriesCommand extends Command
                 DB::commit();
             }
 
-            foreach ($this->reportKeys() as $key) {
-                $totals[$key] += (int) ($files[0][$key] ?? 0);
+            foreach ($files as $fileReport) {
+                foreach ($this->reportKeys() as $key) {
+                    $totals[$key] += (int) ($fileReport[$key] ?? 0);
+                }
             }
 
             $this->printReport($files, $totals, $dryRun);
@@ -352,6 +355,23 @@ class ImportEcotradeCategoriesCommand extends Command
         return $count;
     }
 
+    /**
+     * @param  array<int, array<string, int|string>>  $files
+     * @return array<string, true>
+     */
+    private function matchedItemIdsFromReports(array $files): array
+    {
+        $matched = [];
+
+        foreach ($files as $fileReport) {
+            foreach ((array) ($fileReport['matched_item_ids'] ?? []) as $itemId => $_true) {
+                $matched[(string) $itemId] = true;
+            }
+        }
+
+        return $matched;
+    }
+
     private function applyMemoryLimit(string $limit): void
     {
         $limit = trim($limit);
@@ -396,6 +416,39 @@ class ImportEcotradeCategoriesCommand extends Command
         }
 
         throw new RuntimeException('Ecotrade JSON file not found: ' . $path);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function resolveInputPaths(): array
+    {
+        $path = trim((string) $this->argument('path'));
+
+        if ($path !== '') {
+            return [$this->resolvePath($path)];
+        }
+
+        $candidates = [
+            'ecotrade_products_all.json',
+            'maik.xlsx',
+        ];
+
+        $paths = [];
+
+        foreach ($candidates as $candidate) {
+            try {
+                $paths[] = $this->resolvePath($candidate);
+            } catch (RuntimeException) {
+                continue;
+            }
+        }
+
+        if ($paths === []) {
+            throw new RuntimeException('No default Ecotrade import files were found in the repository.');
+        }
+
+        return $paths;
     }
 
     private function isWorkbookPath(string $path): bool
