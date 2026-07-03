@@ -30,7 +30,7 @@ test('item price service uses the live metals snapshot once per currency', funct
         ],
     ];
 
-    $mock = \Mockery::mock(MetalsSpotService::class);
+    $mock = Mockery::mock(MetalsSpotService::class);
     $mock->shouldReceive('all')
         ->with('USD')
         ->once()
@@ -53,6 +53,6 @@ test('item price service uses the live metals snapshot once per currency', funct
         'rh_ppm' => 250,
     ]);
 
-    expect($service->priceFor($firstItem))->toBe(27.5)
-        ->and($service->priceFor($secondItem))->toBe(55.0);
+    expect($service->priceFor($firstItem))->toBe(17.88)
+        ->and($service->priceFor($secondItem))->toBe(35.75);
 });

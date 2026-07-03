@@ -167,6 +167,55 @@ test('enrichment does not overwrite existing non-null assay values', function ()
     }
 });
 
+test('legacy enrichment prefers exact pgm ppm headers and repairs implausible weights', function () {
+    $group = CarGroup::query()->create([
+        'id' => (string) Str::uuid(),
+        'name' => 'VOLVO',
+        'excel_sheet_name' => 'VOLVO',
+        'region' => 'European',
+        'source' => 'ecotrade',
+    ]);
+
+    $item = Item::query()->create([
+        'id' => (string) Str::uuid(),
+        'car_group_id' => $group->id,
+        'model' => '8670409',
+        'serial_code' => '8670409',
+        'normalized_serial' => '8670409',
+        'weight_kg' => 6649.0,
+        'pt_ppm' => null,
+        'pd_ppm' => null,
+        'rh_ppm' => null,
+        'shape_code' => null,
+        'details' => '8670409',
+        'source' => 'ecotrade',
+    ]);
+
+    $path = createEnrichmentWorkbookPath([
+        'VOLVO' => [
+            ['Brand', 'Serial', 'Details', 'Maker', null, 'Weight', 'Price', 'O', 'S', 'Pt total', 'Pd total', 'Rh total', 'PT', 'PD', 'RH'],
+            ['VOLVO', '8670409', '2 987 945 300', 'ZEUNA STARKER', null, 1.65, null, null, null, 4537, 777, 888, 2750, 20, 30],
+        ],
+    ]);
+
+    try {
+        $this->artisan('imports:enrich-items', [
+            'paths' => [$path],
+        ])
+            ->expectsOutputToContain('rows_updated: 1')
+            ->assertExitCode(0);
+
+        $item->refresh();
+
+        expect($item->weight_kg)->toBe(1.65)
+            ->and($item->pt_ppm)->toBe(2750.0)
+            ->and($item->pd_ppm)->toBe(20.0)
+            ->and($item->rh_ppm)->toBe(30.0);
+    } finally {
+        @unlink($path);
+    }
+});
+
 test('petra enrichment updates exactly one matching item', function () {
     $group = CarGroup::query()->create([
         'id' => (string) Str::uuid(),

@@ -48,6 +48,10 @@ return [
         'cache_ttl' => (int) env('CURRENCY_CACHE_TTL_SECONDS', 1800),
     ],
 
+    'item_pricing' => [
+        'payout_rate' => (float) env('ITEM_PRICE_PAYOUT_RATE', 0.65),
+    ],
+
     'gemini' => [
         'api_key' => env('GEMINI_API_KEY'),
         'base_url' => env('GEMINI_API_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),

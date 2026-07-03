@@ -20,7 +20,8 @@ class EcotradeProductImageCandidateResolver
      *     failed_item_ids?: array<int, string>,
      *     failed_source_hashes?: array<int, string>,
      *     failed_checkpoint_available?: bool,
-     *     retry_incomplete_only?: bool
+     *     retry_incomplete_only?: bool,
+     *     allowed_item_ids?: array<int, string>
      * }  $options
      * @return array{
      *     summary: array<string, int>,
@@ -30,8 +31,7 @@ class EcotradeProductImageCandidateResolver
     public function resolve(
         array $records,
         array $options = [],
-    ): array
-    {
+    ): array {
         $replaceExisting = (bool) ($options['replace_existing'] ?? false);
         $limit = isset($options['limit']) && is_numeric($options['limit'])
             ? max(1, (int) $options['limit'])
@@ -42,6 +42,11 @@ class EcotradeProductImageCandidateResolver
         $failedSourceHashes = $this->lookupSet($options['failed_source_hashes'] ?? []);
         $failedCheckpointAvailable = (bool) ($options['failed_checkpoint_available'] ?? false);
         $retryIncompleteOnly = (bool) ($options['retry_incomplete_only'] ?? false);
+        $allowedItemIds = array_key_exists('allowed_item_ids', $options)
+            ? $this->lookupSet($options['allowed_item_ids'])
+            : null;
+        $allowedItemIdValues = $allowedItemIds !== null ? array_keys($allowedItemIds) : null;
+        $allowedSources = $this->allowedItemSources($allowedItemIdValues);
 
         $summary = [
             'records_total' => count($records),
@@ -51,6 +56,7 @@ class EcotradeProductImageCandidateResolver
             'records_without_main_image' => 0,
             'matched_items' => 0,
             'priceable_items' => 0,
+            'skipped_not_in_media_report' => 0,
             'skipped_checkpointed' => 0,
             'skipped_not_failed_checkpoint' => 0,
             'skipped_not_priceable' => 0,
@@ -82,6 +88,15 @@ class EcotradeProductImageCandidateResolver
             }
 
             $summary['records_with_main_image']++;
+
+            if (
+                $allowedItemIdValues !== null
+                && ! isset($allowedSources['hashes'][$product->sourceHash])
+                && ! isset($allowedSources['urls'][$product->productUrl])
+            ) {
+                continue;
+            }
+
             $productsByHash[$product->sourceHash] ??= $product;
             $productsByUrl[$product->productUrl] ??= $product;
         }
@@ -102,6 +117,10 @@ class EcotradeProductImageCandidateResolver
             $items = Item::query()
                 ->with('media')
                 ->where('source', 'ecotrade')
+                ->when(
+                    $allowedItemIdValues !== null,
+                    static fn ($query) => $query->whereIn('id', $allowedItemIdValues),
+                )
                 ->where(function ($query) use ($hashChunk, $urlChunk): void {
                     $query->whereIn('source_hash', $hashChunk)
                         ->orWhereIn('source_url', $urlChunk);
@@ -125,6 +144,12 @@ class EcotradeProductImageCandidateResolver
 
                 $itemId = (string) $item->id;
                 $sourceHash = is_string($item->source_hash) ? $item->source_hash : null;
+
+                if ($allowedItemIds !== null && ! isset($allowedItemIds[$itemId])) {
+                    $summary['skipped_not_in_media_report']++;
+
+                    continue;
+                }
 
                 if (isset($completedItemIds[$itemId]) || ($sourceHash !== null && isset($completedSourceHashes[$sourceHash]))) {
                     $summary['skipped_checkpointed']++;
@@ -191,5 +216,36 @@ class EcotradeProductImageCandidateResolver
                 || (float) $item->pd_ppm > 0
                 || (float) $item->rh_ppm > 0
             );
+    }
+
+    /**
+     * @param  list<string>|null  $itemIds
+     * @return array{hashes: array<string, true>, urls: array<string, true>}
+     */
+    private function allowedItemSources(?array $itemIds): array
+    {
+        if ($itemIds === null) {
+            return [
+                'hashes' => [],
+                'urls' => [],
+            ];
+        }
+
+        $items = Item::query()
+            ->whereIn('id', $itemIds)
+            ->get(['source_hash', 'source_url']);
+
+        return [
+            'hashes' => $this->lookupSet($items
+                ->pluck('source_hash')
+                ->filter(static fn (mixed $value): bool => is_string($value) && trim($value) !== '')
+                ->map(static fn (mixed $value): string => (string) $value)
+                ->all()),
+            'urls' => $this->lookupSet($items
+                ->pluck('source_url')
+                ->filter(static fn (mixed $value): bool => is_string($value) && trim($value) !== '')
+                ->map(static fn (mixed $value): string => (string) $value)
+                ->all()),
+        ];
     }
 }

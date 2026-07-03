@@ -57,7 +57,7 @@ function mockItemMetalsSpotService(float $ptPricePerGram = 10.0, float $pdPriceP
         ],
     ];
 
-    $mock = \Mockery::mock(MetalsSpotService::class);
+    $mock = Mockery::mock(MetalsSpotService::class);
     $mock->shouldReceive('all')->andReturn($spot);
     app()->instance(MetalsSpotService::class, $mock);
 }
@@ -104,7 +104,7 @@ function mockItemMetalsSpotServiceAscii(float $ptPricePerGram = 10.0, float $pdP
         ],
     ];
 
-    $mock = \Mockery::mock(MetalsSpotService::class);
+    $mock = Mockery::mock(MetalsSpotService::class);
     $mock->shouldReceive('all')->andReturn($spot);
     app()->instance(MetalsSpotService::class, $mock);
 }
@@ -253,7 +253,7 @@ test('item collections return only calculable items with at least one image', fu
         $response->assertOk();
         $response->assertJsonCount(1, 'data');
         $response->assertJsonPath('data.0.id', $calculable->id);
-        $response->assertJsonPath('data.0.price', 35.55);
+        $response->assertJsonPath('data.0.price', 23.11);
         expect($response->json('data.0.imageUrl'))->toBeString()->not->toBe('');
         expect($response->json('data.0.imageThumbUrl'))->toBeString()->not->toBe('');
         expect($response->json('data.0.imageDetailUrl'))->toBeString()->not->toBe('');
@@ -265,7 +265,7 @@ test('item collections return only calculable items with at least one image', fu
         $homeResponse->assertOk();
         $homeResponse->assertJsonCount(1, 'topItems');
         $homeResponse->assertJsonPath('topItems.0.id', $calculable->id);
-        $homeResponse->assertJsonPath('topItems.0.price', 35.55);
+        $homeResponse->assertJsonPath('topItems.0.price', 23.11);
         expect($homeResponse->json('topItems.0.imageUrl'))->toBeString()->not->toBe('');
     } finally {
         @unlink($imagePath);
@@ -286,7 +286,7 @@ test('home endpoint returns last 14 changes from metal sentinel spot data', func
         ],
     ];
 
-    $mock = \Mockery::mock(MetalsSpotService::class);
+    $mock = Mockery::mock(MetalsSpotService::class);
     $mock->shouldReceive('all')->with('USD')->andReturn($payloadUsd);
     app()->instance(MetalsSpotService::class, $mock);
 
@@ -311,7 +311,7 @@ test('charts endpoint returns last 14 daily points from metal sentinel spot data
         ],
     ];
 
-    $mock = \Mockery::mock(MetalsSpotService::class);
+    $mock = Mockery::mock(MetalsSpotService::class);
     $mock->shouldReceive('all')->with('USD')->andReturn($payloadUsd);
     app()->instance(MetalsSpotService::class, $mock);
 
@@ -532,7 +532,7 @@ test('notifications endpoint returns last 14 change notifications', function () 
         ],
     ];
 
-    $mock = \Mockery::mock(MetalsSpotService::class);
+    $mock = Mockery::mock(MetalsSpotService::class);
     $mock->shouldReceive('all')->with('USD')->andReturn($payloadUsd);
     app()->instance(MetalsSpotService::class, $mock);
 

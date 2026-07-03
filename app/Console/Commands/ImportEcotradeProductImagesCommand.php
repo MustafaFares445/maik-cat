@@ -8,6 +8,7 @@ use App\Services\Ecotrade\EcotradeProductImageImporter;
 use App\Services\Ecotrade\EcotradeProductImageProgressStore;
 use Illuminate\Console\Command;
 use RuntimeException;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Throwable;
 
 class ImportEcotradeProductImagesCommand extends Command
@@ -24,6 +25,7 @@ class ImportEcotradeProductImagesCommand extends Command
         {--fresh : Ignore any saved progress checkpoint for this source file and options}
         {--retry-incomplete-only : Retry only incomplete items for this source file and options}
         {--retry-failed-only : Retry only items recorded as failed in a previous run for this source file and options}
+        {--media-report= : Optional generated CSV media report; only item rows listed in the report are eligible}
         {--watermark=spatie : Watermark strategy: spatie, ai, or none}
         {--watermark-ai : Ask Gemini to add repeated Maikcat watermark text after cleanup}
         {--watermark-spatie : Add the local Maikcat watermark image before saving to Spatie media}
@@ -55,6 +57,8 @@ class ImportEcotradeProductImagesCommand extends Command
             $chunkSize = max(1, (int) $this->option('chunk'));
             $sleepMs = max(0, (int) $this->option('sleep-ms'));
             $progressKey = $this->progressKey($path, $replaceExisting, $watermark, $watermarkText);
+            $mediaReportPath = $this->mediaReportPath();
+            $mediaReportItemIds = $mediaReportPath === null ? null : $this->readItemIdsFromMediaReport($mediaReportPath);
 
             if ($fresh && ! $testMode) {
                 $progressStore->forget($progressKey);
@@ -67,20 +71,23 @@ class ImportEcotradeProductImagesCommand extends Command
                 'failed_source_hashes' => [],
             ] : $progressStore->load($progressKey);
 
-            $resolved = $resolver->resolve(
-                $reader->read($path),
-                [
-                    'replace_existing' => $replaceExisting,
-                    'limit' => $limit,
-                    'completed_item_ids' => $progress['completed_item_ids'],
-                    'completed_source_hashes' => $progress['completed_source_hashes'],
-                    'failed_item_ids' => $progress['failed_item_ids'],
-                    'failed_source_hashes' => $progress['failed_source_hashes'],
-                    'failed_checkpoint_available' => $progress['failed_item_ids'] !== []
-                        || $progress['failed_source_hashes'] !== [],
-                    'retry_incomplete_only' => $retryIncompleteOnly,
-                ],
-            );
+            $resolverOptions = [
+                'replace_existing' => $replaceExisting,
+                'limit' => $limit,
+                'completed_item_ids' => $progress['completed_item_ids'],
+                'completed_source_hashes' => $progress['completed_source_hashes'],
+                'failed_item_ids' => $progress['failed_item_ids'],
+                'failed_source_hashes' => $progress['failed_source_hashes'],
+                'failed_checkpoint_available' => $progress['failed_item_ids'] !== []
+                    || $progress['failed_source_hashes'] !== [],
+                'retry_incomplete_only' => $retryIncompleteOnly,
+            ];
+
+            if ($mediaReportItemIds !== null) {
+                $resolverOptions['allowed_item_ids'] = $mediaReportItemIds;
+            }
+
+            $resolved = $resolver->resolve($reader->read($path), $resolverOptions);
             $summary = $resolved['summary'];
             $candidates = $resolved['candidates'];
             $estimatedCost = $this->estimatedCost(count($candidates));
@@ -93,6 +100,8 @@ class ImportEcotradeProductImagesCommand extends Command
                 $fresh,
                 $retryIncompleteOnly,
                 $watermark,
+                $mediaReportPath,
+                is_array($mediaReportItemIds) ? count($mediaReportItemIds) : null,
                 $summary,
                 $estimatedCost,
                 count($progress['completed_item_ids']),
@@ -202,6 +211,8 @@ class ImportEcotradeProductImagesCommand extends Command
         bool $fresh,
         bool $retryIncompleteOnly,
         string $watermark,
+        ?string $mediaReportPath,
+        ?int $mediaReportItemCount,
         array $summary,
         float $estimatedCost,
         int $completedCount,
@@ -217,6 +228,8 @@ class ImportEcotradeProductImagesCommand extends Command
         $this->line('Retry incomplete only: '.($retryIncompleteOnly ? 'yes' : 'no'));
         $this->line('Completed checkpoint items: '.$completedCount);
         $this->line('Failed checkpoint items: '.$failedCheckpointCount);
+        $this->line('Media report: '.($mediaReportPath ?? 'none'));
+        $this->line('Media report item ids: '.($mediaReportItemCount ?? 0));
         $this->line('Watermark: '.$watermark);
         $this->newLine();
 
@@ -315,6 +328,89 @@ class ImportEcotradeProductImagesCommand extends Command
         }
 
         throw new RuntimeException('Ecotrade JSON file not found: '.$path);
+    }
+
+    private function mediaReportPath(): ?string
+    {
+        $path = $this->option('media-report');
+
+        if (! is_string($path) || trim($path) === '') {
+            return null;
+        }
+
+        return $this->resolveReportPath($path);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function readItemIdsFromMediaReport(string $path): array
+    {
+        $handle = fopen($path, 'rb');
+
+        if ($handle === false) {
+            throw new RuntimeException('Unable to open media report: '.$path);
+        }
+
+        try {
+            $header = fgetcsv($handle);
+
+            if (! is_array($header)) {
+                return [];
+            }
+
+            $modelIdIndex = array_search('model_id', $header, true);
+            $mediaIdIndex = array_search('media_id', $header, true);
+            $itemIds = [];
+            $mediaIds = [];
+
+            while (($row = fgetcsv($handle)) !== false) {
+                if ($modelIdIndex !== false && isset($row[$modelIdIndex]) && trim((string) $row[$modelIdIndex]) !== '') {
+                    $itemIds[] = trim((string) $row[$modelIdIndex]);
+
+                    continue;
+                }
+
+                if ($mediaIdIndex !== false && isset($row[$mediaIdIndex]) && is_numeric($row[$mediaIdIndex])) {
+                    $mediaIds[] = (int) $row[$mediaIdIndex];
+                }
+            }
+        } finally {
+            fclose($handle);
+        }
+
+        if ($itemIds === [] && $mediaIds !== []) {
+            $itemIds = Media::query()
+                ->whereIn('id', array_values(array_unique($mediaIds)))
+                ->pluck('model_id')
+                ->filter()
+                ->map(static fn (mixed $id): string => (string) $id)
+                ->all();
+        }
+
+        return array_values(array_unique($itemIds));
+    }
+
+    private function resolveReportPath(string $path): string
+    {
+        $path = trim($path);
+
+        if (is_file($path)) {
+            return $path;
+        }
+
+        $candidates = [
+            base_path($path),
+            storage_path($path),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        throw new RuntimeException('Media report file not found: '.$path);
     }
 
     private function progressKey(string $path, bool $replaceExisting, string $watermark, string $watermarkText): string

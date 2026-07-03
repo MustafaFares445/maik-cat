@@ -695,3 +695,97 @@ test('already imaged items are skipped unless replace existing is enabled', func
 
     @unlink($jsonPath);
 });
+
+test('media report limits replace existing image imports to listed item rows', function () {
+    $group = CarGroup::factory()->create([
+        'name' => 'Acura',
+        'excel_sheet_name' => 'ACURA',
+        'slug' => 'acura-report-filter',
+        'source' => 'ecotrade',
+    ]);
+
+    $listedRecord = ecotradeImageImportRecord([
+        'product_url' => 'https://www.ecotradegroup.com/en/product/acura/acura-mdx-04-front-report-listed',
+        'serial_code' => 'ACURA MDX 04 FRONT REPORT LISTED',
+        'product_name' => 'ACURA MDX 04 FRONT REPORT LISTED',
+        'image_urls' => ['https://images.test/source/acura-report-listed.png'],
+        'main_image_url' => 'https://images.test/source/acura-report-listed.png',
+    ]);
+    $unlistedRecord = ecotradeImageImportRecord([
+        'product_url' => 'https://www.ecotradegroup.com/en/product/acura/acura-mdx-04-front-report-unlisted',
+        'serial_code' => 'ACURA MDX 04 FRONT REPORT UNLISTED',
+        'product_name' => 'ACURA MDX 04 FRONT REPORT UNLISTED',
+        'image_urls' => ['https://images.test/source/acura-report-unlisted.png'],
+        'main_image_url' => 'https://images.test/source/acura-report-unlisted.png',
+    ]);
+
+    $listedItem = ecotradeImageImportItem($listedRecord, [], $group);
+    $unlistedItem = ecotradeImageImportItem($unlistedRecord, [], $group);
+    $jsonPath = ecotradeImageImportTempFile(json_encode([$listedRecord, $unlistedRecord], JSON_THROW_ON_ERROR), '.json');
+    $reportPath = ecotradeImageImportTempFile(
+        implode(PHP_EOL, [
+            'media_id,model_id,file_name,absolute_path,reason,match_score',
+            '100,'.$listedItem->id.',old-listed.png,/tmp/old-listed.png,Matched wrong-watermark reference template,0.9915',
+        ]).PHP_EOL,
+        '.csv',
+    );
+    $listedExistingPath = ecotradeImageImportTempFile(ecotradeImageImportPngBytes(), '.png');
+    $unlistedExistingPath = ecotradeImageImportTempFile(ecotradeImageImportPngBytes(), '.png');
+
+    $listedItem->addMedia($listedExistingPath)->toMediaCollection('images');
+    $unlistedItem->addMedia($unlistedExistingPath)->toMediaCollection('images');
+
+    $listedOriginalMediaId = $listedItem->refresh()->getFirstMedia('images')->id;
+    $unlistedOriginalMediaId = $unlistedItem->refresh()->getFirstMedia('images')->id;
+    $sourceBytes = ecotradeImageImportPngBytes(340, 240);
+    $editedBytes = ecotradeImageImportPngBytes(380, 260);
+
+    Http::fake([
+        'https://images.test/source/acura-report-listed.png' => Http::response($sourceBytes, 200, [
+            'Content-Type' => 'image/png',
+        ]),
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent*' => Http::response([
+            'candidates' => [
+                [
+                    'content' => [
+                        'parts' => [
+                            [
+                                'inlineData' => [
+                                    'mimeType' => 'image/png',
+                                    'data' => base64_encode($editedBytes),
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ], 200),
+    ]);
+
+    $this->artisan('ecotrade:import-product-images', [
+        'path' => $jsonPath,
+        '--media-report' => $reportPath,
+        '--replace-existing' => true,
+        '--fresh' => true,
+        '--max-cost-usd' => '0.05',
+    ])
+        ->expectsOutputToContain('Media report item ids: 1')
+        ->expectsOutputToContain('candidates selected: 1')
+        ->expectsOutputToContain('Imported: 1')
+        ->assertExitCode(0);
+
+    $listedMedia = $listedItem->refresh()->getFirstMedia('images');
+    $unlistedMedia = $unlistedItem->refresh()->getFirstMedia('images');
+
+    expect($listedMedia)->not->toBeNull()
+        ->and($listedMedia->id)->not->toBe($listedOriginalMediaId)
+        ->and($listedMedia->getCustomProperty('source_url'))->toBe('https://images.test/source/acura-report-listed.png')
+        ->and($listedMedia->getCustomProperty('watermark_mode'))->toBe('spatie')
+        ->and($unlistedMedia)->not->toBeNull()
+        ->and($unlistedMedia->id)->toBe($unlistedOriginalMediaId);
+
+    Http::assertSentCount(2);
+
+    @unlink($jsonPath);
+    @unlink($reportPath);
+});

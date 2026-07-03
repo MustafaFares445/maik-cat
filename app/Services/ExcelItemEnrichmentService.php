@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Data\ExcelItemRowData;
 use App\Models\CarGroup;
 use App\Models\Item;
+use App\Support\Excel\WindowReadFilter;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -17,6 +19,8 @@ use Throwable;
 
 class ExcelItemEnrichmentService
 {
+    private const float MAX_REASONABLE_ITEM_WEIGHT_KG = 50.0;
+
     /** @var array<string, true> */
     private array $seenSignatures = [];
 
@@ -252,7 +256,7 @@ class ExcelItemEnrichmentService
         }
 
         $reader->setLoadSheetsOnly([$sheetName]);
-        $reader->setReadFilter(new \App\Support\Excel\WindowReadFilter($startRow, $endRow, $maxColumn));
+        $reader->setReadFilter(new WindowReadFilter($startRow, $endRow, $maxColumn));
 
         $spreadsheet = $reader->load($path);
         $sheet = $spreadsheet->getSheetByName($sheetName);
@@ -620,7 +624,7 @@ class ExcelItemEnrichmentService
         return $this->repairItemCache[$cacheKey];
     }
 
-    private function buildRepairQuery(string $groupId, ExcelItemRowData $row, bool $includeDetails): \Illuminate\Database\Eloquent\Builder
+    private function buildRepairQuery(string $groupId, ExcelItemRowData $row, bool $includeDetails): Builder
     {
         $query = Item::query()
             ->where('source', 'excel_import')
@@ -833,6 +837,12 @@ class ExcelItemEnrichmentService
             $header = $this->normalizeHeader($sheet->getCellByColumnAndRow($col, $bestRow)->getValue());
 
             if ($header === '') {
+                continue;
+            }
+
+            if (in_array($header, ['pt', 'pd', 'rh'], true)) {
+                $mapped[$header] = $col;
+
                 continue;
             }
 
@@ -1111,11 +1121,24 @@ class ExcelItemEnrichmentService
             }
         }
 
+        if ($this->shouldReplaceImplausibleWeight($item->weight_kg, $row->weightKg)) {
+            $updates['weight_kg'] = $row->weightKg;
+        }
+
         if (blank($item->shape_code) && filled($row->shapeCode)) {
             $updates['shape_code'] = $row->shapeCode;
         }
 
         return $updates;
+    }
+
+    private function shouldReplaceImplausibleWeight(mixed $existingWeight, ?float $incomingWeight): bool
+    {
+        if ($incomingWeight === null || $incomingWeight <= 0.0 || $incomingWeight > self::MAX_REASONABLE_ITEM_WEIGHT_KG) {
+            return false;
+        }
+
+        return (float) $existingWeight > self::MAX_REASONABLE_ITEM_WEIGHT_KG;
     }
 
     private function resolveGroup(string $canonicalGroupName): CarGroup
