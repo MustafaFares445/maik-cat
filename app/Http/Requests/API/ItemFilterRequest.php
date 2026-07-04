@@ -9,6 +9,19 @@ class ItemFilterRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $filter = $this->input('filter', []);
+        $filter = is_array($filter) ? $filter : [];
+
+        if ($this->filled('perPage') && ! $this->filled('per_page')) {
+            $this->merge(['per_page' => $this->input('perPage')]);
+        }
+
+        if (array_key_exists('categoryId', $filter) && ! array_key_exists('category_id', $filter)) {
+            $filter['category_id'] = $filter['categoryId'];
+        }
+
+        if (array_key_exists('carGroup', $filter) && ! array_key_exists('car_group', $filter)) {
+            $filter['car_group'] = $filter['carGroup'];
+        }
 
         if ($this->filled('text')) {
             $filter['text'] = $this->input('text');
@@ -52,6 +65,8 @@ class ItemFilterRequest extends FormRequest
     {
         return [
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'perPage' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'filter' => ['sometimes', 'array'],
             'text' => ['sometimes', 'string', 'max:255'],
             'category_id' => ['sometimes', 'uuid', 'exists:car_groups,id'],
             'categoryId' => ['sometimes', 'uuid', 'exists:car_groups,id'],
@@ -60,8 +75,9 @@ class ItemFilterRequest extends FormRequest
             'sort' => ['sometimes', 'string', 'in:created_at,-created_at,serial_code,-serial_code,model,-model'],
             'filter.text' => ['sometimes', 'string', 'max:255'],
             'filter.category_id' => ['sometimes', 'uuid', 'exists:car_groups,id'],
+            'filter.categoryId' => ['sometimes', 'uuid', 'exists:car_groups,id'],
             'filter.car_group' => ['sometimes', 'string', 'max:255'],
+            'filter.carGroup' => ['sometimes', 'string', 'max:255'],
         ];
     }
 }
-
