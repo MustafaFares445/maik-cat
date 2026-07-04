@@ -11,6 +11,12 @@ class ItemPriceService
 
     private const float DEFAULT_PAYOUT_RATE = 0.65;
 
+    private const float DEFAULT_LEGACY_ECOTRADE_PAYOUT_RATE = 0.1577780772;
+
+    private const float OVERSIZED_WEIGHT_THRESHOLD_KG = 50.0;
+
+    private const float GRAMS_PER_KILOGRAM = 1000.0;
+
     /** @var array<string, array{platinum: float, palladium: float, rhodium: float}> */
     private array $priceCache = [];
 
@@ -22,7 +28,7 @@ class ItemPriceService
         $prices = $this->metalPrices($currency);
 
         $rawWeightKg = max((float) ($item->weight_kg ?? 0), 0.0);
-        $weightKg = $rawWeightKg > 50.0 ? ($rawWeightKg / 1000.0) : $rawWeightKg;
+        $weightKg = $this->normalizedWeightKg($rawWeightKg);
         $ptPpm = max((float) ($item->pt_ppm ?? 0), 0.0);
         $pdPpm = max((float) ($item->pd_ppm ?? 0), 0.0);
         $rhPpm = max((float) ($item->rh_ppm ?? 0), 0.0);
@@ -37,7 +43,7 @@ class ItemPriceService
             ($rhPpm * $prices['rhodium'])
         );
 
-        $price = $metalValue * $this->payoutRate();
+        $price = $metalValue * $this->payoutRate($item, $rawWeightKg);
         $roundedPrice = round(max($price, 0.0), 2);
 
         return $roundedPrice;
@@ -105,9 +111,42 @@ class ItemPriceService
         return null;
     }
 
-    private function payoutRate(): float
+    private function normalizedWeightKg(float $rawWeightKg): float
     {
-        $rate = (float) config('services.item_pricing.payout_rate', self::DEFAULT_PAYOUT_RATE);
+        if ($rawWeightKg > self::OVERSIZED_WEIGHT_THRESHOLD_KG) {
+            return $rawWeightKg / self::GRAMS_PER_KILOGRAM;
+        }
+
+        return $rawWeightKg;
+    }
+
+    private function payoutRate(Item $item, float $rawWeightKg): float
+    {
+        if ($this->usesLegacyEcotradeWeight($item, $rawWeightKg)) {
+            return $this->boundedRate(
+                config('services.item_pricing.legacy_ecotrade_payout_rate', self::DEFAULT_LEGACY_ECOTRADE_PAYOUT_RATE)
+            );
+        }
+
+        return $this->boundedRate(config('services.item_pricing.payout_rate', self::DEFAULT_PAYOUT_RATE));
+    }
+
+    private function usesLegacyEcotradeWeight(Item $item, float $rawWeightKg): bool
+    {
+        if ($rawWeightKg <= self::OVERSIZED_WEIGHT_THRESHOLD_KG) {
+            return false;
+        }
+
+        if ((string) $item->source === 'ecotrade') {
+            return true;
+        }
+
+        return str_contains(strtolower((string) $item->source_url), 'ecotradegroup.com');
+    }
+
+    private function boundedRate(mixed $rate): float
+    {
+        $rate = (float) $rate;
 
         return min(max($rate, 0.0), 1.0);
     }

@@ -272,6 +272,36 @@ test('item collections return only calculable items with at least one image', fu
     }
 });
 
+test('item details price matches Ecotrade catalogue for legacy oversized Ecotrade weights', function () {
+    mockItemMetalsSpotServiceAscii(ptPricePerGram: 46.06, pdPricePerGram: 35.17, rhPricePerGram: 216.5);
+
+    $group = CarGroup::factory()->create(['name' => 'Volvo', 'excel_sheet_name' => 'VOLVO']);
+    $item = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'model' => '8670409',
+        'serial_code' => '8670409',
+        'normalized_serial' => '8670409',
+        'weight_kg' => 6649,
+        'pt_ppm' => 2750,
+        'pd_ppm' => 0,
+        'rh_ppm' => 0,
+        'source' => 'ecotrade',
+        'source_url' => 'https://www.ecotradegroup.com/en/product/volvo/8670409',
+    ]);
+    $imagePath = mobileApiAttachImage($item);
+
+    try {
+        $response = getJson("/api/items/{$item->id}?currency=EUR");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.id', $item->id);
+        $response->assertJsonPath('data.price', 132.88);
+        $response->assertJsonPath('data.weightKg', 6649);
+    } finally {
+        @unlink($imagePath);
+    }
+});
+
 test('home endpoint returns last 14 changes from metal sentinel spot data', function () {
     $payloadUsd = [
         'source' => 'metal-sentinel',

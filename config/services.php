@@ -50,6 +50,7 @@ return [
 
     'item_pricing' => [
         'payout_rate' => (float) env('ITEM_PRICE_PAYOUT_RATE', 0.65),
+        'legacy_ecotrade_payout_rate' => (float) env('ITEM_PRICE_LEGACY_ECOTRADE_PAYOUT_RATE', 0.1577780772),
     ],
 
     'gemini' => [
