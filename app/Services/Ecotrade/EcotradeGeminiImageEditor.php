@@ -12,6 +12,33 @@ class EcotradeGeminiImageEditor
      */
     public function edit(string $imageBytes, string $mimeType, string $prompt): array
     {
+        $payload = $this->generateContent($imageBytes, $mimeType, $prompt, ['TEXT', 'IMAGE']);
+        $image = $this->extractImage($payload);
+
+        if ($image === null) {
+            throw new EcotradeGeminiImageUnavailableException($this->extractText($payload));
+        }
+
+        return $image;
+    }
+
+    public function inspect(string $imageBytes, string $mimeType, string $prompt): string
+    {
+        $payload = $this->generateContent($imageBytes, $mimeType, $prompt, ['TEXT']);
+        $text = $this->extractText($payload);
+
+        if ($text === null) {
+            throw new RuntimeException('Gemini image inspection returned no text.');
+        }
+
+        return $text;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function generateContent(string $imageBytes, string $mimeType, string $prompt, array $responseModalities): array
+    {
         $apiKey = trim((string) config('services.gemini.api_key'));
 
         if ($apiKey === '') {
@@ -23,8 +50,7 @@ class EcotradeGeminiImageEditor
         $timeout = max(1, (int) config('services.gemini.image_timeout', 90));
         $retryTimes = max(0, (int) config('services.gemini.image_retry_times', 2));
         $retrySleep = max(0, (int) config('services.gemini.image_retry_sleep_ms', 1000));
-
-        $url = rtrim($baseUrl, '/') . '/models/' . $model . ':generateContent';
+        $url = rtrim($baseUrl, '/').'/models/'.$model.':generateContent';
 
         $response = Http::timeout($timeout)
             ->retry($retryTimes, $retrySleep)
@@ -51,27 +77,21 @@ class EcotradeGeminiImageEditor
                     ],
                 ],
                 'generationConfig' => [
-                    'responseModalities' => ['TEXT', 'IMAGE'],
+                    'responseModalities' => $responseModalities,
                 ],
             ]);
 
         if ($response->failed()) {
-            throw new RuntimeException('Gemini image edit failed with HTTP '.$response->status().': '.$response->body());
+            throw new RuntimeException('Gemini image request failed with HTTP '.$response->status().': '.$response->body());
         }
 
         $payload = $response->json();
 
         if (! is_array($payload)) {
-            throw new RuntimeException('Gemini image edit returned an invalid JSON response.');
+            throw new RuntimeException('Gemini image request returned an invalid JSON response.');
         }
 
-        $image = $this->extractImage($payload);
-
-        if ($image === null) {
-            throw new EcotradeGeminiImageUnavailableException($this->extractText($payload));
-        }
-
-        return $image;
+        return $payload;
     }
 
     /**
