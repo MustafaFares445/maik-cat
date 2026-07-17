@@ -3,6 +3,7 @@
 namespace App\Traits\FilterQueries;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\AllowedSort;
@@ -10,9 +11,12 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 trait ItemFilterQuery
 {
-    public static function getQuery(): QueryBuilder
+    public static function getQuery(?Request $request = null): QueryBuilder
     {
-        return QueryBuilder::for(static::query()->apiVisible()->with(['carGroup', 'media']))
+        return QueryBuilder::for(
+            static::query()->apiVisible()->with(['carGroup', 'media']),
+            $request
+        )
             ->allowedFilters(
                 AllowedFilter::exact('category_id', 'car_group_id'),
                 AllowedFilter::callback('text', static function (Builder $query, string $value): void {
@@ -57,4 +61,3 @@ trait ItemFilterQuery
             ->defaultSort('-created_at');
     }
 }
-
