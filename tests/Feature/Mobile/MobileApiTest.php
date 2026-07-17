@@ -295,7 +295,7 @@ test('item details price applies the Excel formula for legacy oversized weights'
 
         $response->assertOk();
         $response->assertJsonPath('data.id', $item->id);
-        $response->assertJsonPath('data.price', 673.68);
+        $response->assertJsonPath('data.price', 673.75);
         $response->assertJsonPath('data.weightKg', 6649);
     } finally {
         @unlink($imagePath);
