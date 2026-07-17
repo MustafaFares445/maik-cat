@@ -16,7 +16,7 @@ class ItemController extends Controller
     {
         $userId = $request->user('sanctum')?->getKey();
 
-        $itemsQuery = Item::getQuery();
+        $itemsQuery = Item::getQuery($request);
 
         $this->applySavedItemFlag($itemsQuery, $userId);
 
