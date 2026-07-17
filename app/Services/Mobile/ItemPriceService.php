@@ -9,9 +9,9 @@ class ItemPriceService
 {
     private const string DEFAULT_CURRENCY = 'USD';
 
-    private const float DEFAULT_PAYOUT_RATE = 0.65;
+    private const float EXCEL_PAYOUT_RATE = 0.80;
 
-    private const float DEFAULT_LEGACY_ECOTRADE_PAYOUT_RATE = 0.1577780772;
+    private const float EXCEL_TROY_OUNCE_GRAMS = 31.1043;
 
     private const float OVERSIZED_WEIGHT_THRESHOLD_KG = 50.0;
 
@@ -37,16 +37,18 @@ class ItemPriceService
             return 0.0;
         }
 
-        $metalValue = ($weightKg / 1000) * (
+        // Excel formula:
+        // (((Pt ppm * Pt price/g * kg) + (Pd ppm * Pd price/g * kg) +
+        //   (Rh ppm * Rh price/g * kg)) * 80 / 100) * 0.001
+        $metalValue = ($weightKg / self::GRAMS_PER_KILOGRAM) * (
             ($ptPpm * $prices['platinum']) +
             ($pdPpm * $prices['palladium']) +
             ($rhPpm * $prices['rhodium'])
         );
 
-        $price = $metalValue * $this->payoutRate($item, $rawWeightKg);
-        $roundedPrice = round(max($price, 0.0), 2);
+        $price = $metalValue * self::EXCEL_PAYOUT_RATE;
 
-        return $roundedPrice;
+        return round(max($price, 0.0), 2);
     }
 
     /**
@@ -100,12 +102,13 @@ class ItemPriceService
      */
     private function extractPriceGram(array $row): ?float
     {
-        if (is_numeric($row['price_gram'] ?? null)) {
-            return max((float) $row['price_gram'], 0.0);
+        // The workbook derives every gram price from the ounce price with 31.1043.
+        if (is_numeric($row['price_oz'] ?? null)) {
+            return max((float) $row['price_oz'] / self::EXCEL_TROY_OUNCE_GRAMS, 0.0);
         }
 
-        if (is_numeric($row['price_oz'] ?? null)) {
-            return max((float) $row['price_oz'] / 31.1035, 0.0);
+        if (is_numeric($row['price_gram'] ?? null)) {
+            return max((float) $row['price_gram'], 0.0);
         }
 
         return null;
@@ -118,37 +121,6 @@ class ItemPriceService
         }
 
         return $rawWeightKg;
-    }
-
-    private function payoutRate(Item $item, float $rawWeightKg): float
-    {
-        if ($this->usesLegacyEcotradeWeight($item, $rawWeightKg)) {
-            return $this->boundedRate(
-                config('services.item_pricing.legacy_ecotrade_payout_rate', self::DEFAULT_LEGACY_ECOTRADE_PAYOUT_RATE)
-            );
-        }
-
-        return $this->boundedRate(config('services.item_pricing.payout_rate', self::DEFAULT_PAYOUT_RATE));
-    }
-
-    private function usesLegacyEcotradeWeight(Item $item, float $rawWeightKg): bool
-    {
-        if ($rawWeightKg <= self::OVERSIZED_WEIGHT_THRESHOLD_KG) {
-            return false;
-        }
-
-        if ((string) $item->source === 'ecotrade') {
-            return true;
-        }
-
-        return str_contains(strtolower((string) $item->source_url), 'ecotradegroup.com');
-    }
-
-    private function boundedRate(mixed $rate): float
-    {
-        $rate = (float) $rate;
-
-        return min(max($rate, 0.0), 1.0);
     }
 
     private function normalizeCurrency(?string $currency): string
