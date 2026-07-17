@@ -9,9 +9,22 @@ class ItemFilterRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $filter = $this->input('filter', []);
+        $filter = is_array($filter) ? $filter : [];
+
+        $text = null;
 
         if ($this->filled('text')) {
-            $filter['text'] = $this->input('text');
+            $text = $this->input('text');
+        } elseif ($this->filled('filter.text')) {
+            $text = $this->input('filter.text');
+        }
+
+        if ($text !== null) {
+            $filter['text'] = $text;
+
+            if (! $this->filled('text')) {
+                $this->merge(['text' => $text]);
+            }
         }
 
         if ($this->filled('category_id')) {
@@ -58,10 +71,10 @@ class ItemFilterRequest extends FormRequest
             'car_group' => ['sometimes', 'string', 'max:255'],
             'carGroup' => ['sometimes', 'string', 'max:255'],
             'sort' => ['sometimes', 'string', 'in:created_at,-created_at,serial_code,-serial_code,model,-model'],
+            'filter' => ['sometimes', 'array'],
             'filter.text' => ['sometimes', 'string', 'max:255'],
             'filter.category_id' => ['sometimes', 'uuid', 'exists:car_groups,id'],
             'filter.car_group' => ['sometimes', 'string', 'max:255'],
         ];
     }
 }
-
