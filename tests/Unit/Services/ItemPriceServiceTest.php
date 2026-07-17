@@ -4,7 +4,7 @@ use App\Models\Item;
 use App\Services\Mobile\ItemPriceService;
 use App\Services\Mobile\MetalsSpotService;
 
-test('item price service uses the live metals snapshot once per currency', function (): void {
+test('item price service matches the Excel formula and uses the live metals snapshot once per currency', function (): void {
     $spotPayload = [
         'source' => 'metal-sentinel',
         'cached' => false,
@@ -53,11 +53,11 @@ test('item price service uses the live metals snapshot once per currency', funct
         'rh_ppm' => 250,
     ]);
 
-    expect($service->priceFor($firstItem))->toBe(17.88)
-        ->and($service->priceFor($secondItem))->toBe(35.75);
+    expect($service->priceFor($firstItem))->toBe(22.0)
+        ->and($service->priceFor($secondItem))->toBe(44.0);
 });
 
-test('item price service matches Ecotrade catalogue pricing for legacy oversized Ecotrade weights', function (): void {
+test('item price service applies the Excel formula after normalizing legacy gram weights', function (): void {
     $spotPayload = [
         'source' => 'metal-sentinel',
         'cached' => false,
@@ -99,5 +99,5 @@ test('item price service matches Ecotrade catalogue pricing for legacy oversized
         'source_url' => 'https://www.ecotradegroup.com/en/product/volvo/8670409',
     ]);
 
-    expect(app(ItemPriceService::class)->priceFor($item, 'EUR'))->toBe(132.88);
+    expect(app(ItemPriceService::class)->priceFor($item, 'EUR'))->toBe(673.68);
 });
