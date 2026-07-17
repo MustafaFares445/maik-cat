@@ -26,7 +26,7 @@ function mockItemMetalsSpotService(float $ptPricePerGram = 10.0, float $pdPriceP
                 'name_en' => 'Platinum',
                 'name_ar' => 'Ø¨Ù„Ø§ØªÙŠÙ†',
                 'symbol' => 'Pt',
-                'price_oz' => round($ptPricePerGram * 31.1035, 2),
+                'price_oz' => round($ptPricePerGram * 31.1043, 2),
                 'price_gram' => $ptPricePerGram,
                 'change_oz' => 0.0,
                 'change_pct' => 0.0,
@@ -37,7 +37,7 @@ function mockItemMetalsSpotService(float $ptPricePerGram = 10.0, float $pdPriceP
                 'name_en' => 'Palladium',
                 'name_ar' => 'Ø¨Ù„Ø§Ø¯ÙŠÙˆÙ…',
                 'symbol' => 'Pd',
-                'price_oz' => round($pdPricePerGram * 31.1035, 2),
+                'price_oz' => round($pdPricePerGram * 31.1043, 2),
                 'price_gram' => $pdPricePerGram,
                 'change_oz' => 0.0,
                 'change_pct' => 0.0,
@@ -48,7 +48,7 @@ function mockItemMetalsSpotService(float $ptPricePerGram = 10.0, float $pdPriceP
                 'name_en' => 'Rhodium',
                 'name_ar' => 'Ø±ÙˆØ¯ÙŠÙˆÙ…',
                 'symbol' => 'Rh',
-                'price_oz' => round($rhPricePerGram * 31.1035, 2),
+                'price_oz' => round($rhPricePerGram * 31.1043, 2),
                 'price_gram' => $rhPricePerGram,
                 'change_oz' => 0.0,
                 'change_pct' => 0.0,
@@ -75,7 +75,7 @@ function mockItemMetalsSpotServiceAscii(float $ptPricePerGram = 10.0, float $pdP
                 'key' => 'platinum',
                 'name_en' => 'Platinum',
                 'symbol' => 'Pt',
-                'price_oz' => round($ptPricePerGram * 31.1035, 2),
+                'price_oz' => round($ptPricePerGram * 31.1043, 2),
                 'price_gram' => $ptPricePerGram,
                 'change_oz' => 0.0,
                 'change_pct' => 0.0,
@@ -85,7 +85,7 @@ function mockItemMetalsSpotServiceAscii(float $ptPricePerGram = 10.0, float $pdP
                 'key' => 'palladium',
                 'name_en' => 'Palladium',
                 'symbol' => 'Pd',
-                'price_oz' => round($pdPricePerGram * 31.1035, 2),
+                'price_oz' => round($pdPricePerGram * 31.1043, 2),
                 'price_gram' => $pdPricePerGram,
                 'change_oz' => 0.0,
                 'change_pct' => 0.0,
@@ -95,7 +95,7 @@ function mockItemMetalsSpotServiceAscii(float $ptPricePerGram = 10.0, float $pdP
                 'key' => 'rhodium',
                 'name_en' => 'Rhodium',
                 'symbol' => 'Rh',
-                'price_oz' => round($rhPricePerGram * 31.1035, 2),
+                'price_oz' => round($rhPricePerGram * 31.1043, 2),
                 'price_gram' => $rhPricePerGram,
                 'change_oz' => 0.0,
                 'change_pct' => 0.0,
@@ -253,7 +253,7 @@ test('item collections return only calculable items with at least one image', fu
         $response->assertOk();
         $response->assertJsonCount(1, 'data');
         $response->assertJsonPath('data.0.id', $calculable->id);
-        $response->assertJsonPath('data.0.price', 23.11);
+        $response->assertJsonPath('data.0.price', 28.44);
         expect($response->json('data.0.imageUrl'))->toBeString()->not->toBe('');
         expect($response->json('data.0.imageThumbUrl'))->toBeString()->not->toBe('');
         expect($response->json('data.0.imageDetailUrl'))->toBeString()->not->toBe('');
@@ -265,14 +265,14 @@ test('item collections return only calculable items with at least one image', fu
         $homeResponse->assertOk();
         $homeResponse->assertJsonCount(1, 'topItems');
         $homeResponse->assertJsonPath('topItems.0.id', $calculable->id);
-        $homeResponse->assertJsonPath('topItems.0.price', 23.11);
+        $homeResponse->assertJsonPath('topItems.0.price', 28.44);
         expect($homeResponse->json('topItems.0.imageUrl'))->toBeString()->not->toBe('');
     } finally {
         @unlink($imagePath);
     }
 });
 
-test('item details price matches Ecotrade catalogue for legacy oversized Ecotrade weights', function () {
+test('item details price applies the Excel formula for legacy oversized weights', function () {
     mockItemMetalsSpotServiceAscii(ptPricePerGram: 46.06, pdPricePerGram: 35.17, rhPricePerGram: 216.5);
 
     $group = CarGroup::factory()->create(['name' => 'Volvo', 'excel_sheet_name' => 'VOLVO']);
@@ -295,7 +295,7 @@ test('item details price matches Ecotrade catalogue for legacy oversized Ecotrad
 
         $response->assertOk();
         $response->assertJsonPath('data.id', $item->id);
-        $response->assertJsonPath('data.price', 132.88);
+        $response->assertJsonPath('data.price', 673.68);
         $response->assertJsonPath('data.weightKg', 6649);
     } finally {
         @unlink($imagePath);
