@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\User;
 use App\Notifications\Channels\FcmChannel;
 use App\Services\Mobile\ItemPriceService;
+use App\Services\Mobile\ItemPriceSettingsService;
 use App\Services\Mobile\MetalsSpotService;
 use Illuminate\Notifications\ChannelManager;
 use Illuminate\Support\Facades\Gate;
@@ -20,6 +21,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(MetalsSpotService::class);
+        $this->app->scoped(ItemPriceSettingsService::class);
         $this->app->scoped(ItemPriceService::class);
 
         $this->app->singleton(Messaging::class, function (): Messaging {
