@@ -9,8 +9,6 @@ class ItemPriceService
 {
     private const string DEFAULT_CURRENCY = 'USD';
 
-    private const float EXCEL_PAYOUT_RATE = 0.80;
-
     private const float EXCEL_TROY_OUNCE_GRAMS = 31.1043;
 
     private const float OVERSIZED_WEIGHT_THRESHOLD_KG = 50.0;
@@ -20,9 +18,21 @@ class ItemPriceService
     /** @var array<string, array{platinum: float, palladium: float, rhodium: float}> */
     private array $priceCache = [];
 
-    public function __construct(private readonly MetalsSpotService $metalsSpotService) {}
+    public function __construct(
+        private readonly MetalsSpotService $metalsSpotService,
+        private readonly ItemPriceSettingsService $itemPriceSettingsService,
+    ) {}
 
     public function priceFor(Item $item, ?string $currency = null): float
+    {
+        return $this->priceForRate(
+            $item,
+            $this->itemPriceSettingsService->ratePercent(),
+            $currency,
+        );
+    }
+
+    public function priceForRate(Item $item, float $ratePercent, ?string $currency = null): float
     {
         $currency = $this->normalizeCurrency($currency);
         $prices = $this->metalPrices($currency);
@@ -39,14 +49,14 @@ class ItemPriceService
 
         // Excel formula:
         // (((Pt ppm * Pt price/g * kg) + (Pd ppm * Pd price/g * kg) +
-        //   (Rh ppm * Rh price/g * kg)) * 80 / 100) * 0.001
+        //   (Rh ppm * Rh price/g * kg)) * configured rate / 100) * 0.001
         $metalValue = ($weightKg / self::GRAMS_PER_KILOGRAM) * (
             ($ptPpm * $prices['platinum']) +
             ($pdPpm * $prices['palladium']) +
             ($rhPpm * $prices['rhodium'])
         );
 
-        $price = $metalValue * self::EXCEL_PAYOUT_RATE;
+        $price = $metalValue * $this->normalizeRatePercent($ratePercent);
 
         return round(max($price, 0.0), 2);
     }
@@ -121,6 +131,11 @@ class ItemPriceService
         }
 
         return $rawWeightKg;
+    }
+
+    private function normalizeRatePercent(float $ratePercent): float
+    {
+        return min(max($ratePercent, 0.0), 100.0) / 100;
     }
 
     private function normalizeCurrency(?string $currency): string
