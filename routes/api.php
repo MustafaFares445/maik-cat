@@ -32,6 +32,7 @@ Route::get('/app-version', [AppVersionController::class, 'check'])->name('app-ve
 Route::get('/car_groups', [CarGroupController::class, 'index'])->name('car-groups.index');
 
 Route::get('/items', [ItemController::class, 'index'])->name('items.index');
+Route::get('/items/codes', [ItemController::class, 'codes'])->name('items.codes');
 Route::get('/items/{item}', [ItemController::class, 'show'])->name('items.show');
 Route::get('/items/{item}/similar', [ItemController::class, 'similar'])->name('items.similar');
 
