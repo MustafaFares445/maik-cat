@@ -6,10 +6,12 @@ use App\Models\Item;
 use App\Services\Ecotrade\EcotradeJsonReader;
 use App\Services\Ecotrade\EcotradeRecordNormalizer;
 use App\Services\ImportSheetGroupResolver;
+use App\Support\Items\CatalystSerialValidator;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use RuntimeException;
+use Throwable;
 
 class AuditCatalystSourcesCommand extends Command
 {
@@ -26,17 +28,19 @@ class AuditCatalystSourcesCommand extends Command
         ImportSheetGroupResolver $groupResolver,
     ): int {
         try {
-            $excelPath = $this->resolvePath((string) $this->argument('excel'));
-            $jsonPath = $this->resolvePath((string) $this->argument('json'));
-            $excel = $this->auditExcel($excelPath, $groupResolver);
-            $json = $this->auditJson($jsonPath, $jsonReader, $normalizer, $groupResolver);
+            $excel = $this->auditExcel(
+                $this->resolvePath((string) $this->argument('excel')),
+                $groupResolver,
+            );
+            $json = $this->auditJson(
+                $this->resolvePath((string) $this->argument('json')),
+                $jsonReader,
+                $normalizer,
+                $groupResolver,
+            );
+
             $matchedFamilies = array_intersect_key($excel['families'], $json['families']);
             $unmatchedFamilies = array_diff_key($excel['families'], $json['families']);
-            $potentialItemsWithImages = array_sum(array_map('count', $matchedFamilies));
-            $additionalCopies = array_sum(array_map(
-                static fn (array $analyses): int => max(count($analyses) - 1, 0),
-                $matchedFamilies,
-            ));
 
             $report = [
                 'excel_rows_scanned' => $excel['rows_scanned'],
@@ -56,8 +60,11 @@ class AuditCatalystSourcesCommand extends Command
                 'json_ambiguous_families' => count($json['ambiguous']),
                 'matched_serial_families' => count($matchedFamilies),
                 'unmatched_excel_families' => count($unmatchedFamilies),
-                'potential_items_with_images' => $potentialItemsWithImages,
-                'potential_sibling_image_copies' => $additionalCopies,
+                'potential_items_with_images' => array_sum(array_map('count', $matchedFamilies)),
+                'potential_sibling_image_copies' => array_sum(array_map(
+                    static fn (array $analyses): int => max(count($analyses) - 1, 0),
+                    $matchedFamilies,
+                )),
             ];
 
             foreach ($report as $label => $value) {
@@ -67,14 +74,14 @@ class AuditCatalystSourcesCommand extends Command
             $this->writeCsvReports($unmatchedFamilies, $json['ambiguous']);
 
             return self::SUCCESS;
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             $this->error('Catalyst source audit failed: '.$exception->getMessage());
 
             return self::FAILURE;
         }
     }
 
-    /** @return array<string,mixed> */
+    /** @return array{families:array<string,array<int,string>>,rows_scanned:int,rows_invalid:int,exact_duplicates:int,distinct_analyses:int} */
     private function auditExcel(string $path, ImportSheetGroupResolver $groupResolver): array
     {
         $reader = IOFactory::createReaderForFile($path);
@@ -115,8 +122,7 @@ class AuditCatalystSourcesCommand extends Command
                         continue;
                     }
 
-                    $normalizedSerial = Item::normalizeSerialValue($serial);
-                    $family = $group.'|'.$normalizedSerial;
+                    $family = $group.'|'.Item::normalizeSerialValue($serial);
                     $signature = implode('|', [
                         $family,
                         $this->decimal($weight, 3),
@@ -139,13 +145,8 @@ class AuditCatalystSourcesCommand extends Command
             $spreadsheet->disconnectWorksheets();
         }
 
-        return compact(
-            'families',
-            'rowsScanned',
-            'rowsInvalid',
-            'exactDuplicates',
-            'distinctAnalyses',
-        ) + [
+        return [
+            'families' => $families,
             'rows_scanned' => $rowsScanned,
             'rows_invalid' => $rowsInvalid,
             'exact_duplicates' => $exactDuplicates,
@@ -153,7 +154,7 @@ class AuditCatalystSourcesCommand extends Command
         ];
     }
 
-    /** @return array<string,mixed> */
+    /** @return array{families:array<string,string>,ambiguous:array<string,array<string,true>>,records_scanned:int,records_invalid:int,records_with_valid_image:int,rejected_placeholder_images:int} */
     private function auditJson(
         string $path,
         EcotradeJsonReader $reader,
@@ -181,28 +182,41 @@ class AuditCatalystSourcesCommand extends Command
                 continue;
             }
 
-            $group = $this->ecotradeGroup($product->brandSlug, $product->brandName, $groupResolver);
             $serial = Item::normalizeSerialValue($product->serialCode);
 
-            if ($group === '' || $serial === '') {
+            if ($serial === '' || ! CatalystSerialValidator::isUsable($product->serialCode)) {
+                $recordsInvalid++;
+                continue;
+            }
+
+            $slug = Str::of($product->brandSlug)
+                ->trim()
+                ->lower()
+                ->replace('_', '-')
+                ->replace(' ', '-')
+                ->toString();
+            $groupName = ((array) config('imports.ecotrade_brand_groups', []))[$slug] ?? $product->brandName;
+            $group = $groupResolver->canonicalSheetName(
+                $groupResolver->normalizeSheetName((string) $groupName),
+            );
+
+            if ($group === '') {
                 $recordsInvalid++;
                 continue;
             }
 
             $family = $group.'|'.$serial;
-            $families[$family] = (string) $product->mainImageUrl;
+            $families[$family] ??= (string) $product->mainImageUrl;
             $urlsByFamily[$family][(string) $product->productUrl] = true;
             $recordsWithValidImage++;
         }
 
-        $ambiguous = array_filter(
-            $urlsByFamily,
-            static fn (array $urls): bool => count($urls) > 1,
-        );
-
         return [
             'families' => $families,
-            'ambiguous' => $ambiguous,
+            'ambiguous' => array_filter(
+                $urlsByFamily,
+                static fn (array $urls): bool => count($urls) > 1,
+            ),
             'records_scanned' => $recordsScanned,
             'records_invalid' => $recordsInvalid,
             'records_with_valid_image' => $recordsWithValidImage,
@@ -212,29 +226,10 @@ class AuditCatalystSourcesCommand extends Command
 
     private function validAssayRow(?string $serial, ?float $weight, ?float $pt, ?float $pd, ?float $rh): bool
     {
-        if ($serial === null || $weight === null || $weight <= 0) {
-            return false;
-        }
-
-        $upper = Str::upper($serial);
-
-        if (
-            str_contains($upper, 'KONTROLINIS')
-            || preg_match('/^[\?\.\-\_\/\\]+$/u', $serial) === 1
-            || in_array($upper, ['UNKNOWN', 'N/A', 'NA', 'NONE', 'NULL'], true)
-        ) {
-            return false;
-        }
-
-        return (float) $pt > 0 || (float) $pd > 0 || (float) $rh > 0;
-    }
-
-    private function ecotradeGroup(string $slug, string $brandName, ImportSheetGroupResolver $resolver): string
-    {
-        $slug = Str::of($slug)->trim()->lower()->replace('_', '-')->replace(' ', '-')->toString();
-        $group = ((array) config('imports.ecotrade_brand_groups', []))[$slug] ?? $brandName;
-
-        return $resolver->canonicalSheetName($resolver->normalizeSheetName((string) $group));
+        return CatalystSerialValidator::isUsable($serial)
+            && $weight !== null
+            && $weight > 0
+            && ((float) $pt > 0 || (float) $pd > 0 || (float) $rh > 0);
     }
 
     private function rejectedImageUrl(string $url): bool
@@ -264,16 +259,20 @@ class AuditCatalystSourcesCommand extends Command
             throw new RuntimeException('Could not create CSV report directory.');
         }
 
-        $this->writeCsv($directory.'/unmatched_excel_families.csv', array_map(
-            static fn (string $family): array => [$family],
-            array_keys($unmatched),
-        ), ['family']);
-
-        $this->writeCsv($directory.'/ambiguous_ecotrade_families.csv', array_map(
-            static fn (string $family, array $urls): array => [$family, implode('|', array_keys($urls))],
-            array_keys($ambiguous),
-            array_values($ambiguous),
-        ), ['family', 'product_urls']);
+        $this->writeCsv(
+            $directory.'/unmatched_excel_families.csv',
+            array_map(static fn (string $family): array => [$family], array_keys($unmatched)),
+            ['family'],
+        );
+        $this->writeCsv(
+            $directory.'/ambiguous_ecotrade_families.csv',
+            array_map(
+                static fn (string $family, array $urls): array => [$family, implode('|', array_keys($urls))],
+                array_keys($ambiguous),
+                array_values($ambiguous),
+            ),
+            ['family', 'product_urls'],
+        );
     }
 
     private function writeCsv(string $path, array $rows, array $headers): void
