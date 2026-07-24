@@ -1,6 +1,8 @@
 <?php
 
 return [
+    'excel_directory' => env('EXCEL_IMPORT_DIRECTORY', base_path('excel')),
+
     'sheet_aliases' => [
         'VW' => 'AUDI VW',
         'AUDI' => 'AUDI VW',
