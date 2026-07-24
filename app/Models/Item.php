@@ -2,11 +2,12 @@
 
 namespace App\Models;
 
+use App\Support\Items\ItemAssayFingerprint;
 use App\Traits\FilterQueries\ItemFilterQuery;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -28,6 +29,7 @@ class Item extends Model implements HasMedia
         'model',
         'serial_code',
         'normalized_serial',
+        'assay_fingerprint',
         'weight_kg',
         'pt_ppm',
         'pd_ppm',
@@ -51,6 +53,14 @@ class Item extends Model implements HasMedia
         'image_thumb_url',
         'image_detail_url',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (Item $item): void {
+            $item->normalized_serial = self::normalizeSerialValue($item->serial_code);
+            $item->assay_fingerprint = ItemAssayFingerprint::fromItem($item);
+        });
+    }
 
     public static function normalizeSerialValue(mixed $serial): string
     {
@@ -81,10 +91,12 @@ class Item extends Model implements HasMedia
     public function scopeCalculablePrice(Builder $query): Builder
     {
         return $query
-            ->whereNotNull('weight_kg')
-            ->whereNotNull('pt_ppm')
-            ->whereNotNull('pd_ppm')
-            ->whereNotNull('rh_ppm');
+            ->where('weight_kg', '>', 0)
+            ->where(function (Builder $metalQuery): void {
+                $metalQuery->where('pt_ppm', '>', 0)
+                    ->orWhere('pd_ppm', '>', 0)
+                    ->orWhere('rh_ppm', '>', 0);
+            });
     }
 
     public function scopeApiVisible(Builder $query): Builder
@@ -98,10 +110,12 @@ class Item extends Model implements HasMedia
 
     public function isApiVisible(): bool
     {
-        return $this->weight_kg !== null
-            && $this->pt_ppm !== null
-            && $this->pd_ppm !== null
-            && $this->rh_ppm !== null
+        return (float) $this->weight_kg > 0
+            && (
+                (float) $this->pt_ppm > 0
+                || (float) $this->pd_ppm > 0
+                || (float) $this->rh_ppm > 0
+            )
             && $this->hasMedia('images');
     }
 
