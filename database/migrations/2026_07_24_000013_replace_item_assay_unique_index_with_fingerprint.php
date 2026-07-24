@@ -20,17 +20,15 @@ return new class extends Migration
             ->orderBy('id')
             ->chunk(500, function ($items): void {
                 foreach ($items as $item) {
-                    $fingerprint = $this->fingerprint(
-                        $item->car_group_id,
-                        $item->normalized_serial ?: $this->normalizeSerial($item->serial_code),
-                        $item->weight_kg,
-                        $item->pt_ppm,
-                        $item->pd_ppm,
-                        $item->rh_ppm,
-                    );
-
                     DB::table('items')->where('id', $item->id)->update([
-                        'assay_fingerprint' => $fingerprint,
+                        'assay_fingerprint' => $this->fingerprint(
+                            $item->car_group_id,
+                            $item->normalized_serial ?: $this->normalizeSerial($item->serial_code),
+                            $item->weight_kg,
+                            $item->pt_ppm,
+                            $item->pd_ppm,
+                            $item->rh_ppm,
+                        ),
                     ]);
                 }
             });
@@ -115,8 +113,12 @@ return new class extends Migration
     ): ?string {
         $groupId = trim((string) $groupId);
         $normalizedSerial = $this->normalizeSerial($normalizedSerial);
+        $weight = (float) ($weightKg ?? 0);
+        $hasMetal = (float) ($ptPpm ?? 0) > 0
+            || (float) ($pdPpm ?? 0) > 0
+            || (float) ($rhPpm ?? 0) > 0;
 
-        if ($groupId === '' || $normalizedSerial === '') {
+        if ($groupId === '' || $normalizedSerial === '' || $weight <= 0 || ! $hasMetal) {
             return null;
         }
 
