@@ -28,8 +28,12 @@ class ItemAssayFingerprint
     ): ?string {
         $groupId = trim((string) $groupId);
         $normalizedSerial = Item::normalizeSerialValue($normalizedSerial);
+        $weight = (float) ($weightKg ?? 0);
+        $hasMetal = (float) ($ptPpm ?? 0) > 0
+            || (float) ($pdPpm ?? 0) > 0
+            || (float) ($rhPpm ?? 0) > 0;
 
-        if ($groupId === '' || $normalizedSerial === '') {
+        if ($groupId === '' || $normalizedSerial === '' || $weight <= 0 || ! $hasMetal) {
             return null;
         }
 
