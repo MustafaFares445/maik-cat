@@ -12,6 +12,9 @@ use Illuminate\Support\Str;
 
 class EcotradeProductImageCandidateResolver
 {
+    /** @var array<string,string>|null */
+    private ?array $groupIdsCache = null;
+
     public function __construct(
         private readonly EcotradeRecordNormalizer $normalizer,
         private readonly ImportSheetGroupResolver $groupResolver,
@@ -37,6 +40,7 @@ class EcotradeProductImageCandidateResolver
         $allowedItemIds = array_key_exists('allowed_item_ids', $options)
             ? $this->lookupSet((array) $options['allowed_item_ids'])
             : null;
+        $groupIds = $this->groupIdsByCanonicalName();
 
         $summary = [
             'records_total' => count($records),
@@ -86,7 +90,7 @@ class EcotradeProductImageCandidateResolver
                 continue;
             }
 
-            $groupName = $this->canonicalGroupFor($product);
+            $groupName = $this->canonicalGroupFor($product, $groupIds);
             $serial = Item::normalizeSerialValue($product->serialCode);
 
             if ($groupName === '' || $serial === '') {
@@ -97,7 +101,6 @@ class EcotradeProductImageCandidateResolver
             $productsByNamedFamily[$groupName.'|'.$serial][] = $product;
         }
 
-        $groupIds = $this->groupIdsByCanonicalName();
         /** @var array<string,EcotradeProductData> $productsByFamily */
         $productsByFamily = [];
         /** @var array<string,list<string>> $serialsByGroup */
@@ -164,7 +167,7 @@ class EcotradeProductImageCandidateResolver
         $copySources = [];
 
         foreach ($productsByFamily as $familyKey => $product) {
-            $items = $itemsByFamily[$familyKey] ?? collect();
+            $items = ($itemsByFamily[$familyKey] ?? collect())->unique('id')->values();
 
             if ($items->isEmpty()) {
                 $summary['families_without_items']++;
@@ -270,7 +273,8 @@ class EcotradeProductImageCandidateResolver
             );
     }
 
-    private function canonicalGroupFor(EcotradeProductData $product): string
+    /** @param array<string,string> $groupIds */
+    private function canonicalGroupFor(EcotradeProductData $product, array $groupIds): string
     {
         $slug = Str::of($product->brandSlug)
             ->trim()
@@ -280,16 +284,31 @@ class EcotradeProductImageCandidateResolver
             ->toString();
 
         $configured = (array) config('imports.ecotrade_brand_groups', []);
-        $group = $configured[$slug] ?? $product->brandName;
-
-        return $this->groupResolver->canonicalSheetName(
-            $this->groupResolver->normalizeSheetName((string) $group),
+        $configuredGroup = $this->groupResolver->canonicalSheetName(
+            $this->groupResolver->normalizeSheetName((string) ($configured[$slug] ?? $product->brandName)),
         );
+        $brandGroup = $this->groupResolver->canonicalSheetName(
+            $this->groupResolver->normalizeSheetName($product->brandName),
+        );
+
+        if (isset($groupIds[$configuredGroup])) {
+            return $configuredGroup;
+        }
+
+        if (isset($groupIds[$brandGroup])) {
+            return $brandGroup;
+        }
+
+        return $configuredGroup;
     }
 
     /** @return array<string,string> */
     private function groupIdsByCanonicalName(): array
     {
+        if ($this->groupIdsCache !== null) {
+            return $this->groupIdsCache;
+        }
+
         $groups = [];
 
         CarGroup::query()
@@ -307,7 +326,7 @@ class EcotradeProductImageCandidateResolver
                 }
             });
 
-        return $groups;
+        return $this->groupIdsCache = $groups;
     }
 
     private function isRejectedImageUrl(string $url): bool
