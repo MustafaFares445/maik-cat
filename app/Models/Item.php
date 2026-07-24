@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Spatie\Image\Enums\Fit;
 use Spatie\MediaLibrary\HasMedia;
@@ -23,6 +24,8 @@ class Item extends Model implements HasMedia
     use HasUuids;
     use InteractsWithMedia;
     use ItemFilterQuery;
+
+    private static ?bool $hasAssayFingerprintColumn = null;
 
     protected $fillable = [
         'car_group_id',
@@ -58,7 +61,12 @@ class Item extends Model implements HasMedia
     {
         static::saving(function (Item $item): void {
             $item->normalized_serial = self::normalizeSerialValue($item->serial_code);
-            $item->assay_fingerprint = ItemAssayFingerprint::fromItem($item);
+
+            self::$hasAssayFingerprintColumn ??= Schema::hasColumn($item->getTable(), 'assay_fingerprint');
+
+            if (self::$hasAssayFingerprintColumn) {
+                $item->assay_fingerprint = ItemAssayFingerprint::fromItem($item);
+            }
         });
     }
 
