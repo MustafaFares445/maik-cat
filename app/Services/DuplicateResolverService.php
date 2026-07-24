@@ -2,21 +2,23 @@
 
 namespace App\Services;
 
-use App\Models\Item;
 use App\Models\DuplicateReview;
+use App\Models\Item;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 class DuplicateResolverService
 {
+    public function __construct(private readonly ItemSiblingMediaCopier $mediaCopier) {}
+
     public function resolve(DuplicateReview $review, string $action, string $resolvedBy): void
     {
         $allowed = ['keep', 'overwrite', 'insert'];
 
         if (! in_array($action, $allowed, true)) {
             throw new InvalidArgumentException(
-                "Invalid action '{$action}'. Allowed: " . implode(', ', $allowed)
+                "Invalid action '{$action}'. Allowed: ".implode(', ', $allowed)
             );
         }
 
@@ -24,7 +26,7 @@ class DuplicateResolverService
             throw new InvalidArgumentException('Duplicate review is already resolved.');
         }
 
-        DB::transaction(function () use ($review, $action, $resolvedBy) {
+        DB::transaction(function () use ($review, $action, $resolvedBy): void {
             match ($action) {
                 'keep' => $this->keep($review),
                 'overwrite' => $this->overwrite($review),
@@ -74,7 +76,7 @@ class DuplicateResolverService
         $existing = Item::findOrFail($review->existing_item_id);
 
         $converter = Item::create([
-            'id' => Str::uuid(),
+            'id' => (string) Str::uuid(),
             'car_group_id' => $existing->car_group_id,
             'model' => $payload['model'],
             'serial_code' => $payload['serial_code'],
@@ -85,9 +87,11 @@ class DuplicateResolverService
             'rh_ppm' => $payload['rh_ppm'],
             'details' => $payload['details'],
             'shape_code' => $payload['shape_code'],
+            'source' => 'excel_import',
         ]);
 
         $this->insertExtraCodes($converter, $payload['extra_codes'] ?? null);
+        $this->mediaCopier->copyFirstImageTo($converter);
     }
 
     private function insertExtraCodes(Item $converter, ?string $raw): void
@@ -96,11 +100,12 @@ class DuplicateResolverService
             return;
         }
 
-        collect(explode('/', $raw))
-            ->map(fn(string $code) => trim($code))
+        collect(preg_split('/[\/;,|]+/', $raw) ?: [])
+            ->map(static fn (string $code): string => trim($code))
             ->filter()
-            ->each(fn(string $code) => $converter->extraCodes()->create([
-                'id' => Str::uuid(),
+            ->unique(static fn (string $code): string => Str::upper($code))
+            ->each(fn (string $code) => $converter->extraCodes()->create([
+                'id' => (string) Str::uuid(),
                 'code' => $code,
                 'source' => 'manual_resolution',
             ]));
