@@ -99,6 +99,18 @@ class EcotradeProductImageCandidateResolver
                 continue;
             }
 
+            $primaryFamilies = $items
+                ->map(static fn (Item $item): string => Item::normalizeSerialValue(
+                    $item->normalized_serial ?: $item->serial_code,
+                ))
+                ->filter()
+                ->unique();
+
+            if ($primaryFamilies->count() > 1) {
+                $summary['families_ambiguous']++;
+                continue;
+            }
+
             $summary['matched_items'] += $items->count();
             $eligibleItems = $this->eligibleItems($items, $allowedItemIds, $summary);
 
@@ -243,20 +255,31 @@ class EcotradeProductImageCandidateResolver
         $itemsByFamily = [];
 
         foreach ($serialsByGroup as $groupId => $serials) {
-            foreach (array_chunk(array_values(array_unique($serials)), 1000) as $serialChunk) {
-                Item::query()
-                    ->with('media')
-                    ->where('car_group_id', $groupId)
-                    ->whereIn('normalized_serial', $serialChunk)
-                    ->get()
-                    ->each(function (Item $item) use (&$itemsByFamily): void {
-                        $familyKey = $item->car_group_id.'|'.Item::normalizeSerialValue(
-                            $item->normalized_serial ?: $item->serial_code,
-                        );
+            $wanted = $this->lookupSet($serials);
+
+            Item::query()
+                ->with(['media', 'extraCodes'])
+                ->where('car_group_id', $groupId)
+                ->get()
+                ->each(function (Item $item) use ($groupId, $wanted, &$itemsByFamily): void {
+                    $codes = collect([
+                        $item->normalized_serial ?: $item->serial_code,
+                        ...$item->extraCodes->pluck('code')->all(),
+                    ])
+                        ->map(static fn (mixed $code): string => Item::normalizeSerialValue($code))
+                        ->filter()
+                        ->unique();
+
+                    foreach ($codes as $code) {
+                        if (! isset($wanted[$code])) {
+                            continue;
+                        }
+
+                        $familyKey = $groupId.'|'.$code;
                         $itemsByFamily[$familyKey] ??= collect();
                         $itemsByFamily[$familyKey]->push($item);
-                    });
-            }
+                    }
+                });
         }
 
         return $itemsByFamily;
