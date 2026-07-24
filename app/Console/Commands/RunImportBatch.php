@@ -17,7 +17,7 @@ class RunImportBatch extends Command
         {--dry-run : Parse and profile all workbooks without writing items}
         {--imported-by= : Optional importer identity/email}';
 
-    protected $description = 'Queue or preview one Excel workbook or every workbook in a directory';
+    protected $description = 'Import one Excel workbook or every workbook in a directory immediately';
 
     public function handle(ImportBatchService $importBatchService): int
     {
@@ -36,6 +36,10 @@ class RunImportBatch extends Command
 
         $this->line('Excel source: '.$source);
         $this->line('Excel files found: '.count($files));
+        $this->line($dryRun
+            ? 'Mode: dry run — no item data will be changed.'
+            : 'Mode: direct import — no queue worker is required.');
+        $this->newLine();
 
         $rows = [];
         $totals = [
@@ -45,11 +49,23 @@ class RunImportBatch extends Command
             'invalid' => 0,
             'duplicates' => 0,
             'failed' => 0,
+            'duration' => 0.0,
         ];
 
+        $progress = $this->output->createProgressBar(count($files));
+        $progress->setFormat(' %current%/%max% [%bar%] %percent:3s%% | %message%');
+        $progress->setMessage('Starting');
+        $progress->start();
+
         foreach ($files as $file) {
+            $displayPath = $this->displayPath($file, $source);
+            $progress->setMessage('Processing '.$displayPath);
+            $progress->display();
+            $startedAt = microtime(true);
+
             try {
-                $report = $importBatchService->importFromPath($file, $importedBy, $dryRun);
+                $report = $importBatchService->importFromPathSync($file, $importedBy, $dryRun);
+                $duration = microtime(true) - $startedAt;
                 $inserted = (int) ($report['rows_inserted'] ?? 0);
                 $skipped = (int) ($report['rows_skipped'] ?? 0);
                 $flagged = (int) ($report['rows_flagged'] ?? 0);
@@ -61,42 +77,58 @@ class RunImportBatch extends Command
                 $totals['flagged'] += $flagged;
                 $totals['invalid'] += $invalid;
                 $totals['duplicates'] += $duplicates;
+                $totals['duration'] += $duration;
 
                 $rows[] = [
-                    $this->displayPath($file, $source),
+                    $displayPath,
                     (string) ($report['status'] ?? 'unknown'),
                     $inserted,
                     $skipped,
                     $flagged,
                     $invalid,
                     $duplicates,
+                    $this->formatDuration($duration),
                     (string) ($report['batch_id'] ?? 'n/a'),
                 ];
+
+                $progress->setMessage('Completed '.$displayPath);
             } catch (Throwable $exception) {
+                $duration = microtime(true) - $startedAt;
                 $totals['failed']++;
+                $totals['duration'] += $duration;
+
                 $rows[] = [
-                    $this->displayPath($file, $source),
+                    $displayPath,
                     'failed: '.$exception->getMessage(),
                     0,
                     0,
                     0,
                     0,
                     0,
+                    $this->formatDuration($duration),
                     'n/a',
                 ];
+
+                $progress->setMessage('Failed '.$displayPath);
             }
+
+            $progress->advance();
+            $progress->display();
+            gc_collect_cycles();
         }
 
-        $this->newLine();
+        $progress->finish();
+        $this->newLine(2);
+
         $this->table(
-            ['File', 'Status', 'Inserted', 'Skipped', 'Flagged', 'Invalid', 'Duplicates', 'Batch ID'],
+            ['File', 'Status', 'Inserted', 'Skipped', 'Flagged', 'Invalid', 'Duplicates', 'Duration', 'Batch ID'],
             $rows,
         );
 
         $this->newLine();
         $this->line('Combined result');
         $this->table(
-            ['Files', 'Failed', 'Inserted', 'Skipped', 'Flagged', 'Invalid', 'Duplicates'],
+            ['Files', 'Failed', 'Inserted', 'Skipped', 'Flagged', 'Invalid', 'Duplicates', 'Duration'],
             [[
                 count($files),
                 $totals['failed'],
@@ -105,12 +137,14 @@ class RunImportBatch extends Command
                 $totals['flagged'],
                 $totals['invalid'],
                 $totals['duplicates'],
+                $this->formatDuration($totals['duration']),
             ]],
         );
 
-        if (! $dryRun) {
-            $this->comment('Imports were queued. Run `php artisan queue:work --tries=1` to process them.');
-            $this->comment('Use `--dry-run` to receive row totals immediately without changing data.');
+        if ($dryRun) {
+            $this->comment('Dry run completed. No item, extra-code, or media data was changed.');
+        } else {
+            $this->info('Import completed directly. No queue worker is required.');
         }
 
         return $totals['failed'] > 0 ? self::FAILURE : self::SUCCESS;
@@ -206,5 +240,17 @@ class RunImportBatch extends Command
         $relative = ltrim(substr($file, strlen(rtrim($source, DIRECTORY_SEPARATOR))), DIRECTORY_SEPARATOR);
 
         return $relative !== '' ? $relative : basename($file);
+    }
+
+    private function formatDuration(float $seconds): string
+    {
+        if ($seconds < 60) {
+            return number_format($seconds, 2).'s';
+        }
+
+        $minutes = intdiv((int) $seconds, 60);
+        $remainingSeconds = $seconds - ($minutes * 60);
+
+        return $minutes.'m '.number_format($remainingSeconds, 1).'s';
     }
 }
