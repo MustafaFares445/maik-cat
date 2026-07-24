@@ -6,6 +6,7 @@ use App\Models\CarGroup;
 use App\Models\ImportBatch;
 use App\Models\Item;
 use App\Services\ItemSiblingMediaCopier;
+use App\Support\Items\CatalystSerialValidator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Maatwebsite\Excel\Concerns\OnEachRow;
@@ -25,10 +26,10 @@ class PetraSheetImport implements OnEachRow, WithChunkReading, WithStartRow
 
     private int $flagged = 0;
 
-    /** @var array<string, true> */
+    /** @var array<string,true> */
     private array $seenSignatures = [];
 
-    /** @var array<string, CarGroup> */
+    /** @var array<string,CarGroup> */
     private array $groupCache = [];
 
     public function __construct(
@@ -50,16 +51,16 @@ class PetraSheetImport implements OnEachRow, WithChunkReading, WithStartRow
 
     public function onRow(Row $row): void
     {
-        $mapped = $this->mapRow($row->toArray());
+        $data = $this->mapRow($row->toArray());
 
-        if (! $this->isValidRow($mapped)) {
+        if (! $this->isValidRow($data)) {
             $this->invalid++;
             return;
         }
 
-        $group = $this->resolveCarGroup($mapped['model']);
-        $normalizedSerial = Item::normalizeSerialValue($mapped['serial_code']);
-        $signature = $this->signature($mapped, $group->id, $normalizedSerial);
+        $group = $this->resolveCarGroup($data['model']);
+        $normalizedSerial = Item::normalizeSerialValue($data['serial_code']);
+        $signature = $this->signature($data, $group->id, $normalizedSerial);
 
         if (isset($this->seenSignatures[$signature])) {
             $this->skipped++;
@@ -68,7 +69,7 @@ class PetraSheetImport implements OnEachRow, WithChunkReading, WithStartRow
 
         $this->seenSignatures[$signature] = true;
 
-        $sameSerialWithinGroup = Item::query()
+        $sameSerial = Item::query()
             ->where('car_group_id', $group->id)
             ->where(function ($query) use ($normalizedSerial): void {
                 $query->where('normalized_serial', $normalizedSerial)
@@ -77,13 +78,13 @@ class PetraSheetImport implements OnEachRow, WithChunkReading, WithStartRow
             ->orderByDesc('created_at')
             ->get();
 
-        if ($this->hasExactMatchInGroup($sameSerialWithinGroup, $mapped)) {
+        if ($this->hasExactAssay($sameSerial, $data)) {
             $this->skipped++;
             return;
         }
 
         if (! $this->dryRun) {
-            $this->insertItem($mapped, $group->id);
+            $this->insertItem($data, $group->id);
         }
 
         $this->inserted++;
@@ -99,6 +100,7 @@ class PetraSheetImport implements OnEachRow, WithChunkReading, WithStartRow
         ];
     }
 
+    /** @return array<string,mixed> */
     private function mapRow(array $row): array
     {
         return [
@@ -118,44 +120,32 @@ class PetraSheetImport implements OnEachRow, WithChunkReading, WithStartRow
             return $row[$index];
         }
 
-        $oneBased = $index + 1;
-        if (array_key_exists($oneBased, $row)) {
-            return $row[$oneBased];
+        if (array_key_exists($index + 1, $row)) {
+            return $row[$index + 1];
         }
 
-        $column = Coordinate::stringFromColumnIndex($index + 1);
-
-        return $row[$column] ?? null;
+        return $row[Coordinate::stringFromColumnIndex($index + 1)] ?? null;
     }
 
+    /** @param array<string,mixed> $data */
     private function isValidRow(array $data): bool
     {
-        if (blank($data['serial_code']) || blank($data['model'])) {
+        if (! CatalystSerialValidator::isUsable($data['serial_code']) || blank($data['model'])) {
             return false;
         }
 
-        $serial = trim((string) $data['serial_code']);
-
-        if (
-            preg_match('/^[\?\.\-\_\/\\]+$/u', $serial) === 1
-            || str_contains(Str::upper($serial), 'KONTROLINIS')
-            || in_array(Str::upper($serial), ['UNKNOWN', 'N/A', 'NA', 'NONE', 'NULL'], true)
-        ) {
+        if ($data['weight_kg'] === null || (float) $data['weight_kg'] <= 0) {
             return false;
         }
 
-        if ($data['weight_kg'] === null || (float) $data['weight_kg'] <= 0.0) {
-            return false;
-        }
-
-        return (float) ($data['pt_ppm'] ?? 0) > 0.0
-            || (float) ($data['pd_ppm'] ?? 0) > 0.0
-            || (float) ($data['rh_ppm'] ?? 0) > 0.0;
+        return (float) ($data['pt_ppm'] ?? 0) > 0
+            || (float) ($data['pd_ppm'] ?? 0) > 0
+            || (float) ($data['rh_ppm'] ?? 0) > 0;
     }
 
     private function resolveCarGroup(string $manufacturer): CarGroup
     {
-        $normalized = $this->normalizeGroupName($manufacturer);
+        $normalized = Str::upper(preg_replace('/\s+/u', ' ', trim($manufacturer)) ?? '');
 
         if (isset($this->groupCache[$normalized])) {
             return $this->groupCache[$normalized];
@@ -166,19 +156,18 @@ class PetraSheetImport implements OnEachRow, WithChunkReading, WithStartRow
             ->orWhereRaw('UPPER(excel_sheet_name) = ?', [$normalized])
             ->first();
 
-        if ($group === null) {
-            $group = CarGroup::query()->firstOrCreate(
-                ['excel_sheet_name' => $normalized],
-                [
-                    'name' => $normalized,
-                    'region' => null,
-                ]
-            );
-        }
+        $group ??= CarGroup::query()->firstOrCreate(
+            ['excel_sheet_name' => $normalized],
+            [
+                'name' => $normalized,
+                'region' => null,
+            ],
+        );
 
         return $this->groupCache[$normalized] = $group;
     }
 
+    /** @param array<string,mixed> $data */
     private function insertItem(array $data, string $groupId): void
     {
         $item = Item::query()->create([
@@ -186,7 +175,6 @@ class PetraSheetImport implements OnEachRow, WithChunkReading, WithStartRow
             'car_group_id' => $groupId,
             'model' => $data['model'],
             'serial_code' => $data['serial_code'],
-            'normalized_serial' => Item::normalizeSerialValue($data['serial_code']),
             'weight_kg' => $data['weight_kg'],
             'pt_ppm' => $data['pt_ppm'],
             'pd_ppm' => $data['pd_ppm'],
@@ -204,25 +192,22 @@ class PetraSheetImport implements OnEachRow, WithChunkReading, WithStartRow
         }
     }
 
-    /** @param Collection<int, Item> $items */
-    private function hasExactMatchInGroup(Collection $items, array $data): bool
+    /** @param Collection<int,Item> $items @param array<string,mixed> $data */
+    private function hasExactAssay(Collection $items, array $data): bool
     {
         $target = $this->assayTuple($data);
 
-        foreach ($items as $item) {
-            if ($this->assayTuple([
+        return $items->contains(function (Item $item) use ($target): bool {
+            return $this->assayTuple([
                 'weight_kg' => $item->weight_kg,
                 'pt_ppm' => $item->pt_ppm,
                 'pd_ppm' => $item->pd_ppm,
                 'rh_ppm' => $item->rh_ppm,
-            ]) === $target) {
-                return true;
-            }
-        }
-
-        return false;
+            ]) === $target;
+        });
     }
 
+    /** @param array<string,mixed> $data @return array<int,string> */
     private function assayTuple(array $data): array
     {
         return [
@@ -233,6 +218,7 @@ class PetraSheetImport implements OnEachRow, WithChunkReading, WithStartRow
         ];
     }
 
+    /** @param array<string,mixed> $data */
     private function signature(array $data, string $groupId, string $normalizedSerial): string
     {
         return implode('|', [$groupId, $normalizedSerial, ...$this->assayTuple($data)]);
@@ -249,37 +235,26 @@ class PetraSheetImport implements OnEachRow, WithChunkReading, WithStartRow
             return null;
         }
 
-        $string = trim((string) $value);
+        $value = trim((string) $value);
 
-        if ($string === '' || str_starts_with($string, '=') || str_starts_with($string, '#')) {
+        if ($value === '' || str_starts_with($value, '=') || str_starts_with($value, '#')) {
             return null;
         }
 
-        return preg_replace('/\s+/u', ' ', $string) ?: $string;
+        return preg_replace('/\s+/u', ' ', $value) ?: $value;
     }
 
     private function toFloat(mixed $value): ?float
     {
-        if ($value === null || $value === '') {
+        $value = $this->cleanString($value);
+
+        if ($value === null) {
             return null;
         }
 
-        $raw = trim((string) $value);
+        $value = str_replace([' ', "'", ','], ['', '', '.'], $value);
 
-        if ($raw === '' || str_starts_with($raw, '=') || str_starts_with($raw, '#')) {
-            return null;
-        }
-
-        $cleaned = str_replace([' ', "'", ','], ['', '', '.'], $raw);
-
-        return is_numeric($cleaned) ? (float) $cleaned : null;
-    }
-
-    private function normalizeGroupName(string $value): string
-    {
-        $clean = preg_replace('/\s+/u', ' ', trim($value)) ?? '';
-
-        return Str::upper($clean);
+        return is_numeric($value) ? (float) $value : null;
     }
 
     private function normalizedSerialSql(): string
