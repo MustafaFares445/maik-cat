@@ -28,7 +28,7 @@ class ImportBatchService
 
     public function __construct(
         private readonly ImportFormatDetector $formatDetector,
-        private readonly LegacyWorkbookImportService $legacyWorkbookImporter,
+        private readonly EnhancedLegacyWorkbookImportService $legacyWorkbookImporter,
     ) {}
 
     /**
