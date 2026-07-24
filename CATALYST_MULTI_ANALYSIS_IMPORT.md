@@ -88,6 +88,7 @@ No file path is needed.
 
 The command prints:
 
+- Live progress for the current workbook
 - One result row for each Excel file
 - File status
 - Rows that would be inserted
@@ -95,9 +96,10 @@ The command prints:
 - Flagged rows
 - Invalid rows
 - Duplicate count
+- Processing duration
 - One combined totals table for all files
 
-Dry-run does not write items, extra codes, media, or issue rows.
+Dry-run processes every workbook immediately but does not write items, extra codes, media, or issue rows.
 
 A different directory can still be supplied explicitly:
 
@@ -105,7 +107,7 @@ A different directory can still be supplied explicitly:
 php artisan imports:run storage/app/other-excel-folder --dry-run
 ```
 
-### 4. Import every Excel file
+### 4. Import every Excel file directly
 
 After reviewing the dry-run report, run:
 
@@ -113,13 +115,9 @@ After reviewing the dry-run report, run:
 php artisan imports:run --imported-by=admin@example.com
 ```
 
-No file path is needed. A separate import batch is queued for every `.xls` or `.xlsx` file found in the configured folder.
+No file path and no queue worker are required.
 
-Run the queue worker:
-
-```bash
-php artisan queue:work --tries=1
-```
+The command imports one workbook completely before starting the next workbook. The terminal displays the current file, progress across all files, processing duration, per-file results, and combined totals. The command exits only after every workbook has completed or failed.
 
 Behavior:
 
@@ -127,6 +125,7 @@ Behavior:
 - Same serial with a different assay: inserts another item automatically
 - Exact same assay: skips the row
 - New item with an imaged sibling: copies the sibling media through Spatie Media Library
+- A failed workbook is reported while remaining workbooks continue processing
 
 ### 5. Audit one workbook against the EcoTrade JSON
 
@@ -240,9 +239,11 @@ The workflow can be rerun safely:
 - Placeholder image URLs remain excluded
 - Failed image candidates can be retried using the existing retry options
 
-## Important deployment note
+## Queue behavior
 
-Restart queue workers after deploying the migration and model changes:
+The `imports:run` terminal command is synchronous and does not use Laravel queues.
+
+Uploaded imports through the API retain their existing queued behavior for backward compatibility. Restart queue workers only when deploying changes that affect API-uploaded imports:
 
 ```bash
 php artisan queue:restart
