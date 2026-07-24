@@ -3,6 +3,7 @@
 namespace App\Services\Ecotrade;
 
 use App\Data\EcotradeProductImageCandidate;
+use App\Services\ItemSiblingMediaCopier;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -14,6 +15,7 @@ class EcotradeProductImageImporter
     public function __construct(
         private readonly EcotradeGeminiImageEditor $gemini,
         private readonly EcotradeMaikcatWatermarkApplier $watermarkApplier,
+        private readonly ItemSiblingMediaCopier $mediaCopier,
     ) {}
 
     public function import(EcotradeProductImageCandidate $candidate, string $watermarkMode, string $watermarkText, bool $replaceExisting = false): Media
@@ -21,15 +23,7 @@ class EcotradeProductImageImporter
         $watermarkMode = $this->normalizeWatermarkMode($watermarkMode);
         $source = $this->downloadSourceImage($candidate->sourceImageUrl);
         $prompt = $this->buildPrompt($watermarkMode, $watermarkText);
-        $geminiResult = 'edited';
-
-        try {
-            $edited = $this->gemini->edit($source['bytes'], $source['mime_type'], $prompt);
-        } catch (EcotradeGeminiImageUnavailableException) {
-            $edited = $source;
-            $geminiResult = 'source_fallback';
-        }
-
+        $edited = $this->gemini->edit($source['bytes'], $source['mime_type'], $prompt);
         $extension = $this->extensionForMimeType($edited['mime_type']);
         $path = $this->writeTempFile($edited['bytes'], $extension);
 
@@ -42,7 +36,7 @@ class EcotradeProductImageImporter
                 $candidate->item->clearMediaCollection('images');
             }
 
-            return $candidate->item
+            $media = $candidate->item
                 ->addMedia($path)
                 ->usingName($this->mediaName($candidate))
                 ->usingFileName($this->fileName($candidate, $extension, $watermarkMode))
@@ -51,7 +45,7 @@ class EcotradeProductImageImporter
                     'source_url' => $candidate->sourceImageUrl,
                     'source_hash' => $candidate->product->sourceHash,
                     'gemini_model' => config('services.gemini.image_model', 'gemini-2.5-flash-image'),
-                    'gemini_result' => $geminiResult,
+                    'gemini_result' => 'edited',
                     'gemini_processed_at' => now()->toISOString(),
                     'gemini_prompt_version' => 'ecotrade-product-clean-v3',
                     'watermark_mode' => $watermarkMode,
@@ -60,6 +54,10 @@ class EcotradeProductImageImporter
                     'maikcat_watermark' => $watermarkMode !== 'none',
                 ])
                 ->toMediaCollection('images');
+
+            $this->mediaCopier->copyFirstImageToSiblings($candidate->item->fresh('media'));
+
+            return $media;
         } finally {
             if (is_file($path)) {
                 @unlink($path);
@@ -67,9 +65,7 @@ class EcotradeProductImageImporter
         }
     }
 
-    /**
-     * @return array{bytes: string, mime_type: string}
-     */
+    /** @return array{bytes:string,mime_type:string} */
     private function downloadSourceImage(string $url): array
     {
         $timeout = max(1, (int) config('services.gemini.image_download_timeout', 30));
@@ -86,9 +82,15 @@ class EcotradeProductImageImporter
             throw new RuntimeException('Downloaded source image is empty.');
         }
 
+        $mimeType = $this->detectMimeType($bytes, (string) $response->header('Content-Type'));
+
+        if (! str_starts_with($mimeType, 'image/')) {
+            throw new RuntimeException('Downloaded source is not a supported image.');
+        }
+
         return [
             'bytes' => $bytes,
-            'mime_type' => $this->detectMimeType($bytes, (string) $response->header('Content-Type')),
+            'mime_type' => $mimeType,
         ];
     }
 
@@ -150,9 +152,14 @@ PROMPT);
             return $header;
         }
 
-        $detected = finfo_buffer(finfo_open(FILEINFO_MIME_TYPE), $bytes) ?: null;
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $detected = $finfo !== false ? finfo_buffer($finfo, $bytes) : null;
 
-        return is_string($detected) && str_starts_with($detected, 'image/') ? $detected : 'image/png';
+        if ($finfo !== false) {
+            finfo_close($finfo);
+        }
+
+        return is_string($detected) && str_starts_with($detected, 'image/') ? $detected : 'application/octet-stream';
     }
 
     private function extensionForMimeType(string $mimeType): string
@@ -161,7 +168,8 @@ PROMPT);
             'image/jpeg', 'image/jpg' => 'jpg',
             'image/webp' => 'webp',
             'image/avif' => 'avif',
-            default => 'png',
+            'image/png' => 'png',
+            default => throw new RuntimeException('Unsupported image MIME type: '.$mimeType),
         };
     }
 
@@ -175,7 +183,6 @@ PROMPT);
 
         $target = $path.'.'.$extension;
         @unlink($path);
-
         file_put_contents($target, $bytes);
 
         return $target;
@@ -183,8 +190,8 @@ PROMPT);
 
     private function fileName(EcotradeProductImageCandidate $candidate, string $extension, string $watermarkMode): string
     {
-        $name = $this->mediaName($candidate);
-        $name = Str::slug($name) ?: 'ecotrade-product';
+        $name = Str::slug(trim((string) $candidate->item->serial_code)) ?: Str::slug($this->mediaName($candidate));
+        $name = $name !== '' ? $name : 'ecotrade-product';
         $suffix = $watermarkMode === 'none' ? '' : '-maikcat';
 
         return $name.$suffix.'.'.$extension;
@@ -192,20 +199,14 @@ PROMPT);
 
     private function mediaName(EcotradeProductImageCandidate $candidate): string
     {
-        $productName = trim((string) $candidate->product->productName);
-
-        if ($productName !== '') {
-            return $productName;
-        }
-
-        $itemName = trim((string) $candidate->item->model);
-
-        if ($itemName !== '') {
-            return $itemName;
-        }
-
         $serial = trim((string) $candidate->item->serial_code);
 
-        return $serial !== '' ? $serial : 'Ecotrade product image';
+        if ($serial !== '') {
+            return $serial;
+        }
+
+        $productName = trim((string) $candidate->product->productName);
+
+        return $productName !== '' ? $productName : 'Ecotrade product image';
     }
 }

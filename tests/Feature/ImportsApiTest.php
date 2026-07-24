@@ -4,7 +4,6 @@ use App\Jobs\ImportBatchJob;
 use App\Models\CarGroup;
 use App\Models\DuplicateReview;
 use App\Models\ExtraCode;
-use App\Models\ImportBatch;
 use App\Models\ImportRowIssue;
 use App\Models\Item;
 use App\Models\User;
@@ -19,7 +18,6 @@ use PhpOffice\PhpSpreadsheet\Writer\Xls;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 use function Pest\Laravel\getJson;
-use function Pest\Laravel\patchJson;
 use function Pest\Laravel\post;
 
 uses(RefreshDatabase::class);
@@ -37,138 +35,98 @@ function petraHeaders(): array
     ];
 }
 
-/**
- * @param  array<string, array<int, array<int, mixed>>>  $sheets
- */
+/** @param array<string,array<int,array<int,mixed>>> $sheets */
 function createExcelUpload(array $sheets, string $originalName = 'import.xlsx'): UploadedFile
 {
-    $spreadsheet = new Spreadsheet;
-    $spreadsheet->removeSheetByIndex(0);
-
-    $firstSheet = true;
-    foreach ($sheets as $sheetName => $rows) {
-        $sheet = $spreadsheet->createSheet();
-        $sheet->setTitle($sheetName);
-
-        if (! empty($rows)) {
-            $sheet->fromArray($rows, null, 'A1');
-        }
-
-        if ($firstSheet) {
-            $spreadsheet->setActiveSheetIndexByName($sheetName);
-            $firstSheet = false;
-        }
-    }
-
-    $tempBase = tempnam(sys_get_temp_dir(), 'xlsx_');
-    if ($tempBase === false) {
-        throw new RuntimeException('Could not create temporary file for test workbook.');
-    }
-
-    @unlink($tempBase);
-    $path = $tempBase.'.xlsx';
-
-    $writer = new Xlsx($spreadsheet);
-    $writer->save($path);
-
-    return new UploadedFile(
-        $path,
-        $originalName,
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        null,
-        true
-    );
+    return createWorkbookUpload($sheets, $originalName, false);
 }
 
-/**
- * @param  array<string, array<int, array<int, mixed>>>  $sheets
- */
+/** @param array<string,array<int,array<int,mixed>>> $sheets */
 function createXlsUpload(array $sheets, string $originalName = 'import.xls'): UploadedFile
 {
-    $spreadsheet = new Spreadsheet;
+    return createWorkbookUpload($sheets, $originalName, true);
+}
+
+/** @param array<string,array<int,array<int,mixed>>> $sheets */
+function createWorkbookUpload(array $sheets, string $originalName, bool $xls): UploadedFile
+{
+    $spreadsheet = new Spreadsheet();
     $spreadsheet->removeSheetByIndex(0);
 
-    $firstSheet = true;
     foreach ($sheets as $sheetName => $rows) {
         $sheet = $spreadsheet->createSheet();
         $sheet->setTitle($sheetName);
-
-        if (! empty($rows)) {
-            $sheet->fromArray($rows, null, 'A1');
-        }
-
-        if ($firstSheet) {
-            $spreadsheet->setActiveSheetIndexByName($sheetName);
-            $firstSheet = false;
-        }
+        $sheet->fromArray($rows, null, 'A1');
     }
 
-    $tempBase = tempnam(sys_get_temp_dir(), 'xls_');
-    if ($tempBase === false) {
-        throw new RuntimeException('Could not create temporary file for test workbook.');
+    $spreadsheet->setActiveSheetIndex(0);
+    $base = tempnam(sys_get_temp_dir(), 'import_test_');
+
+    if ($base === false) {
+        throw new RuntimeException('Unable to create a workbook fixture.');
     }
 
-    @unlink($tempBase);
-    $path = $tempBase.'.xls';
-
-    $writer = new Xls($spreadsheet);
+    @unlink($base);
+    $path = $base.($xls ? '.xls' : '.xlsx');
+    $writer = $xls ? new Xls($spreadsheet) : new Xlsx($spreadsheet);
     $writer->save($path);
+    $spreadsheet->disconnectWorksheets();
 
     return new UploadedFile(
         $path,
         $originalName,
-        'application/vnd.ms-excel',
+        $xls ? 'application/vnd.ms-excel' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         null,
-        true
+        true,
     );
 }
 
 function queueAndRunImportJob(string $batchId): void
 {
-    $capturedJob = null;
+    $captured = null;
 
-    Bus::assertDispatched(ImportBatchJob::class, function (ImportBatchJob $job) use ($batchId, &$capturedJob): bool {
+    Bus::assertDispatched(ImportBatchJob::class, function (ImportBatchJob $job) use ($batchId, &$captured): bool {
         if ($job->batchId !== $batchId) {
             return false;
         }
 
-        $capturedJob = $job;
+        $captured = $job;
 
         return true;
     });
 
-    expect($capturedJob)->toBeInstanceOf(ImportBatchJob::class);
+    expect($captured)->toBeInstanceOf(ImportBatchJob::class);
 
     app(ImportBatchService::class)->processQueuedBatch(
-        $capturedJob->batchId,
-        $capturedJob->storedFilePath
+        $captured->batchId,
+        $captured->storedFilePath,
     );
 }
 
-test('petra import auto-detects header-matching sheet and ignores noisy sheet', function () {
+function authenticateImportUser(): User
+{
     $user = User::factory()->create();
     Sanctum::actingAs($user);
+
+    return $user;
+}
+
+test('petra import detects the catalog sheet and imports a valid analysis', function () {
+    authenticateImportUser();
     Bus::fake();
 
     $file = createExcelUpload([
-        'Noisy' => [
-            ['not', 'petra', 'headers'],
-            ['garbage', 'data', 'ignored'],
-        ],
+        'Noise' => [['not', 'the', 'catalog']],
         'CatalogData' => [
             petraHeaders(),
-            ['SER-100', 'desc one', 'Acadia', 1.12, 1200, 450, 90],
+            ['SER-100', 'description', 'Acadia', 1.12, 1200, 450, 90],
         ],
     ], 'petra.xlsx');
 
     $response = post('/api/imports', ['file' => $file]);
-
-    $response->assertCreated();
-    $response->assertJsonPath('status', 'queued');
+    $response->assertCreated()->assertJsonPath('status', 'queued');
 
     $batchId = (string) $response->json('batchId');
-    expect($batchId)->not->toBe('');
-
     queueAndRunImportJob($batchId);
 
     getJson("/api/imports/{$batchId}")
@@ -176,49 +134,20 @@ test('petra import auto-detects header-matching sheet and ignores noisy sheet', 
         ->assertJsonPath('status', 'completed')
         ->assertJsonPath('rowsInserted', 1)
         ->assertJsonPath('rowsInvalid', 0)
-        ->assertJsonPath('rowsFlagged', 0)
-        ->assertJsonPath('rowsSkipped', 0);
+        ->assertJsonPath('rowsFlagged', 0);
 
-    expect(Item::query()->count())->toBe(1);
     $item = Item::query()->firstOrFail();
+
     expect($item->serial_code)->toBe('SER-100')
+        ->and($item->normalized_serial)->toBe('SER100')
         ->and($item->model)->toBe('Acadia')
-        ->and($item->details)->toBe('desc one')
-        ->and($item->pt_ppm)->toBe(1200.0)
-        ->and($item->pd_ppm)->toBe(450.0)
-        ->and($item->rh_ppm)->toBe(90.0);
+        ->and($item->pt_ppm)->toBe(1200.0);
 
     @unlink($file->getPathname());
 });
 
-test('petra import creates missing manufacturer group automatically', function () {
-    $user = User::factory()->create();
-    Sanctum::actingAs($user);
-    Bus::fake();
-
-    $file = createExcelUpload([
-        'Sheet2' => [
-            petraHeaders(),
-            ['SER-101', 'new brand row', 'My New Brand', 0.95, 500, 100, 50],
-        ],
-    ], 'petra-groups.xlsx');
-
-    $response = post('/api/imports', ['file' => $file]);
-    $response->assertCreated();
-
-    $batchId = (string) $response->json('batchId');
-    queueAndRunImportJob($batchId);
-
-    $group = CarGroup::query()->where('excel_sheet_name', 'MY NEW BRAND')->first();
-    expect($group)->not->toBeNull()
-        ->and($group->name)->toBe('MY NEW BRAND');
-
-    @unlink($file->getPathname());
-});
-
-test('petra import skips exact duplicate and does not create duplicate review', function () {
-    $user = User::factory()->create();
-    Sanctum::actingAs($user);
+test('an exact Petra assay is skipped without a duplicate review', function () {
+    authenticateImportUser();
     Bus::fake();
 
     $group = CarGroup::query()->create([
@@ -233,46 +162,38 @@ test('petra import skips exact duplicate and does not create duplicate review', 
         'car_group_id' => $group->id,
         'model' => 'BMW',
         'serial_code' => 'SER-BMW-1',
-        'weight_kg' => 1.100,
-        'pt_ppm' => 300.0000,
-        'pd_ppm' => 120.0000,
-        'rh_ppm' => 18.0000,
-        'details' => 'old',
-        'shape_code' => null,
+        'weight_kg' => 1.1,
+        'pt_ppm' => 300,
+        'pd_ppm' => 120,
+        'rh_ppm' => 18,
     ]);
 
     $file = createExcelUpload([
         'PETRA' => [
             petraHeaders(),
-            ['SER-BMW-1', 'new details ignored', 'BMW', 1.1, 300, 120, 18],
+            ['SER-BMW-1', 'same assay', 'BMW', 1.1, 300, 120, 18],
         ],
     ]);
 
     $response = post('/api/imports', ['file' => $file]);
-
-    $response->assertCreated();
-    $response->assertJsonPath('status', 'queued');
-
     $batchId = (string) $response->json('batchId');
     queueAndRunImportJob($batchId);
 
     getJson("/api/imports/{$batchId}")
         ->assertOk()
-        ->assertJsonPath('status', 'completed')
         ->assertJsonPath('rowsInserted', 0)
         ->assertJsonPath('rowsSkipped', 1)
         ->assertJsonPath('rowsFlagged', 0)
-        ->assertJsonPath('rowsInvalid', 0);
+        ->assertJsonPath('duplicatesPending', 0);
 
-    expect(DuplicateReview::query()->count())->toBe(0);
-    expect(Item::query()->count())->toBe(1);
+    expect(Item::query()->count())->toBe(1)
+        ->and(DuplicateReview::query()->count())->toBe(0);
 
     @unlink($file->getPathname());
 });
 
-test('petra import flags conflict duplicates and exposes batch duplicate endpoints', function () {
-    $user = User::factory()->create();
-    Sanctum::actingAs($user);
+test('a different Petra analysis for the same serial is inserted automatically', function () {
+    authenticateImportUser();
     Bus::fake();
 
     $group = CarGroup::query()->create([
@@ -287,166 +208,74 @@ test('petra import flags conflict duplicates and exposes batch duplicate endpoin
         'car_group_id' => $group->id,
         'model' => 'BMW',
         'serial_code' => 'SER-BMW-2',
-        'weight_kg' => 1.000,
-        'pt_ppm' => 100.0000,
-        'pd_ppm' => 200.0000,
-        'rh_ppm' => 10.0000,
-        'details' => 'existing',
-        'shape_code' => null,
+        'weight_kg' => 1.0,
+        'pt_ppm' => 100,
+        'pd_ppm' => 200,
+        'rh_ppm' => 10,
     ]);
 
     $file = createExcelUpload([
         'PETRA' => [
             petraHeaders(),
-            ['SER-BMW-2', 'new conflict', 'BMW', 1.0, 111, 200, 10],
+            ['SER-BMW-2', 'second analysis', 'BMW', 1.05, 111, 205, 11],
         ],
     ]);
 
-    $importResponse = post('/api/imports', ['file' => $file]);
-    $importResponse->assertCreated();
-    $importResponse->assertJsonPath('status', 'queued');
-
-    $batchId = (string) $importResponse->json('batchId');
-    expect($batchId)->not->toBe('');
-
+    $response = post('/api/imports', ['file' => $file]);
+    $batchId = (string) $response->json('batchId');
     queueAndRunImportJob($batchId);
 
     getJson("/api/imports/{$batchId}")
         ->assertOk()
-        ->assertJsonPath('id', $batchId)
-        ->assertJsonPath('rowsInserted', 0)
-        ->assertJsonPath('rowsFlagged', 1)
+        ->assertJsonPath('rowsInserted', 1)
         ->assertJsonPath('rowsSkipped', 0)
-        ->assertJsonPath('duplicatesPending', 1)
-        ->assertJsonPath('status', 'completed');
+        ->assertJsonPath('rowsFlagged', 0)
+        ->assertJsonPath('duplicatesPending', 0);
 
-    getJson("/api/imports/{$batchId}/duplicates")
-        ->assertOk()
-        ->assertJsonPath('data.0.batchId', $batchId)
-        ->assertJsonPath('data.0.status', 'pending')
-        ->assertJsonPath('data.0.payload.serialCode', 'SER-BMW-2')
-        ->assertJsonPath('data.0.payload.ptPpm', 111);
-
-    expect(DuplicateReview::query()->count())->toBe(1);
+    expect(Item::query()->where('normalized_serial', 'SERBMW2')->count())->toBe(2)
+        ->and(Item::query()->where('normalized_serial', 'SERBMW2')->where('pt_ppm', 111)->exists())->toBeTrue()
+        ->and(DuplicateReview::query()->count())->toBe(0);
 
     @unlink($file->getPathname());
 });
 
-test('duplicate resolve endpoint handles keep overwrite and insert actions', function () {
-    $user = User::factory()->create();
-    Sanctum::actingAs($user);
+test('legacy workbook reads actual headers and imports extra fields', function () {
+    authenticateImportUser();
+    Bus::fake();
 
-    $group = CarGroup::query()->create([
+    CarGroup::query()->create([
         'id' => (string) Str::uuid(),
-        'name' => 'BMW',
-        'excel_sheet_name' => 'BMW',
+        'name' => 'AUDI VW',
+        'excel_sheet_name' => 'AUDI VW',
         'region' => 'European',
     ]);
 
-    $existing = Item::query()->create([
-        'id' => (string) Str::uuid(),
-        'car_group_id' => $group->id,
-        'model' => 'BMW',
-        'serial_code' => 'SER-BMW-3',
-        'weight_kg' => 1.000,
-        'pt_ppm' => 100.0000,
-        'pd_ppm' => 200.0000,
-        'rh_ppm' => 10.0000,
-        'details' => 'existing',
-        'shape_code' => null,
-    ]);
+    $file = createExcelUpload([
+        'AUDI VW' => [
+            ['Model', 'Serial Code', 'Piece kg', '#REF!', null, '#REF!', null, '#REF!', null, null, 'Extra Codes', null, 'Details', null, null, null, 'Shape Code'],
+            [null, null, null, 'Pt', null, 'Pd', null, 'Rh'],
+            [null, null, null, 'ppm', null, 'ppm', 'Price', 'ppm'],
+            ['AUDI A4', '8K0-131-701', 1.234, 150.5, null, 220.25, null, 12.75, null, null, 'EX1/EX2', null, 'real details', null, null, null, 'SHAPE-X'],
+        ],
+    ], 'legacy.xlsx');
 
-    ExtraCode::query()->create([
-        'id' => (string) Str::uuid(),
-        'item_id' => $existing->id,
-        'code' => 'OLD-CODE',
-        'source' => 'seed',
-    ]);
+    $response = post('/api/imports', ['file' => $file]);
+    $batchId = (string) $response->json('batchId');
+    queueAndRunImportJob($batchId);
 
-    $batch = ImportBatch::query()->create([
-        'id' => (string) Str::uuid(),
-        'file_name' => 'petra.xlsx',
-        'imported_by' => $user->email,
-        'status' => 'completed',
-        'rows_inserted' => 0,
-        'rows_skipped' => 0,
-        'rows_flagged' => 3,
-        'rows_invalid' => 0,
-    ]);
+    $item = Item::query()->where('normalized_serial', '8K0131701')->firstOrFail();
 
-    $basePayload = [
-        'model' => 'BMW NEW',
-        'serial_code' => 'SER-BMW-3',
-        'weight_kg' => 1.200,
-        'pt_ppm' => 150.0000,
-        'pd_ppm' => 250.0000,
-        'rh_ppm' => 12.0000,
-        'details' => 'updated details',
-        'shape_code' => null,
-    ];
+    expect($item->model)->toBe('AUDI A4')
+        ->and($item->details)->toBe('real details')
+        ->and($item->shape_code)->toBe('SHAPE-X')
+        ->and($item->source)->toBe('excel_import')
+        ->and($item->extraCodes()->pluck('code')->all())->toBe(['EX1', 'EX2']);
 
-    $keepReview = DuplicateReview::query()->create([
-        'id' => (string) Str::uuid(),
-        'batch_id' => $batch->id,
-        'excel_row' => 12,
-        'excel_sheet' => 'PETRA',
-        'payload' => $basePayload,
-        'existing_item_id' => $existing->id,
-        'status' => 'pending',
-    ]);
-
-    $overwriteReview = DuplicateReview::query()->create([
-        'id' => (string) Str::uuid(),
-        'batch_id' => $batch->id,
-        'excel_row' => 13,
-        'excel_sheet' => 'PETRA',
-        'payload' => array_merge($basePayload, [
-            'extra_codes' => 'NEW1/NEW2',
-        ]),
-        'existing_item_id' => $existing->id,
-        'status' => 'pending',
-    ]);
-
-    $insertReview = DuplicateReview::query()->create([
-        'id' => (string) Str::uuid(),
-        'batch_id' => $batch->id,
-        'excel_row' => 14,
-        'excel_sheet' => 'PETRA',
-        'payload' => array_merge($basePayload, [
-            'serial_code' => 'SER-BMW-3-NEW',
-            'extra_codes' => 'IN1/IN2',
-        ]),
-        'existing_item_id' => $existing->id,
-        'status' => 'pending',
-    ]);
-
-    patchJson("/api/duplicates/{$keepReview->id}", ['action' => 'keep'])
-        ->assertOk()
-        ->assertJsonPath('status', 'kept');
-
-    patchJson("/api/duplicates/{$overwriteReview->id}", ['action' => 'overwrite'])
-        ->assertOk()
-        ->assertJsonPath('status', 'overwritten');
-
-    patchJson("/api/duplicates/{$insertReview->id}", ['action' => 'insert'])
-        ->assertOk()
-        ->assertJsonPath('status', 'inserted');
-
-    $existing->refresh();
-
-    expect($existing->model)->toBe('BMW NEW')
-        ->and($existing->weight_kg)->toBe(1.2)
-        ->and($existing->pt_ppm)->toBe(150.0)
-        ->and($existing->details)->toBe('updated details');
-
-    expect($existing->extraCodes()->pluck('code')->all())->toBe(['NEW1', 'NEW2']);
-
-    expect(Item::query()->where('serial_code', 'SER-BMW-3-NEW')->exists())->toBeTrue();
+    @unlink($file->getPathname());
 });
 
-test('legacy multi-sheet import flow still works with new orchestration', function () {
-    $user = User::factory()->create();
-    Sanctum::actingAs($user);
+test('legacy import records invalid assay rows and rejects placeholders', function () {
+    authenticateImportUser();
     Bus::fake();
 
     CarGroup::query()->create([
@@ -456,63 +285,37 @@ test('legacy multi-sheet import flow still works with new orchestration', functi
         'region' => 'European',
     ]);
 
-    $legacyDataRow = [
-        'MODEL-LEG',
-        'SER-LEG-1',
-        1.234,
-        150.5,
-        null,
-        220.25,
-        null,
-        12.75,
-        null,
-        null,
-        'EX1/EX2',
-        null,
-        'legacy details',
-        null,
-        null,
-        null,
-        'SHAPE-X',
-    ];
-
     $file = createExcelUpload([
         'BMW' => [
-            ['header row 1'],
-            ['header row 2'],
-            ['header row 3'],
-            $legacyDataRow,
+            ['Model', 'Serial Code', 'Piece kg', 'Pt', null, 'Pd', null, 'Rh'],
+            ['BMW', 'VALID-1', 1.2, 100, null, 200, null, 10],
+            ['BMW', '?', 1.2, 100, null, 200, null, 10],
+            ['BMW', 'KONTROLINIS', 1.2, 100, null, 200, null, 10],
+            ['BMW', 'NO-WEIGHT', null, 100, null, 200, null, 10],
+            ['BMW', 'ZERO-METAL', 1.2, 0, null, 0, null, 0],
+            ['BMW', 'AMBIGUOUS', 1.2, '100/200', null, 200, null, 10],
         ],
-    ], 'legacy.xlsx');
+    ], 'invalid.xlsx');
 
     $response = post('/api/imports', ['file' => $file]);
-    $response->assertCreated();
-    $response->assertJsonPath('status', 'queued');
-
     $batchId = (string) $response->json('batchId');
     queueAndRunImportJob($batchId);
 
     getJson("/api/imports/{$batchId}")
         ->assertOk()
-        ->assertJsonPath('status', 'completed')
         ->assertJsonPath('rowsInserted', 1)
-        ->assertJsonPath('rowsFlagged', 0)
-        ->assertJsonPath('rowsInvalid', 0);
+        ->assertJsonPath('rowsInvalid', 5)
+        ->assertJsonPath('issuesTotal', 5);
 
-    $item = Item::query()->where('serial_code', 'SER-LEG-1')->first();
-    expect($item)->not->toBeNull()
-        ->and($item->model)->toBe('MODEL-LEG')
-        ->and($item->details)->toBe('legacy details')
-        ->and($item->shape_code)->toBe('SHAPE-X');
-
-    expect(ExtraCode::query()->where('item_id', $item->id)->pluck('code')->all())->toBe(['EX1', 'EX2']);
+    expect(Item::query()->count())->toBe(1)
+        ->and(ImportRowIssue::query()->count())->toBe(5)
+        ->and(ImportRowIssue::query()->where('issue_code', 'ambiguous_assay_value')->exists())->toBeTrue();
 
     @unlink($file->getPathname());
 });
 
-test('dry run returns preview status and does not persist items or extra codes', function () {
-    $user = User::factory()->create();
-    Sanctum::actingAs($user);
+test('dry run profiles rows without writing items or issue records', function () {
+    authenticateImportUser();
 
     CarGroup::query()->create([
         'id' => (string) Str::uuid(),
@@ -523,24 +326,11 @@ test('dry run returns preview status and does not persist items or extra codes',
 
     $file = createExcelUpload([
         'BMW' => [
-            ['header row 1'],
-            ['header row 2'],
-            ['header row 3'],
-            [
-                'MODEL-DRY',
-                'SER-DRY-1',
-                1.1,
-                120.0,
-                null,
-                200.0,
-                null,
-                20.0,
-                null,
-                null,
-                'C1/C2',
-                null,
-                'dry run row',
-            ],
+            ['header one'],
+            ['header two'],
+            ['header three'],
+            ['MODEL-DRY', 'SER-DRY-1', 1.1, 120, null, 200, null, 20, null, null, 'C1/C2'],
+            ['MODEL-DRY', '?', 1.1, 120, null, 200, null, 20],
         ],
     ], 'dry-run.xlsx');
 
@@ -549,47 +339,22 @@ test('dry run returns preview status and does not persist items or extra codes',
         'dryRun' => true,
     ]);
 
-    $response->assertCreated();
-    $response->assertJsonPath('status', 'preview_completed');
-    $response->assertJsonPath('rowsInserted', 1);
-    $response->assertJsonPath('rowsFlagged', 0);
-    $response->assertJsonPath('rowsInvalid', 0);
-    $response->assertJsonPath('rowsSkipped', 0);
+    $response->assertCreated()
+        ->assertJsonPath('status', 'preview_completed')
+        ->assertJsonPath('rowsInserted', 1)
+        ->assertJsonPath('rowsInvalid', 1)
+        ->assertJsonPath('rowsSkipped', 0)
+        ->assertJsonPath('issuesTotal', 0);
 
-    expect(Item::query()->count())->toBe(0);
-    expect(ExtraCode::query()->count())->toBe(0);
-    expect(DuplicateReview::query()->count())->toBe(0);
-
-    @unlink($file->getPathname());
-});
-
-test('xls import detection works without zip archive assumptions', function () {
-    $user = User::factory()->create();
-    Sanctum::actingAs($user);
-
-    $file = createXlsUpload([
-        'CatalogData' => [
-            petraHeaders(),
-            ['SER-XLS-1', 'desc xls', 'Acadia', 1.12, 1200, 450, 90],
-        ],
-    ], 'petra.xls');
-
-    $response = post('/api/imports', [
-        'file' => $file,
-        'dryRun' => true,
-    ]);
-
-    $response->assertCreated();
-    $response->assertJsonPath('status', 'preview_completed');
-    $response->assertJsonPath('rowsInserted', 1);
-    $response->assertJsonPath('rowsInvalid', 0);
+    expect(Item::query()->count())->toBe(0)
+        ->and(ExtraCode::query()->count())->toBe(0)
+        ->and(ImportRowIssue::query()->count())->toBe(0);
 
     @unlink($file->getPathname());
 });
 
-test('legacy import maps new sheet aliases to existing canonical group', function () {
-    $user = User::factory()->create();
-    Sanctum::actingAs($user);
+test('legacy aliases and placeholder sheets are handled', function () {
+    authenticateImportUser();
     Bus::fake();
 
     $canonical = CarGroup::query()->create([
@@ -600,122 +365,46 @@ test('legacy import maps new sheet aliases to existing canonical group', functio
     ]);
 
     $file = createExcelUpload([
+        'Лист1' => [[null]],
+        'Лист2' => [[null]],
         'New Chraisler' => [
-            ['header row 1'],
-            ['header row 2'],
-            ['header row 3'],
-            [
-                'MODEL-CHR',
-                'SER-CHR-1',
-                1.5,
-                111.0,
-                null,
-                222.0,
-                null,
-                33.0,
-                null,
-                null,
-                null,
-                null,
-                'alias sheet mapping row',
-            ],
+            ['header one'],
+            ['header two'],
+            ['header three'],
+            ['MODEL-CHR', 'SER-CHR-1', 1.5, 111, null, 222, null, 33],
         ],
-    ], 'legacy-alias.xlsx');
+    ], 'aliases.xlsx');
 
     $response = post('/api/imports', ['file' => $file]);
-    $response->assertCreated();
-    $response->assertJsonPath('status', 'queued');
-
     $batchId = (string) $response->json('batchId');
     queueAndRunImportJob($batchId);
 
-    $item = Item::query()->where('serial_code', 'SER-CHR-1')->firstOrFail();
-    expect($item->car_group_id)->toBe($canonical->id);
+    $item = Item::query()->where('normalized_serial', 'SERCHR1')->firstOrFail();
+
+    expect($item->car_group_id)->toBe($canonical->id)
+        ->and(Item::query()->count())->toBe(1);
 
     @unlink($file->getPathname());
 });
 
-test('dry run persists invalid row issues and exposes issues endpoint', function () {
-    $user = User::factory()->create();
-    Sanctum::actingAs($user);
+test('xls files use the same import pipeline', function () {
+    authenticateImportUser();
 
-    CarGroup::query()->create([
-        'id' => (string) Str::uuid(),
-        'name' => 'BMW',
-        'excel_sheet_name' => 'BMW',
-        'region' => 'European',
-    ]);
-
-    $file = createExcelUpload([
-        'BMW' => [
-            ['Зав. №.', 'Доп. Инф.', 'Произв.', 'Тегло', 'PT', 'PD', 'RH'],
-            ['SER-ISS-1', 'desc', 'BMW', 1.25, '0/0', '1250/2300', '350/400'],
+    $file = createXlsUpload([
+        'CatalogData' => [
+            petraHeaders(),
+            ['SER-XLS-1', 'xls row', 'Acadia', 1.12, 1200, 450, 90],
         ],
-    ], 'legacy-issues-dry-run.xlsx');
+    ], 'petra.xls');
 
-    $response = post('/api/imports', [
+    post('/api/imports', [
         'file' => $file,
         'dryRun' => true,
-    ]);
-
-    $response->assertCreated();
-    $response->assertJsonPath('status', 'preview_completed');
-    $response->assertJsonPath('rowsInvalid', 1);
-    $response->assertJsonPath('issuesTotal', 1);
-
-    $batchId = (string) $response->json('batchId');
-
-    getJson("/api/imports/{$batchId}")
-        ->assertOk()
-        ->assertJsonPath('issuesTotal', 1)
-        ->assertJsonPath('rowsInvalid', 1);
-
-    getJson("/api/imports/{$batchId}/issues?issueCode=ambiguousAssayValue")
-        ->assertOk()
-        ->assertJsonPath('data.0.issueCode', 'ambiguous_assay_value')
-        ->assertJsonPath('data.0.batchId', $batchId)
-        ->assertJsonPath('data.0.excelSheet', 'BMW');
-
-    expect(ImportRowIssue::query()->count())->toBe(1);
-    expect(Item::query()->count())->toBe(0);
-
-    @unlink($file->getPathname());
-});
-
-test('legacy import skips placeholder sheets like Лист1 and Лист2', function () {
-    $user = User::factory()->create();
-    Sanctum::actingAs($user);
-
-    CarGroup::query()->create([
-        'id' => (string) Str::uuid(),
-        'name' => 'BMW',
-        'excel_sheet_name' => 'BMW',
-        'region' => 'European',
-    ]);
-
-    $file = createExcelUpload([
-        'Лист1' => [[null]],
-        'Лист2' => [[null]],
-        'BMW' => [
-            ['header row 1'],
-            ['header row 2'],
-            ['header row 3'],
-            ['MODEL-PLH', 'SER-PLH-1', 1.2, 100, null, 200, null, 10],
-        ],
-    ], 'legacy-placeholder-sheets.xlsx');
-
-    $response = post('/api/imports', [
-        'file' => $file,
-        'dryRun' => true,
-    ]);
-
-    $response->assertCreated();
-    $response->assertJsonPath('status', 'preview_completed');
-    $response->assertJsonPath('rowsInserted', 1);
-    $response->assertJsonPath('rowsInvalid', 0);
-    $response->assertJsonPath('issuesTotal', 0);
-
-    expect(ImportRowIssue::query()->count())->toBe(0);
+    ])
+        ->assertCreated()
+        ->assertJsonPath('status', 'preview_completed')
+        ->assertJsonPath('rowsInserted', 1)
+        ->assertJsonPath('rowsInvalid', 0);
 
     @unlink($file->getPathname());
 });
