@@ -2,7 +2,23 @@
 
 ## Goal
 
-Import every valid catalyst analysis from the Excel workbook, including multiple analyses that share the same serial code, while preventing exact assay duplicates and attaching the best available EcoTrade image to every item in the serial family.
+Import every valid catalyst analysis from all Excel workbooks, including multiple analyses that share the same serial code, while preventing exact assay duplicates and attaching the best available EcoTrade image to every item in the serial family.
+
+## Default Excel folder
+
+Place all `.xls` and `.xlsx` files inside:
+
+```text
+excel/
+```
+
+The folder can be changed in `.env`:
+
+```dotenv
+EXCEL_IMPORT_DIRECTORY=excel
+```
+
+The `imports:run` command scans this directory recursively when no path is supplied. It ignores non-Excel files and temporary files whose names start with `~$`.
 
 ## Data identity
 
@@ -60,7 +76,61 @@ The migration:
 
 It does not add a unique index to the serial code. Multiple analyses with the same serial remain allowed.
 
-### 3. Audit the Excel and EcoTrade sources
+### 3. Check every Excel file at once
+
+Place every workbook in the `excel` folder, then run:
+
+```bash
+php artisan imports:run --dry-run --imported-by=admin@example.com
+```
+
+No file path is needed.
+
+The command prints:
+
+- One result row for each Excel file
+- File status
+- Rows that would be inserted
+- Rows that would be skipped
+- Flagged rows
+- Invalid rows
+- Duplicate count
+- One combined totals table for all files
+
+Dry-run does not write items, extra codes, media, or issue rows.
+
+A different directory can still be supplied explicitly:
+
+```bash
+php artisan imports:run storage/app/other-excel-folder --dry-run
+```
+
+### 4. Import every Excel file
+
+After reviewing the dry-run report, run:
+
+```bash
+php artisan imports:run --imported-by=admin@example.com
+```
+
+No file path is needed. A separate import batch is queued for every `.xls` or `.xlsx` file found in the configured folder.
+
+Run the queue worker:
+
+```bash
+php artisan queue:work --tries=1
+```
+
+Behavior:
+
+- New serial: inserts the first analysis
+- Same serial with a different assay: inserts another item automatically
+- Exact same assay: skips the row
+- New item with an imaged sibling: copies the sibling media through Spatie Media Library
+
+### 5. Audit one workbook against the EcoTrade JSON
+
+For a detailed Excel-to-EcoTrade source comparison:
 
 ```bash
 php artisan catalysts:audit-sources \
@@ -86,45 +156,6 @@ The audit does not write items or media. It reports:
 
 It also writes CSV files for unmatched and ambiguous families when `--csv-dir` is provided.
 
-### 4. Preview the Excel import
-
-```bash
-php artisan imports:run \
-  "/absolute/path/maik 2_101857 (2)(1).xlsx" \
-  --dry-run \
-  --imported-by=admin@example.com
-```
-
-Review:
-
-- `rows_inserted`
-- `rows_skipped`
-- `rows_invalid`
-- `rows_flagged`
-
-Dry-run does not write items, extra codes, media, or issue rows.
-
-### 5. Import the Excel data
-
-```bash
-php artisan imports:run \
-  "/absolute/path/maik 2_101857 (2)(1).xlsx" \
-  --imported-by=admin@example.com
-```
-
-A normal import is queued. Ensure the queue worker is running:
-
-```bash
-php artisan queue:work --tries=1
-```
-
-Behavior:
-
-- New serial: inserts the first analysis
-- Same serial with a different assay: inserts another item automatically
-- Exact same assay: skips the row
-- New item with an imaged sibling: copies the sibling media through Spatie Media Library
-
 ### 6. Preview EcoTrade image candidates
 
 ```bash
@@ -136,7 +167,8 @@ php artisan ecotrade:import-product-images \
 Matching uses:
 
 - Resolved car group
-- Normalized serial code
+- Normalized primary serial code
+- Normalized extra codes
 
 Known mascot, placeholder, default, and no-image URLs are rejected before any image call.
 
