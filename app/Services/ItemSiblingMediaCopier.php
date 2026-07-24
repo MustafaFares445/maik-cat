@@ -4,12 +4,27 @@ namespace App\Services;
 
 use App\Models\Item;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class ItemSiblingMediaCopier
 {
     public function copyFirstImageTo(Item $destination): ?Media
     {
+        if (DB::transactionLevel() > 0) {
+            $itemId = (string) $destination->getKey();
+
+            DB::afterCommit(function () use ($itemId): void {
+                $committedItem = Item::query()->find($itemId);
+
+                if ($committedItem instanceof Item) {
+                    $this->copyFirstImageTo($committedItem);
+                }
+            });
+
+            return null;
+        }
+
         if ($destination->hasMedia('images')) {
             return $destination->getFirstMedia('images');
         }
@@ -45,6 +60,20 @@ class ItemSiblingMediaCopier
 
     public function copyFirstImageToSiblings(Item $source): int
     {
+        if (DB::transactionLevel() > 0) {
+            $itemId = (string) $source->getKey();
+
+            DB::afterCommit(function () use ($itemId): void {
+                $committedItem = Item::query()->find($itemId);
+
+                if ($committedItem instanceof Item) {
+                    $this->copyFirstImageToSiblings($committedItem);
+                }
+            });
+
+            return 0;
+        }
+
         $sourceMedia = $source->getFirstMedia('images');
         $normalizedSerial = Item::normalizeSerialValue($source->normalized_serial ?: $source->serial_code);
 
