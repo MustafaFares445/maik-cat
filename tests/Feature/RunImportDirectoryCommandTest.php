@@ -87,10 +87,13 @@ test('imports run scans every Excel workbook from the configured folder without 
     }
 });
 
-test('imports run reports a missing default Excel folder', function () {
-    config()->set('imports.excel_directory', sys_get_temp_dir().'/missing_excel_'.uniqid('', true));
+test('imports run reports a missing supplied directory', function () {
+    $missing = sys_get_temp_dir().'/missing_excel_'.uniqid('', true);
 
-    $this->artisan('imports:run', ['--dry-run' => true])
+    $this->artisan('imports:run', [
+        'path' => $missing,
+        '--dry-run' => true,
+    ])
         ->expectsOutputToContain('Import discovery failed:')
         ->assertExitCode(1);
 });
