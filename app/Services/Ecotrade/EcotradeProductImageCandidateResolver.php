@@ -7,6 +7,7 @@ use App\Data\EcotradeProductImageCandidate;
 use App\Models\CarGroup;
 use App\Models\Item;
 use App\Services\ImportSheetGroupResolver;
+use App\Support\Items\CatalystSerialValidator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
@@ -42,36 +43,14 @@ class EcotradeProductImageCandidateResolver
             : null;
         $groupIds = $this->groupIdsByCanonicalName();
 
-        $summary = [
-            'records_total' => count($records),
-            'records_valid' => 0,
-            'records_invalid' => 0,
-            'records_with_main_image' => 0,
-            'records_without_main_image' => 0,
-            'records_rejected_placeholder_image' => 0,
-            'families_available' => 0,
-            'families_ambiguous' => 0,
-            'families_without_group' => 0,
-            'families_without_items' => 0,
-            'matched_items' => 0,
-            'priceable_items' => 0,
-            'skipped_not_in_media_report' => 0,
-            'skipped_checkpointed' => 0,
-            'skipped_not_failed_checkpoint' => 0,
-            'skipped_not_priceable' => 0,
-            'skipped_existing_image' => 0,
-            'copy_sources_available' => 0,
-            'candidates_available' => 0,
-            'candidates_selected' => 0,
-        ];
-
+        $summary = $this->emptySummary(count($records));
         /** @var array<string,list<EcotradeProductData>> $productsByNamedFamily */
         $productsByNamedFamily = [];
 
         foreach ($records as $record) {
             $product = $this->normalizer->normalize($record);
 
-            if (! $product->isValid()) {
+            if (! $product->isValid() || ! CatalystSerialValidator::isUsable($product->serialCode)) {
                 $summary['records_invalid']++;
                 continue;
             }
@@ -101,72 +80,18 @@ class EcotradeProductImageCandidateResolver
             $productsByNamedFamily[$groupName.'|'.$serial][] = $product;
         }
 
-        /** @var array<string,EcotradeProductData> $productsByFamily */
-        $productsByFamily = [];
-        /** @var array<string,list<string>> $serialsByGroup */
-        $serialsByGroup = [];
-
-        foreach ($productsByNamedFamily as $namedFamily => $products) {
-            [$groupName, $serial] = explode('|', $namedFamily, 2);
-            $groupId = $groupIds[$groupName] ?? null;
-
-            if (! is_string($groupId) || $groupId === '') {
-                $summary['families_without_group']++;
-                continue;
-            }
-
-            $uniqueUrls = collect($products)
-                ->pluck('productUrl')
-                ->filter()
-                ->unique()
-                ->count();
-
-            if ($uniqueUrls > 1) {
-                $summary['families_ambiguous']++;
-            }
-
-            usort($products, static function (EcotradeProductData $left, EcotradeProductData $right): int {
-                $imageCount = $right->imageCount <=> $left->imageCount;
-
-                if ($imageCount !== 0) {
-                    return $imageCount;
-                }
-
-                return strcmp($left->productUrl, $right->productUrl);
-            });
-
-            $familyKey = $groupId.'|'.$serial;
-            $productsByFamily[$familyKey] = $products[0];
-            $serialsByGroup[$groupId][] = $serial;
-        }
-
+        [$productsByFamily, $serialsByGroup] = $this->resolveProductFamilies(
+            $productsByNamedFamily,
+            $groupIds,
+            $summary,
+        );
         $summary['families_available'] = count($productsByFamily);
-
-        /** @var array<string,Collection<int,Item>> $itemsByFamily */
-        $itemsByFamily = [];
-
-        foreach ($serialsByGroup as $groupId => $serials) {
-            foreach (array_chunk(array_values(array_unique($serials)), 1000) as $serialChunk) {
-                Item::query()
-                    ->with('media')
-                    ->where('car_group_id', $groupId)
-                    ->whereIn('normalized_serial', $serialChunk)
-                    ->get()
-                    ->each(function (Item $item) use (&$itemsByFamily): void {
-                        $familyKey = $item->car_group_id.'|'.Item::normalizeSerialValue(
-                            $item->normalized_serial ?: $item->serial_code,
-                        );
-
-                        $itemsByFamily[$familyKey] ??= collect();
-                        $itemsByFamily[$familyKey]->push($item);
-                    });
-            }
-        }
-
+        $itemsByFamily = $this->loadItemsByFamily($serialsByGroup);
         $candidates = [];
         $copySources = [];
 
         foreach ($productsByFamily as $familyKey => $product) {
+            /** @var Collection<int,Item> $items */
             $items = ($itemsByFamily[$familyKey] ?? collect())->unique('id')->values();
 
             if ($items->isEmpty()) {
@@ -175,18 +100,10 @@ class EcotradeProductImageCandidateResolver
             }
 
             $summary['matched_items'] += $items->count();
+            $eligibleItems = $this->eligibleItems($items, $allowedItemIds, $summary);
 
-            if ($allowedItemIds !== null) {
-                $eligibleItems = $items->filter(
-                    static fn (Item $item): bool => isset($allowedItemIds[(string) $item->id]),
-                );
-
-                if ($eligibleItems->isEmpty()) {
-                    $summary['skipped_not_in_media_report'] += $items->count();
-                    continue;
-                }
-            } else {
-                $eligibleItems = $items;
+            if ($eligibleItems->isEmpty()) {
+                continue;
             }
 
             $priceableItems = $eligibleItems->filter(fn (Item $item): bool => $this->isPriceable($item));
@@ -212,25 +129,16 @@ class EcotradeProductImageCandidateResolver
                 ->sortBy(static fn (Item $item): string => (string) $item->created_at.'|'.$item->id)
                 ->first();
 
-            if (! $target instanceof Item) {
-                continue;
-            }
-
-            $itemId = (string) $target->id;
-            $sourceHash = is_string($target->source_hash) ? $target->source_hash : null;
-
-            if (isset($completedItemIds[$itemId]) || ($sourceHash !== null && isset($completedSourceHashes[$sourceHash]))) {
-                $summary['skipped_checkpointed']++;
-                continue;
-            }
-
-            if (
-                $retryIncompleteOnly
-                && $failedCheckpointAvailable
-                && ! isset($failedItemIds[$itemId])
-                && ($sourceHash === null || ! isset($failedSourceHashes[$sourceHash]))
-            ) {
-                $summary['skipped_not_failed_checkpoint']++;
+            if (! $target instanceof Item || $this->isCheckpointed(
+                $target,
+                $completedItemIds,
+                $completedSourceHashes,
+                $failedItemIds,
+                $failedSourceHashes,
+                $failedCheckpointAvailable,
+                $retryIncompleteOnly,
+                $summary,
+            )) {
                 continue;
             }
 
@@ -255,6 +163,158 @@ class EcotradeProductImageCandidateResolver
             'candidates' => $candidates,
             'copy_sources' => array_values($copySources),
         ];
+    }
+
+    /** @return array<string,int> */
+    private function emptySummary(int $recordsTotal): array
+    {
+        return [
+            'records_total' => $recordsTotal,
+            'records_valid' => 0,
+            'records_invalid' => 0,
+            'records_with_main_image' => 0,
+            'records_without_main_image' => 0,
+            'records_rejected_placeholder_image' => 0,
+            'families_available' => 0,
+            'families_ambiguous' => 0,
+            'families_without_group' => 0,
+            'families_without_items' => 0,
+            'matched_items' => 0,
+            'priceable_items' => 0,
+            'skipped_not_in_media_report' => 0,
+            'skipped_checkpointed' => 0,
+            'skipped_not_failed_checkpoint' => 0,
+            'skipped_not_priceable' => 0,
+            'skipped_existing_image' => 0,
+            'copy_sources_available' => 0,
+            'candidates_available' => 0,
+            'candidates_selected' => 0,
+        ];
+    }
+
+    /**
+     * @param array<string,list<EcotradeProductData>> $productsByNamedFamily
+     * @param array<string,string> $groupIds
+     * @param array<string,int> $summary
+     * @return array{0:array<string,EcotradeProductData>,1:array<string,list<string>>}
+     */
+    private function resolveProductFamilies(array $productsByNamedFamily, array $groupIds, array &$summary): array
+    {
+        $productsByFamily = [];
+        $serialsByGroup = [];
+
+        foreach ($productsByNamedFamily as $namedFamily => $products) {
+            [$groupName, $serial] = explode('|', $namedFamily, 2);
+            $groupId = $groupIds[$groupName] ?? null;
+
+            if (! is_string($groupId) || $groupId === '') {
+                $summary['families_without_group']++;
+                continue;
+            }
+
+            $imageUrls = collect($products)
+                ->pluck('mainImageUrl')
+                ->filter()
+                ->unique()
+                ->values();
+
+            if ($imageUrls->count() > 1) {
+                $summary['families_ambiguous']++;
+                continue;
+            }
+
+            usort($products, static function (EcotradeProductData $left, EcotradeProductData $right): int {
+                $imageCount = $right->imageCount <=> $left->imageCount;
+
+                return $imageCount !== 0 ? $imageCount : strcmp($left->productUrl, $right->productUrl);
+            });
+
+            $familyKey = $groupId.'|'.$serial;
+            $productsByFamily[$familyKey] = $products[0];
+            $serialsByGroup[$groupId][] = $serial;
+        }
+
+        return [$productsByFamily, $serialsByGroup];
+    }
+
+    /** @param array<string,list<string>> $serialsByGroup @return array<string,Collection<int,Item>> */
+    private function loadItemsByFamily(array $serialsByGroup): array
+    {
+        $itemsByFamily = [];
+
+        foreach ($serialsByGroup as $groupId => $serials) {
+            foreach (array_chunk(array_values(array_unique($serials)), 1000) as $serialChunk) {
+                Item::query()
+                    ->with('media')
+                    ->where('car_group_id', $groupId)
+                    ->whereIn('normalized_serial', $serialChunk)
+                    ->get()
+                    ->each(function (Item $item) use (&$itemsByFamily): void {
+                        $familyKey = $item->car_group_id.'|'.Item::normalizeSerialValue(
+                            $item->normalized_serial ?: $item->serial_code,
+                        );
+                        $itemsByFamily[$familyKey] ??= collect();
+                        $itemsByFamily[$familyKey]->push($item);
+                    });
+            }
+        }
+
+        return $itemsByFamily;
+    }
+
+    /**
+     * @param Collection<int,Item> $items
+     * @param array<string,true>|null $allowedItemIds
+     * @param array<string,int> $summary
+     * @return Collection<int,Item>
+     */
+    private function eligibleItems(Collection $items, ?array $allowedItemIds, array &$summary): Collection
+    {
+        if ($allowedItemIds === null) {
+            return $items;
+        }
+
+        $eligible = $items->filter(
+            static fn (Item $item): bool => isset($allowedItemIds[(string) $item->id]),
+        );
+
+        if ($eligible->isEmpty()) {
+            $summary['skipped_not_in_media_report'] += $items->count();
+        }
+
+        return $eligible;
+    }
+
+    /** @param array<string,true> $completedItemIds @param array<string,true> $completedSourceHashes @param array<string,true> $failedItemIds @param array<string,true> $failedSourceHashes @param array<string,int> $summary */
+    private function isCheckpointed(
+        Item $item,
+        array $completedItemIds,
+        array $completedSourceHashes,
+        array $failedItemIds,
+        array $failedSourceHashes,
+        bool $failedCheckpointAvailable,
+        bool $retryIncompleteOnly,
+        array &$summary,
+    ): bool {
+        $itemId = (string) $item->id;
+        $sourceHash = is_string($item->source_hash) ? $item->source_hash : null;
+
+        if (isset($completedItemIds[$itemId]) || ($sourceHash !== null && isset($completedSourceHashes[$sourceHash]))) {
+            $summary['skipped_checkpointed']++;
+            return true;
+        }
+
+        if (
+            $retryIncompleteOnly
+            && $failedCheckpointAvailable
+            && ! isset($failedItemIds[$itemId])
+            && ($sourceHash === null || ! isset($failedSourceHashes[$sourceHash]))
+        ) {
+            $summary['skipped_not_failed_checkpoint']++;
+            return true;
+        }
+
+        return false;
     }
 
     /** @return array<string,true> */
@@ -282,7 +342,6 @@ class EcotradeProductImageCandidateResolver
             ->replace('_', '-')
             ->replace(' ', '-')
             ->toString();
-
         $configured = (array) config('imports.ecotrade_brand_groups', []);
         $configuredGroup = $this->groupResolver->canonicalSheetName(
             $this->groupResolver->normalizeSheetName((string) ($configured[$slug] ?? $product->brandName)),
