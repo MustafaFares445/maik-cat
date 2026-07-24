@@ -39,9 +39,23 @@ class AuditCatalystSourcesCommand extends Command
                 $groupResolver,
             );
 
-            $matchedFamilies = array_intersect_key($excel['families'], $json['families']);
-            $unmatchedFamilies = array_diff_key($excel['families'], $json['families']);
+            $matchedFamilies = [];
 
+            foreach (array_keys($json['families']) as $jsonFamily) {
+                $excelFamilies = array_keys($excel['match_keys'][$jsonFamily] ?? []);
+
+                if (count($excelFamilies) !== 1) {
+                    continue;
+                }
+
+                $primaryFamily = $excelFamilies[0];
+
+                if (isset($excel['families'][$primaryFamily])) {
+                    $matchedFamilies[$primaryFamily] = $excel['families'][$primaryFamily];
+                }
+            }
+
+            $unmatchedFamilies = array_diff_key($excel['families'], $matchedFamilies);
             $report = [
                 'excel_rows_scanned' => $excel['rows_scanned'],
                 'excel_rows_invalid' => $excel['rows_invalid'],
@@ -52,6 +66,7 @@ class AuditCatalystSourcesCommand extends Command
                     $excel['families'],
                     static fn (array $analyses): bool => count($analyses) > 1,
                 )),
+                'excel_ambiguous_extra_code_keys' => count($excel['ambiguous_match_keys']),
                 'json_records_scanned' => $json['records_scanned'],
                 'json_records_invalid' => $json['records_invalid'],
                 'json_records_with_valid_image' => $json['records_with_valid_image'],
@@ -71,7 +86,11 @@ class AuditCatalystSourcesCommand extends Command
                 $this->line(str_replace('_', ' ', $label).': '.$value);
             }
 
-            $this->writeCsvReports($unmatchedFamilies, $json['ambiguous']);
+            $this->writeCsvReports(
+                $unmatchedFamilies,
+                $json['ambiguous'],
+                $excel['ambiguous_match_keys'],
+            );
 
             return self::SUCCESS;
         } catch (Throwable $exception) {
@@ -81,13 +100,14 @@ class AuditCatalystSourcesCommand extends Command
         }
     }
 
-    /** @return array{families:array<string,array<int,string>>,rows_scanned:int,rows_invalid:int,exact_duplicates:int,distinct_analyses:int} */
+    /** @return array{families:array<string,array<int,string>>,match_keys:array<string,array<string,true>>,ambiguous_match_keys:array<string,array<string,true>>,rows_scanned:int,rows_invalid:int,exact_duplicates:int,distinct_analyses:int} */
     private function auditExcel(string $path, ImportSheetGroupResolver $groupResolver): array
     {
         $reader = IOFactory::createReaderForFile($path);
         $reader->setReadDataOnly(true);
         $spreadsheet = $reader->load($path);
         $families = [];
+        $matchKeys = [];
         $seen = [];
         $rowsScanned = 0;
         $rowsInvalid = 0;
@@ -110,6 +130,7 @@ class AuditCatalystSourcesCommand extends Command
                     $pt = $this->number($sheet->getCellByColumnAndRow(4, $row)->getValue());
                     $pd = $this->number($sheet->getCellByColumnAndRow(6, $row)->getValue());
                     $rh = $this->number($sheet->getCellByColumnAndRow(8, $row)->getValue());
+                    $extraCodes = $this->clean($sheet->getCellByColumnAndRow(11, $row)->getValue());
 
                     if ($serial === null && $weight === null && $pt === null && $pd === null && $rh === null) {
                         continue;
@@ -122,9 +143,9 @@ class AuditCatalystSourcesCommand extends Command
                         continue;
                     }
 
-                    $family = $group.'|'.Item::normalizeSerialValue($serial);
+                    $primaryFamily = $group.'|'.Item::normalizeSerialValue($serial);
                     $signature = implode('|', [
-                        $family,
+                        $primaryFamily,
                         $this->decimal($weight, 3),
                         $this->decimal($pt, 4),
                         $this->decimal($pd, 4),
@@ -137,8 +158,20 @@ class AuditCatalystSourcesCommand extends Command
                     }
 
                     $seen[$signature] = true;
-                    $families[$family][] = $signature;
+                    $families[$primaryFamily][] = $signature;
+                    $matchKeys[$primaryFamily][$primaryFamily] = true;
                     $distinctAnalyses++;
+
+                    foreach (preg_split('/[\/;,|]+/', (string) $extraCodes) ?: [] as $extraCode) {
+                        $extraCode = trim($extraCode);
+
+                        if (! CatalystSerialValidator::isUsable($extraCode)) {
+                            continue;
+                        }
+
+                        $matchKey = $group.'|'.Item::normalizeSerialValue($extraCode);
+                        $matchKeys[$matchKey][$primaryFamily] = true;
+                    }
                 }
             }
         } finally {
@@ -147,6 +180,11 @@ class AuditCatalystSourcesCommand extends Command
 
         return [
             'families' => $families,
+            'match_keys' => $matchKeys,
+            'ambiguous_match_keys' => array_filter(
+                $matchKeys,
+                static fn (array $primaryFamilies): bool => count($primaryFamilies) > 1,
+            ),
             'rows_scanned' => $rowsScanned,
             'rows_invalid' => $rowsInvalid,
             'exact_duplicates' => $exactDuplicates,
@@ -182,9 +220,7 @@ class AuditCatalystSourcesCommand extends Command
                 continue;
             }
 
-            $serial = Item::normalizeSerialValue($product->serialCode);
-
-            if ($serial === '' || ! CatalystSerialValidator::isUsable($product->serialCode)) {
+            if (! CatalystSerialValidator::isUsable($product->serialCode)) {
                 $recordsInvalid++;
                 continue;
             }
@@ -199,8 +235,9 @@ class AuditCatalystSourcesCommand extends Command
             $group = $groupResolver->canonicalSheetName(
                 $groupResolver->normalizeSheetName((string) $groupName),
             );
+            $serial = Item::normalizeSerialValue($product->serialCode);
 
-            if ($group === '') {
+            if ($group === '' || $serial === '') {
                 $recordsInvalid++;
                 continue;
             }
@@ -245,7 +282,7 @@ class AuditCatalystSourcesCommand extends Command
         return ! str_starts_with($url, 'http://') && ! str_starts_with($url, 'https://');
     }
 
-    private function writeCsvReports(array $unmatched, array $ambiguous): void
+    private function writeCsvReports(array $unmatched, array $jsonAmbiguous, array $excelAmbiguous): void
     {
         $directory = $this->option('csv-dir');
 
@@ -268,10 +305,19 @@ class AuditCatalystSourcesCommand extends Command
             $directory.'/ambiguous_ecotrade_families.csv',
             array_map(
                 static fn (string $family, array $urls): array => [$family, implode('|', array_keys($urls))],
-                array_keys($ambiguous),
-                array_values($ambiguous),
+                array_keys($jsonAmbiguous),
+                array_values($jsonAmbiguous),
             ),
             ['family', 'product_urls'],
+        );
+        $this->writeCsv(
+            $directory.'/ambiguous_excel_extra_codes.csv',
+            array_map(
+                static fn (string $key, array $families): array => [$key, implode('|', array_keys($families))],
+                array_keys($excelAmbiguous),
+                array_values($excelAmbiguous),
+            ),
+            ['match_key', 'primary_families'],
         );
     }
 
