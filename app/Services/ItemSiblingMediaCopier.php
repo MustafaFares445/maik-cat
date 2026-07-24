@@ -22,7 +22,7 @@ class ItemSiblingMediaCopier
 
         $source = Item::query()
             ->with('media')
-            ->whereKeyNot($destination->getKey())
+            ->where($destination->getKeyName(), '!=', $destination->getKey())
             ->where('car_group_id', $destination->car_group_id)
             ->where(function (Builder $query) use ($normalizedSerial): void {
                 $query->where('normalized_serial', $normalizedSerial)
@@ -56,7 +56,7 @@ class ItemSiblingMediaCopier
 
         Item::query()
             ->with('media')
-            ->whereKeyNot($source->getKey())
+            ->where($source->getKeyName(), '!=', $source->getKey())
             ->where('car_group_id', $source->car_group_id)
             ->where(function (Builder $query) use ($normalizedSerial): void {
                 $query->where('normalized_serial', $normalizedSerial)
@@ -65,8 +65,8 @@ class ItemSiblingMediaCopier
             ->whereDoesntHave('media', static function (Builder $query): void {
                 $query->where('collection_name', 'images');
             })
-            ->orderBy('created_at')
-            ->eachById(function (Item $sibling) use ($sourceMedia, &$copied): void {
+            ->get()
+            ->each(function (Item $sibling) use ($sourceMedia, &$copied): void {
                 $sourceMedia->copy($sibling, 'images', 'public');
                 $copied++;
             });
