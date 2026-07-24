@@ -13,7 +13,7 @@ use Throwable;
 class RunImportBatch extends Command
 {
     protected $signature = 'imports:run
-        {path? : Optional .xls/.xlsx file or directory; defaults to the project excel folder}
+        {path? : Optional .xls/.xlsx file or directory; defaults to the configured excel folder}
         {--dry-run : Parse and profile all workbooks without writing items}
         {--imported-by= : Optional importer identity/email}';
 
@@ -127,13 +127,15 @@ class RunImportBatch extends Command
                 storage_path('app/'.$path),
             ];
         } else {
+            $configured = config('imports.excel_directory');
             $candidates = [
+                is_string($configured) ? $configured : null,
                 base_path('excel'),
                 storage_path('app/excel'),
             ];
         }
 
-        foreach ($candidates as $candidate) {
+        foreach (array_filter($candidates, static fn (mixed $path): bool => is_string($path) && trim($path) !== '') as $candidate) {
             $resolved = realpath($candidate);
 
             if ($resolved !== false && (is_file($resolved) || is_dir($resolved))) {
@@ -144,7 +146,7 @@ class RunImportBatch extends Command
         throw new RuntimeException(
             is_string($argument) && trim($argument) !== ''
                 ? 'The supplied Excel file or directory does not exist.'
-                : 'The default Excel folder was not found at `excel` or `storage/app/excel`.',
+                : 'The configured Excel folder does not exist. Set EXCEL_IMPORT_DIRECTORY or create the project `excel` folder.',
         );
     }
 
@@ -166,8 +168,14 @@ class RunImportBatch extends Command
 
         /** @var SplFileInfo $file */
         foreach ($iterator as $file) {
-            if ($this->isExcelFile($file)) {
-                $files[] = $file->getRealPath();
+            if (! $this->isExcelFile($file)) {
+                continue;
+            }
+
+            $realPath = $file->getRealPath();
+
+            if (is_string($realPath)) {
+                $files[] = $realPath;
             }
         }
 
