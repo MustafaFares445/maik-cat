@@ -32,6 +32,8 @@ class ImportBatchService
     ) {}
 
     /**
+     * Import an uploaded workbook. Non-dry-run uploads remain queued for API compatibility.
+     *
      * @throws Throwable
      */
     public function import(UploadedFile $file, ?string $importedBy = null, bool $dryRun = false): array
@@ -39,13 +41,13 @@ class ImportBatchService
         $batch = $this->createBatch(
             $file->getClientOriginalName(),
             $importedBy,
-            $dryRun ? self::STATUS_PROCESSING : self::STATUS_QUEUED
+            $dryRun ? self::STATUS_PROCESSING : self::STATUS_QUEUED,
         );
 
         $storedPath = $this->storeFile(
             $batch->id,
             (string) $file->getRealPath(),
-            $file->getClientOriginalName()
+            $file->getClientOriginalName(),
         );
 
         if ($dryRun) {
@@ -60,33 +62,45 @@ class ImportBatchService
     }
 
     /**
+     * Queue a workbook from a local path. Retained for callers that explicitly need queue behavior.
+     *
      * @throws Throwable
      */
     public function importFromPath(string $sourcePath, ?string $importedBy = null, bool $dryRun = false): array
     {
-        if (! is_file($sourcePath)) {
-            throw new RuntimeException('Import source path does not exist.');
-        }
-
-        $fileName = basename($sourcePath);
-
-        $batch = $this->createBatch(
-            $fileName,
-            $importedBy,
-            $dryRun ? self::STATUS_PROCESSING : self::STATUS_QUEUED
-        );
-
-        $storedPath = $this->storeFile($batch->id, $sourcePath, $fileName);
-
         if ($dryRun) {
-            $this->processBatch($batch, $storedPath, true);
-
-            return $this->report($batch->fresh());
+            return $this->importFromPathSync($sourcePath, $importedBy, true);
         }
+
+        $this->ensureSourceFileExists($sourcePath);
+        $fileName = basename($sourcePath);
+        $batch = $this->createBatch($fileName, $importedBy, self::STATUS_QUEUED);
+        $storedPath = $this->storeFile($batch->id, $sourcePath, $fileName);
 
         ImportBatchJob::dispatch($batch->id, $storedPath);
 
         return $this->report($batch);
+    }
+
+    /**
+     * Import a local workbook immediately in the current PHP process.
+     *
+     * This is used by the imports:run terminal command so no queue worker is required and
+     * the command can return the real inserted/skipped/invalid totals before it exits.
+     *
+     * @throws Throwable
+     */
+    public function importFromPathSync(string $sourcePath, ?string $importedBy = null, bool $dryRun = false): array
+    {
+        $this->ensureSourceFileExists($sourcePath);
+
+        $fileName = basename($sourcePath);
+        $batch = $this->createBatch($fileName, $importedBy, self::STATUS_PROCESSING);
+        $storedPath = $this->storeFile($batch->id, $sourcePath, $fileName);
+
+        $this->processBatch($batch, $storedPath, $dryRun);
+
+        return $this->report($batch->fresh());
     }
 
     /**
@@ -182,9 +196,7 @@ class ImportBatchService
 
     private function storeFile(string $batchId, string $sourcePath, string $originalName): string
     {
-        if (! is_file($sourcePath)) {
-            throw new RuntimeException('Source file cannot be read.');
-        }
+        $this->ensureSourceFileExists($sourcePath);
 
         $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
         $extension = $extension !== '' ? $extension : strtolower(pathinfo($sourcePath, PATHINFO_EXTENSION));
@@ -196,8 +208,8 @@ class ImportBatchService
         $baseName = $baseName !== '' ? $baseName : 'import';
 
         $relativePath = "imports/{$batchId}/{$baseName}.{$extension}";
-
         $stream = fopen($sourcePath, 'rb');
+
         if ($stream === false) {
             throw new RuntimeException('Could not open source file stream.');
         }
@@ -209,6 +221,13 @@ class ImportBatchService
         }
 
         return $relativePath;
+    }
+
+    private function ensureSourceFileExists(string $sourcePath): void
+    {
+        if (! is_file($sourcePath)) {
+            throw new RuntimeException('Import source path does not exist.');
+        }
     }
 
     private function report(ImportBatch $batch): array
