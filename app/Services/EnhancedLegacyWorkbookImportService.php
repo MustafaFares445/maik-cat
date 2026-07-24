@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\ImportBatch;
 use App\Models\ImportRowIssue;
 use App\Models\Item;
+use App\Support\Items\CatalystSerialValidator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
@@ -15,20 +16,6 @@ use Throwable;
 
 class EnhancedLegacyWorkbookImportService
 {
-    private const ISSUE_MISSING_SERIAL = 'missing_serial_code';
-
-    private const ISSUE_INVALID_SERIAL = 'invalid_serial_code';
-
-    private const ISSUE_CONTROL_ROW = 'control_row';
-
-    private const ISSUE_MISSING_MODEL = 'missing_model';
-
-    private const ISSUE_INVALID_WEIGHT = 'missing_or_invalid_weight';
-
-    private const ISSUE_MISSING_ASSAY = 'missing_assay_values';
-
-    private const ISSUE_AMBIGUOUS_ASSAY = 'ambiguous_assay_value';
-
     private int $inserted = 0;
 
     private int $skipped = 0;
@@ -37,10 +24,10 @@ class EnhancedLegacyWorkbookImportService
 
     private int $flagged = 0;
 
-    /** @var array<string, true> */
+    /** @var array<string,true> */
     private array $seenSignatures = [];
 
-    /** @var array<string, Collection<int, Item>> */
+    /** @var array<string,Collection<int,Item>> */
     private array $serialItemCache = [];
 
     public function __construct(
@@ -48,9 +35,7 @@ class EnhancedLegacyWorkbookImportService
         private readonly ItemSiblingMediaCopier $mediaCopier,
     ) {}
 
-    /**
-     * @return array{rows_inserted:int,rows_skipped:int,rows_invalid:int,rows_flagged:int}
-     */
+    /** @return array{rows_inserted:int,rows_skipped:int,rows_invalid:int,rows_flagged:int} */
     public function import(ImportBatch $batch, string $filePath, bool $dryRun = false): array
     {
         if (! is_file($filePath)) {
@@ -58,69 +43,13 @@ class EnhancedLegacyWorkbookImportService
         }
 
         $this->resetState();
-
         $reader = IOFactory::createReaderForFile($filePath);
         $reader->setReadDataOnly(true);
         $spreadsheet = $reader->load($filePath);
 
         try {
             foreach ($spreadsheet->getWorksheetIterator() as $sheet) {
-                if ($this->shouldSkipSheet($sheet)) {
-                    continue;
-                }
-
-                $layout = $this->detectLayout($sheet);
-                $canonicalSheetName = $this->groupResolver->canonicalSheetName(
-                    $this->groupResolver->normalizeSheetName($sheet->getTitle()),
-                );
-                $group = $this->groupResolver->resolve($sheet->getTitle(), ! $dryRun);
-                $groupId = $group?->id;
-                $groupKey = $groupId ?? 'virtual:'.$canonicalSheetName;
-                $fallbackModel = $group?->name ?? $canonicalSheetName;
-                $highestRow = $sheet->getHighestDataRow();
-
-                for ($rowIndex = $layout['start_row']; $rowIndex <= $highestRow; $rowIndex++) {
-                    $mapped = $this->mapRow($sheet, $rowIndex, $layout, $fallbackModel);
-
-                    if (! $this->isPotentialDataRow($mapped)) {
-                        continue;
-                    }
-
-                    $issue = $this->determineInvalidIssue($sheet, $rowIndex, $layout, $mapped);
-
-                    if ($issue !== null) {
-                        if (! $dryRun) {
-                            $this->recordRowIssue($batch, $sheet, $rowIndex, $layout, $mapped, $issue);
-                        }
-
-                        $this->invalid++;
-                        continue;
-                    }
-
-                    $normalizedSerial = Item::normalizeSerialValue($mapped['serial_code']);
-                    $signature = $this->signature($groupKey, $normalizedSerial, $mapped);
-
-                    if (isset($this->seenSignatures[$signature])) {
-                        $this->skipped++;
-                        continue;
-                    }
-
-                    $this->seenSignatures[$signature] = true;
-                    $existingSameSerial = $this->existingSameSerial($groupId, $normalizedSerial);
-
-                    if ($this->hasExactAssayMatch($existingSameSerial, $mapped)) {
-                        $this->skipped++;
-                        continue;
-                    }
-
-                    if (! $dryRun) {
-                        $item = $this->insertItem((string) $groupId, $mapped);
-                        $this->appendCache((string) $groupId, $normalizedSerial, $item);
-                        $this->copySiblingImage($item);
-                    }
-
-                    $this->inserted++;
-                }
+                $this->importSheet($batch, $sheet, $dryRun);
             }
         } finally {
             $spreadsheet->disconnectWorksheets();
@@ -132,6 +61,65 @@ class EnhancedLegacyWorkbookImportService
             'rows_invalid' => $this->invalid,
             'rows_flagged' => $this->flagged,
         ];
+    }
+
+    private function importSheet(ImportBatch $batch, Worksheet $sheet, bool $dryRun): void
+    {
+        if ($this->shouldSkipSheet($sheet)) {
+            return;
+        }
+
+        $layout = $this->detectLayout($sheet);
+        $canonicalGroupName = $this->groupResolver->canonicalSheetName(
+            $this->groupResolver->normalizeSheetName($sheet->getTitle()),
+        );
+        $group = $this->groupResolver->resolve($sheet->getTitle(), ! $dryRun);
+        $groupId = $group?->id;
+        $groupKey = $groupId ?? 'virtual:'.$canonicalGroupName;
+        $fallbackModel = $group?->name ?? $canonicalGroupName;
+
+        for ($rowIndex = $layout['start_row']; $rowIndex <= $sheet->getHighestDataRow(); $rowIndex++) {
+            $data = $this->mapRow($sheet, $rowIndex, $layout, $fallbackModel);
+
+            if (! $this->isPotentialDataRow($data)) {
+                continue;
+            }
+
+            $issue = $this->invalidIssue($sheet, $rowIndex, $layout, $data);
+
+            if ($issue !== null) {
+                if (! $dryRun) {
+                    $this->recordIssue($batch, $sheet, $rowIndex, $layout, $data, $issue);
+                }
+
+                $this->invalid++;
+                continue;
+            }
+
+            $normalizedSerial = Item::normalizeSerialValue($data['serial_code']);
+            $signature = $this->signature($groupKey, $normalizedSerial, $data);
+
+            if (isset($this->seenSignatures[$signature])) {
+                $this->skipped++;
+                continue;
+            }
+
+            $this->seenSignatures[$signature] = true;
+            $existing = $this->existingSameSerial($groupId, $normalizedSerial);
+
+            if ($this->hasExactAssay($existing, $data)) {
+                $this->skipped++;
+                continue;
+            }
+
+            if (! $dryRun) {
+                $item = $this->createItem((string) $groupId, $data);
+                $this->appendCache((string) $groupId, $normalizedSerial, $item);
+                $this->copySiblingImage($item);
+            }
+
+            $this->inserted++;
+        }
     }
 
     private function resetState(): void
@@ -146,55 +134,45 @@ class EnhancedLegacyWorkbookImportService
 
     private function shouldSkipSheet(Worksheet $sheet): bool
     {
-        $title = Str::lower(trim($sheet->getTitle()));
-        $compactTitle = preg_replace('/\s+/u', '', $title) ?? $title;
+        $title = preg_replace('/\s+/u', '', Str::lower(trim($sheet->getTitle()))) ?? '';
 
-        if ($compactTitle === 'kitko' || preg_match('/^лист\d*$/u', $compactTitle) === 1) {
+        if ($title === 'kitko' || preg_match('/^лист\d*$/u', $title) === 1) {
             return true;
         }
 
-        return ! $this->hasAnyCellData($sheet);
-    }
-
-    private function hasAnyCellData(Worksheet $sheet): bool
-    {
         $maxRow = min(20, $sheet->getHighestDataRow());
-        $maxCol = min(20, Coordinate::columnIndexFromString($sheet->getHighestDataColumn()));
+        $maxColumn = min(20, Coordinate::columnIndexFromString($sheet->getHighestDataColumn()));
 
         for ($row = 1; $row <= $maxRow; $row++) {
-            for ($col = 1; $col <= $maxCol; $col++) {
-                $value = $sheet->getCellByColumnAndRow($col, $row)->getValue();
+            for ($column = 1; $column <= $maxColumn; $column++) {
+                $value = $sheet->getCellByColumnAndRow($column, $row)->getValue();
 
                 if ($value !== null && (! is_string($value) || trim($value) !== '')) {
-                    return true;
+                    return false;
                 }
             }
         }
 
-        return false;
+        return true;
     }
 
-    /**
-     * @return array{start_row:int,model:int,serial:int,weight:int,pt:int,pd:int,rh:int,extra_codes:int,details:int,shape_code:int}
-     */
+    /** @return array{start_row:int,model:int,serial:int,weight:int,pt:int,pd:int,rh:int,extra_codes:int,details:int,shape_code:int} */
     private function detectLayout(Worksheet $sheet): array
     {
-        $highestCol = Coordinate::columnIndexFromString($sheet->getHighestDataColumn());
-        $highestRow = $sheet->getHighestDataRow();
-        $scanRows = min(3, $highestRow);
-        $bestRow = 1;
+        $highestColumn = Coordinate::columnIndexFromString($sheet->getHighestDataColumn());
+        $bestHeaderRow = 0;
         $bestScore = 0;
 
-        for ($row = 1; $row <= $scanRows; $row++) {
+        for ($row = 1; $row <= min(3, $sheet->getHighestDataRow()); $row++) {
             $score = 0;
 
-            for ($col = 1; $col <= min(25, $highestCol); $col++) {
-                $role = $this->inferHeaderRole(
-                    $this->normalizeHeader($sheet->getCellByColumnAndRow($col, $row)->getValue()),
-                );
+            for ($column = 1; $column <= min(25, $highestColumn); $column++) {
+                $role = $this->headerRole($this->normalizeHeader(
+                    $sheet->getCellByColumnAndRow($column, $row)->getValue(),
+                ));
 
                 $score += match ($role) {
-                    'serial', 'model' => 5,
+                    'model', 'serial' => 5,
                     'weight' => 3,
                     'extra_codes', 'details', 'shape_code' => 2,
                     'pt', 'pd', 'rh' => 1,
@@ -204,15 +182,15 @@ class EnhancedLegacyWorkbookImportService
 
             if ($score > $bestScore) {
                 $bestScore = $score;
-                $bestRow = $row;
+                $bestHeaderRow = $row;
             }
         }
 
-        if ($bestScore === 0) {
+        if ($bestHeaderRow === 0) {
             return $this->fallbackLayout();
         }
 
-        $mapped = [
+        $columns = [
             'model' => null,
             'serial' => null,
             'weight' => null,
@@ -224,33 +202,33 @@ class EnhancedLegacyWorkbookImportService
             'shape_code' => null,
         ];
 
-        for ($col = 1; $col <= min(25, $highestCol); $col++) {
-            $role = $this->inferHeaderRole(
-                $this->normalizeHeader($sheet->getCellByColumnAndRow($col, $bestRow)->getValue()),
-            );
+        for ($column = 1; $column <= min(25, $highestColumn); $column++) {
+            $role = $this->headerRole($this->normalizeHeader(
+                $sheet->getCellByColumnAndRow($column, $bestHeaderRow)->getValue(),
+            ));
 
-            if ($role !== null && array_key_exists($role, $mapped) && $mapped[$role] === null) {
-                $mapped[$role] = $col;
+            if ($role !== null && array_key_exists($role, $columns) && $columns[$role] === null) {
+                $columns[$role] = $column;
             }
         }
 
+        $fallback = $this->fallbackLayout();
+
         return [
-            'start_row' => $bestRow + 1,
-            'model' => (int) ($mapped['model'] ?? 1),
-            'serial' => (int) ($mapped['serial'] ?? 2),
-            'weight' => (int) ($mapped['weight'] ?? 3),
-            'pt' => (int) ($mapped['pt'] ?? 4),
-            'pd' => (int) ($mapped['pd'] ?? 6),
-            'rh' => (int) ($mapped['rh'] ?? 8),
-            'extra_codes' => (int) ($mapped['extra_codes'] ?? 11),
-            'details' => (int) ($mapped['details'] ?? 13),
-            'shape_code' => (int) ($mapped['shape_code'] ?? 17),
+            'start_row' => $bestHeaderRow + 1,
+            'model' => (int) ($columns['model'] ?? $fallback['model']),
+            'serial' => (int) ($columns['serial'] ?? $fallback['serial']),
+            'weight' => (int) ($columns['weight'] ?? $fallback['weight']),
+            'pt' => (int) ($columns['pt'] ?? $fallback['pt']),
+            'pd' => (int) ($columns['pd'] ?? $fallback['pd']),
+            'rh' => (int) ($columns['rh'] ?? $fallback['rh']),
+            'extra_codes' => (int) ($columns['extra_codes'] ?? $fallback['extra_codes']),
+            'details' => (int) ($columns['details'] ?? $fallback['details']),
+            'shape_code' => (int) ($columns['shape_code'] ?? $fallback['shape_code']),
         ];
     }
 
-    /**
-     * @return array{start_row:int,model:int,serial:int,weight:int,pt:int,pd:int,rh:int,extra_codes:int,details:int,shape_code:int}
-     */
+    /** @return array{start_row:int,model:int,serial:int,weight:int,pt:int,pd:int,rh:int,extra_codes:int,details:int,shape_code:int} */
     private function fallbackLayout(): array
     {
         return [
@@ -267,194 +245,122 @@ class EnhancedLegacyWorkbookImportService
         ];
     }
 
-    private function inferHeaderRole(string $header): ?string
+    private function headerRole(string $header): ?string
     {
         if ($header === '') {
             return null;
         }
 
-        if ($this->matchesAny($header, ['serialcode', 'serial', 'converterrefno', 'refno', 'зав', 'катал'])) {
-            return 'serial';
+        $roles = [
+            'serial' => ['serialcode', 'serial', 'converterrefno', 'refno', 'зав', 'катал'],
+            'model' => ['model', 'manufacturername', 'manufacturer', 'brand', 'произв', 'марка'],
+            'weight' => ['piecekg', 'weightofcarrier', 'weight', 'тегло'],
+            'extra_codes' => ['extracodes', 'additionalcodes', 'alternativecodes'],
+            'details' => ['details', 'additionaldescription', 'additionalinfo', 'description', 'доп', 'инф'],
+            'shape_code' => ['shapecode', 'shape', 'formcode'],
+        ];
+
+        foreach ($roles as $role => $needles) {
+            foreach ($needles as $needle) {
+                if (str_contains($header, $needle)) {
+                    return $role;
+                }
+            }
         }
 
-        if ($this->matchesAny($header, ['model', 'manufacturername', 'manufacturer', 'brand', 'произв', 'марка'])) {
-            return 'model';
-        }
-
-        if ($this->matchesAny($header, ['piecekg', 'weightofcarrier', 'weight', 'тегло'])) {
-            return 'weight';
-        }
-
-        if ($this->matchesAny($header, ['extracodes', 'additionalcodes', 'alternativecodes'])) {
-            return 'extra_codes';
-        }
-
-        if ($this->matchesAny($header, ['details', 'additionaldescription', 'additionalinfo', 'description', 'доп', 'инф'])) {
-            return 'details';
-        }
-
-        if ($this->matchesAny($header, ['shapecode', 'shape', 'formcode'])) {
-            return 'shape_code';
-        }
-
-        if (str_contains($header, 'pt')) {
-            return 'pt';
-        }
-
-        if (str_contains($header, 'pd')) {
-            return 'pd';
-        }
-
-        if (str_contains($header, 'rh')) {
-            return 'rh';
+        foreach (['pt', 'pd', 'rh'] as $metal) {
+            if (str_contains($header, $metal)) {
+                return $metal;
+            }
         }
 
         return null;
     }
 
-    private function matchesAny(string $value, array $needles): bool
-    {
-        foreach ($needles as $needle) {
-            if (str_contains($value, $needle)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @param array<string,int> $layout
-     * @return array<string,mixed>
-     */
+    /** @param array<string,int> $layout @return array<string,mixed> */
     private function mapRow(Worksheet $sheet, int $rowIndex, array $layout, string $fallbackModel): array
     {
-        $model = $this->readStringColumn($sheet, $layout['model'], $rowIndex) ?? $fallbackModel;
-
         return [
-            'model' => $model,
-            'serial_code' => $this->readStringColumn($sheet, $layout['serial'], $rowIndex),
-            'weight_kg' => $this->readFloatColumn($sheet, $layout['weight'], $rowIndex),
-            'pt_ppm' => $this->readFloatColumn($sheet, $layout['pt'], $rowIndex),
-            'pd_ppm' => $this->readFloatColumn($sheet, $layout['pd'], $rowIndex),
-            'rh_ppm' => $this->readFloatColumn($sheet, $layout['rh'], $rowIndex),
-            'extra_codes' => $this->readStringColumn($sheet, $layout['extra_codes'], $rowIndex),
-            'details' => $this->readStringColumn($sheet, $layout['details'], $rowIndex),
-            'shape_code' => $this->readStringColumn($sheet, $layout['shape_code'], $rowIndex),
+            'model' => $this->stringCell($sheet, $layout['model'], $rowIndex) ?? $fallbackModel,
+            'serial_code' => $this->stringCell($sheet, $layout['serial'], $rowIndex),
+            'weight_kg' => $this->numberCell($sheet, $layout['weight'], $rowIndex),
+            'pt_ppm' => $this->numberCell($sheet, $layout['pt'], $rowIndex),
+            'pd_ppm' => $this->numberCell($sheet, $layout['pd'], $rowIndex),
+            'rh_ppm' => $this->numberCell($sheet, $layout['rh'], $rowIndex),
+            'extra_codes' => $this->stringCell($sheet, $layout['extra_codes'], $rowIndex),
+            'details' => $this->stringCell($sheet, $layout['details'], $rowIndex),
+            'shape_code' => $this->stringCell($sheet, $layout['shape_code'], $rowIndex),
         ];
     }
 
     /** @param array<string,mixed> $data */
     private function isPotentialDataRow(array $data): bool
     {
-        return filled($data['serial_code'])
-            || filled($data['weight_kg'])
-            || filled($data['pt_ppm'])
-            || filled($data['pd_ppm'])
-            || filled($data['rh_ppm'])
-            || filled($data['details'])
-            || filled($data['extra_codes'])
-            || filled($data['shape_code']);
+        foreach (['serial_code', 'weight_kg', 'pt_ppm', 'pd_ppm', 'rh_ppm', 'extra_codes', 'details', 'shape_code'] as $field) {
+            if (filled($data[$field])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
-    /**
-     * @param array<string,int> $layout
-     * @param array<string,mixed> $mapped
-     */
-    private function determineInvalidIssue(
+    /** @param array<string,int> $layout @param array<string,mixed> $data */
+    private function invalidIssue(
         Worksheet $sheet,
         int $rowIndex,
         array $layout,
-        array $mapped,
+        array $data,
     ): ?string {
-        if (blank($mapped['serial_code'])) {
-            return self::ISSUE_MISSING_SERIAL;
+        if (blank($data['serial_code'])) {
+            return 'missing_serial_code';
         }
 
-        if ($this->isControlRow($mapped)) {
-            return self::ISSUE_CONTROL_ROW;
+        if (! CatalystSerialValidator::isUsable($data['serial_code'])) {
+            return str_contains(Str::upper((string) $data['serial_code']), 'KONTROLINIS')
+                ? 'control_row'
+                : 'invalid_serial_code';
         }
 
-        if ($this->isInvalidSerial((string) $mapped['serial_code'])) {
-            return self::ISSUE_INVALID_SERIAL;
+        if (blank($data['model'])) {
+            return 'missing_model';
         }
 
-        if (blank($mapped['model'])) {
-            return self::ISSUE_MISSING_MODEL;
+        if ($data['weight_kg'] === null || (float) $data['weight_kg'] <= 0) {
+            return 'missing_or_invalid_weight';
         }
 
-        if ($mapped['weight_kg'] === null || (float) $mapped['weight_kg'] <= 0.0) {
-            return self::ISSUE_INVALID_WEIGHT;
+        if ($this->hasAmbiguousAssay($sheet, $rowIndex, $layout, $data)) {
+            return 'ambiguous_assay_value';
         }
 
-        if ($this->hasAmbiguousAssayValue($sheet, $rowIndex, $layout, $mapped)) {
-            return self::ISSUE_AMBIGUOUS_ASSAY;
-        }
-
-        if (! $this->hasPositiveAssay($mapped)) {
-            return self::ISSUE_MISSING_ASSAY;
+        if (! $this->hasPositiveMetal($data)) {
+            return 'missing_assay_values';
         }
 
         return null;
     }
 
-    /** @param array<string,mixed> $mapped */
-    private function isControlRow(array $mapped): bool
+    /** @param array<string,int> $layout @param array<string,mixed> $data */
+    private function hasAmbiguousAssay(Worksheet $sheet, int $rowIndex, array $layout, array $data): bool
     {
-        $serial = Str::upper(trim((string) ($mapped['serial_code'] ?? '')));
-        $model = Str::upper(trim((string) ($mapped['model'] ?? '')));
+        foreach (['pt' => 'pt_ppm', 'pd' => 'pd_ppm', 'rh' => 'rh_ppm'] as $columnKey => $field) {
+            $raw = trim((string) $sheet->getCellByColumnAndRow($layout[$columnKey], $rowIndex)->getValue());
 
-        return str_contains($serial, 'KONTROLINIS') || str_contains($model, 'KONTROLINIS');
-    }
-
-    private function isInvalidSerial(string $serial): bool
-    {
-        $serial = trim($serial);
-
-        return $serial === ''
-            || preg_match('/^[\?\.\-\_\/\\]+$/u', $serial) === 1
-            || in_array(Str::upper($serial), ['UNKNOWN', 'N/A', 'NA', 'NONE', 'NULL'], true);
-    }
-
-    /** @param array<string,mixed> $mapped */
-    private function hasPositiveAssay(array $mapped): bool
-    {
-        return (float) ($mapped['pt_ppm'] ?? 0) > 0.0
-            || (float) ($mapped['pd_ppm'] ?? 0) > 0.0
-            || (float) ($mapped['rh_ppm'] ?? 0) > 0.0;
-    }
-
-    /**
-     * @param array<string,int> $layout
-     * @param array<string,mixed> $mapped
-     */
-    private function hasAmbiguousAssayValue(Worksheet $sheet, int $rowIndex, array $layout, array $mapped): bool
-    {
-        foreach (['pt' => 'pt_ppm', 'pd' => 'pd_ppm', 'rh' => 'rh_ppm'] as $layoutKey => $mappedKey) {
-            $raw = $sheet->getCellByColumnAndRow($layout[$layoutKey], $rowIndex)->getValue();
-            $rawString = trim((string) $raw);
-
-            if ($rawString === '' || str_starts_with($rawString, '=') || str_starts_with($rawString, '#')) {
+            if ($raw === '' || str_starts_with($raw, '=') || str_starts_with($raw, '#') || $data[$field] !== null) {
                 continue;
             }
 
-            if ($mapped[$mappedKey] !== null) {
-                continue;
-            }
+            $normalized = str_replace([' ', "'", ','], ['', '', '.'], $raw);
 
             if (
-                str_contains($rawString, '/')
-                || str_contains($rawString, ';')
-                || str_contains($rawString, '|')
-                || preg_match('/[\p{L}]/u', $rawString) === 1
-                || preg_match('/\d+\s*-\s*\d+/u', $rawString) === 1
+                ! is_numeric($normalized)
+                || str_contains($raw, '/')
+                || str_contains($raw, ';')
+                || str_contains($raw, '|')
+                || preg_match('/\d+\s*-\s*\d+/u', $raw) === 1
+                || preg_match('/[\p{L}]/u', $raw) === 1
             ) {
-                return true;
-            }
-
-            $candidate = str_replace([' ', "'", ','], ['', '', '.'], $rawString);
-
-            if (! is_numeric($candidate)) {
                 return true;
             }
         }
@@ -463,14 +369,21 @@ class EnhancedLegacyWorkbookImportService
     }
 
     /** @param array<string,mixed> $data */
-    private function insertItem(string $groupId, array $data): Item
+    private function hasPositiveMetal(array $data): bool
+    {
+        return (float) ($data['pt_ppm'] ?? 0) > 0
+            || (float) ($data['pd_ppm'] ?? 0) > 0
+            || (float) ($data['rh_ppm'] ?? 0) > 0;
+    }
+
+    /** @param array<string,mixed> $data */
+    private function createItem(string $groupId, array $data): Item
     {
         $item = Item::query()->create([
             'id' => (string) Str::uuid(),
             'car_group_id' => $groupId,
             'model' => $data['model'],
             'serial_code' => $data['serial_code'],
-            'normalized_serial' => Item::normalizeSerialValue($data['serial_code']),
             'weight_kg' => $data['weight_kg'],
             'pt_ppm' => $data['pt_ppm'],
             'pd_ppm' => $data['pd_ppm'],
@@ -480,26 +393,19 @@ class EnhancedLegacyWorkbookImportService
             'source' => 'excel_import',
         ]);
 
-        $this->insertExtraCodes($item, $data['extra_codes'] ?? null);
-
-        return $item;
-    }
-
-    private function insertExtraCodes(Item $item, ?string $raw): void
-    {
-        if (blank($raw)) {
-            return;
+        if (filled($data['extra_codes'])) {
+            collect(preg_split('/[\/;,|]+/', (string) $data['extra_codes']) ?: [])
+                ->map(static fn (string $code): string => trim($code))
+                ->filter()
+                ->unique(static fn (string $code): string => Str::upper($code))
+                ->each(fn (string $code) => $item->extraCodes()->create([
+                    'id' => (string) Str::uuid(),
+                    'code' => $code,
+                    'source' => 'excel_import',
+                ]));
         }
 
-        collect(preg_split('/[\/;,|]+/', $raw) ?: [])
-            ->map(static fn (string $code): string => trim($code))
-            ->filter()
-            ->unique(static fn (string $code): string => Str::upper($code))
-            ->each(fn (string $code) => $item->extraCodes()->create([
-                'id' => (string) Str::uuid(),
-                'code' => $code,
-                'source' => 'excel_import',
-            ]));
+        return $item;
     }
 
     private function copySiblingImage(Item $item): void
@@ -521,55 +427,39 @@ class EnhancedLegacyWorkbookImportService
 
         $cacheKey = $groupId.'|'.$normalizedSerial;
 
-        if (! array_key_exists($cacheKey, $this->serialItemCache)) {
-            $this->serialItemCache[$cacheKey] = Item::query()
-                ->where('car_group_id', $groupId)
-                ->where(function ($query) use ($normalizedSerial): void {
-                    $query->where('normalized_serial', $normalizedSerial)
-                        ->orWhereRaw($this->normalizedSerialSql().' = ?', [$normalizedSerial]);
-                })
-                ->orderByDesc('created_at')
-                ->get();
-        }
-
-        return $this->serialItemCache[$cacheKey];
+        return $this->serialItemCache[$cacheKey] ??= Item::query()
+            ->where('car_group_id', $groupId)
+            ->where(function ($query) use ($normalizedSerial): void {
+                $query->where('normalized_serial', $normalizedSerial)
+                    ->orWhereRaw($this->normalizedSerialSql().' = ?', [$normalizedSerial]);
+            })
+            ->orderByDesc('created_at')
+            ->get();
     }
 
     private function appendCache(string $groupId, string $normalizedSerial, Item $item): void
     {
         $cacheKey = $groupId.'|'.$normalizedSerial;
-
-        if (! isset($this->serialItemCache[$cacheKey])) {
-            $this->serialItemCache[$cacheKey] = collect([$item]);
-            return;
-        }
-
+        $this->serialItemCache[$cacheKey] ??= collect();
         $this->serialItemCache[$cacheKey]->prepend($item);
     }
 
-    /**
-     * @param Collection<int,Item> $items
-     * @param array<string,mixed> $data
-     */
-    private function hasExactAssayMatch(Collection $items, array $data): bool
+    /** @param Collection<int,Item> $items @param array<string,mixed> $data */
+    private function hasExactAssay(Collection $items, array $data): bool
     {
         $target = $this->assayTuple($data);
 
-        foreach ($items as $item) {
-            if ($this->assayTuple([
+        return $items->contains(function (Item $item) use ($target): bool {
+            return $this->assayTuple([
                 'weight_kg' => $item->weight_kg,
                 'pt_ppm' => $item->pt_ppm,
                 'pd_ppm' => $item->pd_ppm,
                 'rh_ppm' => $item->rh_ppm,
-            ]) === $target) {
-                return true;
-            }
-        }
-
-        return false;
+            ]) === $target;
+        });
     }
 
-    /** @param array<string,mixed> $data */
+    /** @param array<string,mixed> $data @return array<int,string> */
     private function assayTuple(array $data): array
     {
         return [
@@ -586,78 +476,57 @@ class EnhancedLegacyWorkbookImportService
         return implode('|', [$groupKey, $normalizedSerial, ...$this->assayTuple($data)]);
     }
 
+    private function stringCell(Worksheet $sheet, int $column, int $row): ?string
+    {
+        if ($column <= 0) {
+            return null;
+        }
+
+        $value = $sheet->getCellByColumnAndRow($column, $row)->getValue();
+
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        if ($value === '' || str_starts_with($value, '=') || str_starts_with($value, '#')) {
+            return null;
+        }
+
+        return preg_replace('/\s+/u', ' ', $value) ?: $value;
+    }
+
+    private function numberCell(Worksheet $sheet, int $column, int $row): ?float
+    {
+        $value = $this->stringCell($sheet, $column, $row);
+
+        if ($value === null) {
+            return null;
+        }
+
+        $value = str_replace([' ', "'", ','], ['', '', '.'], $value);
+
+        return is_numeric($value) ? (float) $value : null;
+    }
+
+    private function normalizeHeader(mixed $value): string
+    {
+        return preg_replace('/[^\pL\pN]+/u', '', Str::lower(trim((string) $value))) ?? '';
+    }
+
     private function decimal(mixed $value, int $precision): string
     {
         return $value === null ? 'null' : number_format((float) $value, $precision, '.', '');
     }
 
-    private function readStringColumn(Worksheet $sheet, int $column, int $rowIndex): ?string
-    {
-        if ($column <= 0) {
-            return null;
-        }
-
-        return $this->cleanString($sheet->getCellByColumnAndRow($column, $rowIndex)->getValue());
-    }
-
-    private function readFloatColumn(Worksheet $sheet, int $column, int $rowIndex): ?float
-    {
-        if ($column <= 0) {
-            return null;
-        }
-
-        return $this->toFloat($sheet->getCellByColumnAndRow($column, $rowIndex)->getValue());
-    }
-
-    private function normalizeHeader(mixed $value): string
-    {
-        $header = Str::lower(trim((string) $value));
-
-        return preg_replace('/[^\pL\pN]+/u', '', $header) ?? $header;
-    }
-
-    private function cleanString(mixed $value): ?string
-    {
-        if ($value === null) {
-            return null;
-        }
-
-        $string = trim((string) $value);
-
-        if ($string === '' || str_starts_with($string, '=') || str_starts_with($string, '#')) {
-            return null;
-        }
-
-        return preg_replace('/\s+/u', ' ', $string) ?: $string;
-    }
-
-    private function toFloat(mixed $value): ?float
-    {
-        if ($value === null || $value === '') {
-            return null;
-        }
-
-        $raw = trim((string) $value);
-
-        if ($raw === '' || str_starts_with($raw, '=') || str_starts_with($raw, '#')) {
-            return null;
-        }
-
-        $cleaned = str_replace([' ', "'", ','], ['', '', '.'], $raw);
-
-        return is_numeric($cleaned) ? (float) $cleaned : null;
-    }
-
-    /**
-     * @param array<string,int> $layout
-     * @param array<string,mixed> $mapped
-     */
-    private function recordRowIssue(
+    /** @param array<string,int> $layout @param array<string,mixed> $data */
+    private function recordIssue(
         ImportBatch $batch,
         Worksheet $sheet,
         int $rowIndex,
         array $layout,
-        array $mapped,
+        array $data,
         string $issueCode,
     ): void {
         ImportRowIssue::query()->create([
@@ -676,13 +545,13 @@ class EnhancedLegacyWorkbookImportService
                 'details' => $this->rawCell($sheet, $layout['details'], $rowIndex),
                 'shape_code' => $this->rawCell($sheet, $layout['shape_code'], $rowIndex),
             ],
-            'normalized_payload' => $mapped,
+            'normalized_payload' => $data,
         ]);
     }
 
-    private function rawCell(Worksheet $sheet, int $column, int $rowIndex): mixed
+    private function rawCell(Worksheet $sheet, int $column, int $row): mixed
     {
-        return $column > 0 ? $sheet->getCellByColumnAndRow($column, $rowIndex)->getValue() : null;
+        return $column > 0 ? $sheet->getCellByColumnAndRow($column, $row)->getValue() : null;
     }
 
     private function normalizedSerialSql(): string
