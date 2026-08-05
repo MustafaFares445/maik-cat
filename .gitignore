@@ -19,6 +19,7 @@
 /storage/*.key
 /storage/firebase.json
 /storage/pail
+/storage/media-library/
 /vendor
 Homestead.json
 Homestead.yaml
