@@ -4,8 +4,6 @@ namespace App\Services\Ecotrade;
 
 use App\Data\EcotradeProductImageCandidate;
 use App\Services\ItemSiblingMediaCopier;
-use Illuminate\Http\Client\RequestException;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
@@ -16,15 +14,21 @@ class EcotradeProductImageImporter
         private readonly EcotradeGeminiImageEditor $gemini,
         private readonly EcotradeMaikcatWatermarkApplier $watermarkApplier,
         private readonly ItemSiblingMediaCopier $mediaCopier,
+        private readonly EcotradeSourceImageDownloader $downloader,
     ) {}
 
-    public function import(EcotradeProductImageCandidate $candidate, string $watermarkMode, string $watermarkText, bool $replaceExisting = false): Media
-    {
+    public function import(
+        EcotradeProductImageCandidate $candidate,
+        string $watermarkMode,
+        string $watermarkText,
+        bool $replaceExisting = false,
+        string $serviceTier = 'standard',
+    ): Media {
         $watermarkMode = $this->normalizeWatermarkMode($watermarkMode);
-        $source = $this->downloadSourceImage($candidate->sourceImageUrl);
+        $source = $this->downloader->download($candidate->sourceImageUrl);
         $prompt = $this->buildPrompt($watermarkMode, $watermarkText);
-        $edited = $this->gemini->edit($source['bytes'], $source['mime_type'], $prompt);
-        $extension = $this->extensionForMimeType($edited['mime_type']);
+        $edited = $this->gemini->edit($source['bytes'], $source['mime_type'], $prompt, $serviceTier);
+        $extension = $this->downloader->extensionForMimeType($edited['mime_type']);
         $path = $this->writeTempFile($edited['bytes'], $extension);
 
         try {
@@ -63,35 +67,6 @@ class EcotradeProductImageImporter
                 @unlink($path);
             }
         }
-    }
-
-    /** @return array{bytes:string,mime_type:string} */
-    private function downloadSourceImage(string $url): array
-    {
-        $timeout = max(1, (int) config('services.gemini.image_download_timeout', 30));
-
-        try {
-            $response = Http::timeout($timeout)->get($url)->throw();
-        } catch (RequestException $exception) {
-            throw new RuntimeException('Unable to download source image: '.$exception->getMessage(), previous: $exception);
-        }
-
-        $bytes = $response->body();
-
-        if ($bytes === '') {
-            throw new RuntimeException('Downloaded source image is empty.');
-        }
-
-        $mimeType = $this->detectMimeType($bytes, (string) $response->header('Content-Type'));
-
-        if (! str_starts_with($mimeType, 'image/')) {
-            throw new RuntimeException('Downloaded source is not a supported image.');
-        }
-
-        return [
-            'bytes' => $bytes,
-            'mime_type' => $mimeType,
-        ];
     }
 
     private function buildPrompt(string $watermarkMode, string $watermarkText): string
@@ -142,35 +117,6 @@ PROMPT);
         $mode = strtolower(trim($mode));
 
         return in_array($mode, ['spatie', 'ai', 'none'], true) ? $mode : 'none';
-    }
-
-    private function detectMimeType(string $bytes, string $header): string
-    {
-        $header = strtolower(trim(strtok($header, ';') ?: ''));
-
-        if (str_starts_with($header, 'image/')) {
-            return $header;
-        }
-
-        $finfo = finfo_open(FILEINFO_MIME_TYPE);
-        $detected = $finfo !== false ? finfo_buffer($finfo, $bytes) : null;
-
-        if ($finfo !== false) {
-            finfo_close($finfo);
-        }
-
-        return is_string($detected) && str_starts_with($detected, 'image/') ? $detected : 'application/octet-stream';
-    }
-
-    private function extensionForMimeType(string $mimeType): string
-    {
-        return match (strtolower($mimeType)) {
-            'image/jpeg', 'image/jpg' => 'jpg',
-            'image/webp' => 'webp',
-            'image/avif' => 'avif',
-            'image/png' => 'png',
-            default => throw new RuntimeException('Unsupported image MIME type: '.$mimeType),
-        };
     }
 
     private function writeTempFile(string $bytes, string $extension): string

@@ -21,6 +21,7 @@ class ImportEcotradeProductImagesCommand extends Command
         {--chunk=50 : Number of candidate rows to process per progress chunk}
         {--sleep-ms=0 : Milliseconds to sleep after each processed image}
         {--max-cost-usd= : Required paid-run cost ceiling; test mode defaults to one-image cost}
+        {--service-tier=standard : Gemini service tier: standard or flex}
         {--replace-existing : Replace item images that already exist}
         {--fresh : Ignore any saved progress checkpoint for this source file and options}
         {--retry-incomplete-only : Retry only incomplete items for this source file and options}
@@ -53,10 +54,11 @@ class ImportEcotradeProductImagesCommand extends Command
                 (bool) $this->option('watermark-spatie'),
             );
             $watermarkText = $this->watermarkText((string) $this->option('watermark-text'));
+            $serviceTier = $this->serviceTier();
             $limit = $this->limit($testMode);
             $chunkSize = max(1, (int) $this->option('chunk'));
             $sleepMs = max(0, (int) $this->option('sleep-ms'));
-            $progressKey = $this->progressKey($path, $replaceExisting, $watermark, $watermarkText);
+            $progressKey = $this->progressKey($path, $replaceExisting, $watermark, $watermarkText, $serviceTier);
             $mediaReportPath = $this->mediaReportPath();
             $mediaReportItemIds = $mediaReportPath === null ? null : $this->readItemIdsFromMediaReport($mediaReportPath);
 
@@ -90,7 +92,7 @@ class ImportEcotradeProductImagesCommand extends Command
             $resolved = $resolver->resolve($reader->read($path), $resolverOptions);
             $summary = $resolved['summary'];
             $candidates = $resolved['candidates'];
-            $estimatedCost = $this->estimatedCost(count($candidates));
+            $estimatedCost = $this->estimatedCost(count($candidates), $serviceTier);
 
             $this->printPlan(
                 $path,
@@ -100,6 +102,7 @@ class ImportEcotradeProductImagesCommand extends Command
                 $fresh,
                 $retryIncompleteOnly,
                 $watermark,
+                $serviceTier,
                 $mediaReportPath,
                 is_array($mediaReportItemIds) ? count($mediaReportItemIds) : null,
                 $summary,
@@ -136,7 +139,7 @@ class ImportEcotradeProductImagesCommand extends Command
                     $processed++;
 
                     try {
-                        $media = $importer->import($candidate, $watermark, $watermarkText, $replaceExisting);
+                        $media = $importer->import($candidate, $watermark, $watermarkText, $replaceExisting, $serviceTier);
                         $imported++;
 
                         if (! $testMode) {
@@ -211,6 +214,7 @@ class ImportEcotradeProductImagesCommand extends Command
         bool $fresh,
         bool $retryIncompleteOnly,
         string $watermark,
+        string $serviceTier,
         ?string $mediaReportPath,
         ?int $mediaReportItemCount,
         array $summary,
@@ -231,6 +235,7 @@ class ImportEcotradeProductImagesCommand extends Command
         $this->line('Media report: '.($mediaReportPath ?? 'none'));
         $this->line('Media report item ids: '.($mediaReportItemCount ?? 0));
         $this->line('Watermark: '.$watermark);
+        $this->line('Gemini service tier: '.$serviceTier);
         $this->newLine();
 
         foreach ($summary as $key => $value) {
@@ -264,9 +269,24 @@ class ImportEcotradeProductImagesCommand extends Command
         return true;
     }
 
-    private function estimatedCost(int $count): float
+    private function estimatedCost(int $count, string $serviceTier): float
     {
-        return round($count * (float) config('services.gemini.image_cost_usd', 0.039387), 6);
+        $unitCost = $serviceTier === 'flex'
+            ? (float) config('services.gemini.flex_image_cost_usd', 0.0195)
+            : (float) config('services.gemini.image_cost_usd', 0.039);
+
+        return round($count * $unitCost, 6);
+    }
+
+    private function serviceTier(): string
+    {
+        $serviceTier = strtolower(trim((string) $this->option('service-tier')));
+
+        if (! in_array($serviceTier, ['standard', 'flex'], true)) {
+            throw new RuntimeException('Invalid --service-tier value. Allowed values: standard, flex.');
+        }
+
+        return $serviceTier;
     }
 
     private function limit(bool $testMode): ?int
@@ -413,7 +433,7 @@ class ImportEcotradeProductImagesCommand extends Command
         throw new RuntimeException('Media report file not found: '.$path);
     }
 
-    private function progressKey(string $path, bool $replaceExisting, string $watermark, string $watermarkText): string
+    private function progressKey(string $path, bool $replaceExisting, string $watermark, string $watermarkText, string $serviceTier): string
     {
         $fingerprint = implode('|', [
             'ecotrade-product-images',
@@ -422,6 +442,7 @@ class ImportEcotradeProductImagesCommand extends Command
             $replaceExisting ? 'replace-existing' : 'keep-existing',
             strtolower(trim($watermark)),
             trim($watermarkText),
+            $serviceTier,
         ]);
 
         return sha1($fingerprint);

@@ -56,7 +56,9 @@ return [
         'image_retry_times' => (int) env('GEMINI_IMAGE_RETRY_TIMES', 2),
         'image_retry_sleep_ms' => (int) env('GEMINI_IMAGE_RETRY_SLEEP_MS', 1000),
         'image_download_timeout' => (int) env('GEMINI_IMAGE_DOWNLOAD_TIMEOUT_SECONDS', 30),
-        'image_cost_usd' => (float) env('GEMINI_IMAGE_COST_USD', 0.039387),
+        'image_cost_usd' => (float) env('GEMINI_IMAGE_COST_USD', 0.039),
+        'flex_image_cost_usd' => (float) env('GEMINI_FLEX_IMAGE_COST_USD', 0.0195),
+        'flex_image_timeout' => (int) env('GEMINI_FLEX_IMAGE_TIMEOUT_SECONDS', 600),
     ],
 
     'firebase' => [

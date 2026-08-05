@@ -11,14 +11,19 @@ class ItemSiblingMediaCopier
 {
     public function copyFirstImageTo(Item $destination): ?Media
     {
-        if (DB::transactionLevel() > 0) {
+        return $this->copyFirstImageToInternal($destination, false);
+    }
+
+    private function copyFirstImageToInternal(Item $destination, bool $afterCommit): ?Media
+    {
+        if (DB::transactionLevel() > 0 && ! $afterCommit) {
             $itemId = (string) $destination->getKey();
 
             DB::afterCommit(function () use ($itemId): void {
                 $committedItem = Item::query()->find($itemId);
 
                 if ($committedItem instanceof Item) {
-                    $this->copyFirstImageTo($committedItem);
+                    $this->copyFirstImageToInternal($committedItem, true);
                 }
             });
 
@@ -35,19 +40,7 @@ class ItemSiblingMediaCopier
             return null;
         }
 
-        $source = Item::query()
-            ->with('media')
-            ->where($destination->getKeyName(), '!=', $destination->getKey())
-            ->where('car_group_id', $destination->car_group_id)
-            ->where(function (Builder $query) use ($normalizedSerial): void {
-                $query->where('normalized_serial', $normalizedSerial)
-                    ->orWhereRaw($this->normalizedSerialSql().' = ?', [$normalizedSerial]);
-            })
-            ->whereHas('media', static function (Builder $query): void {
-                $query->where('collection_name', 'images');
-            })
-            ->oldest('created_at')
-            ->first();
+        $source = $this->findSiblingWithImage($destination, $normalizedSerial);
 
         $sourceMedia = $source?->getFirstMedia('images');
 
@@ -58,16 +51,46 @@ class ItemSiblingMediaCopier
         return $sourceMedia->copy($destination, 'images', 'public');
     }
 
+    private function findSiblingWithImage(Item $destination, string $normalizedSerial): ?Item
+    {
+        $baseQuery = Item::query()
+            ->with('media')
+            ->where($destination->getKeyName(), '!=', $destination->getKey())
+            ->where('car_group_id', $destination->car_group_id)
+            ->whereHas('media', static function (Builder $query): void {
+                $query->where('collection_name', 'images');
+            });
+
+        $indexedSource = (clone $baseQuery)
+            ->where('normalized_serial', $normalizedSerial)
+            ->oldest('created_at')
+            ->first();
+
+        if ($indexedSource instanceof Item) {
+            return $indexedSource;
+        }
+
+        return $baseQuery
+            ->whereRaw($this->normalizedSerialSql().' = ?', [$normalizedSerial])
+            ->oldest('created_at')
+            ->first();
+    }
+
     public function copyFirstImageToSiblings(Item $source): int
     {
-        if (DB::transactionLevel() > 0) {
+        return $this->copyFirstImageToSiblingsInternal($source, false);
+    }
+
+    private function copyFirstImageToSiblingsInternal(Item $source, bool $afterCommit): int
+    {
+        if (DB::transactionLevel() > 0 && ! $afterCommit) {
             $itemId = (string) $source->getKey();
 
             DB::afterCommit(function () use ($itemId): void {
                 $committedItem = Item::query()->find($itemId);
 
                 if ($committedItem instanceof Item) {
-                    $this->copyFirstImageToSiblings($committedItem);
+                    $this->copyFirstImageToSiblingsInternal($committedItem, true);
                 }
             });
 

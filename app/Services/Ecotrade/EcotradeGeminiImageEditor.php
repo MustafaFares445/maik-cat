@@ -10,9 +10,9 @@ class EcotradeGeminiImageEditor
     /**
      * @return array{bytes: string, mime_type: string}
      */
-    public function edit(string $imageBytes, string $mimeType, string $prompt): array
+    public function edit(string $imageBytes, string $mimeType, string $prompt, string $serviceTier = 'standard'): array
     {
-        $payload = $this->generateContent($imageBytes, $mimeType, $prompt, ['TEXT', 'IMAGE']);
+        $payload = $this->generateContent($imageBytes, $mimeType, $prompt, ['IMAGE'], $serviceTier);
         $image = $this->extractImage($payload);
 
         if ($image === null) {
@@ -37,8 +37,13 @@ class EcotradeGeminiImageEditor
     /**
      * @return array<string, mixed>
      */
-    private function generateContent(string $imageBytes, string $mimeType, string $prompt, array $responseModalities): array
-    {
+    private function generateContent(
+        string $imageBytes,
+        string $mimeType,
+        string $prompt,
+        array $responseModalities,
+        string $serviceTier = 'standard',
+    ): array {
         $apiKey = trim((string) config('services.gemini.api_key'));
 
         if ($apiKey === '') {
@@ -48,9 +53,39 @@ class EcotradeGeminiImageEditor
         $model = trim((string) config('services.gemini.image_model', 'gemini-2.5-flash-image'));
         $baseUrl = rtrim((string) config('services.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta'), '/');
         $timeout = max(1, (int) config('services.gemini.image_timeout', 90));
+
+        if ($serviceTier === 'flex') {
+            $timeout = max($timeout, (int) config('services.gemini.flex_image_timeout', 600));
+        }
         $retryTimes = max(0, (int) config('services.gemini.image_retry_times', 2));
         $retrySleep = max(0, (int) config('services.gemini.image_retry_sleep_ms', 1000));
         $url = rtrim($baseUrl, '/').'/models/'.$model.':generateContent';
+
+        $request = [
+            'contents' => [
+                [
+                    'role' => 'user',
+                    'parts' => [
+                        [
+                            'text' => $prompt,
+                        ],
+                        [
+                            'inline_data' => [
+                                'mime_type' => $mimeType,
+                                'data' => base64_encode($imageBytes),
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+            'generationConfig' => [
+                'responseModalities' => $responseModalities,
+            ],
+        ];
+
+        if ($serviceTier !== 'standard') {
+            $request['service_tier'] = $serviceTier;
+        }
 
         $response = Http::timeout($timeout)
             ->retry($retryTimes, $retrySleep)
@@ -59,27 +94,7 @@ class EcotradeGeminiImageEditor
                 'Content-Type' => 'application/json',
                 'Accept' => 'application/json',
             ])
-            ->post($url, [
-                'contents' => [
-                    [
-                        'role' => 'user',
-                        'parts' => [
-                            [
-                                'text' => $prompt,
-                            ],
-                            [
-                                'inline_data' => [
-                                    'mime_type' => $mimeType,
-                                    'data' => base64_encode($imageBytes),
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-                'generationConfig' => [
-                    'responseModalities' => $responseModalities,
-                ],
-            ]);
+            ->post($url, $request);
 
         if ($response->failed()) {
             throw new RuntimeException('Gemini image request failed with HTTP '.$response->status().': '.$response->body());

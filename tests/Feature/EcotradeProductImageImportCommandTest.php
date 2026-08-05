@@ -433,3 +433,122 @@ test('AI watermark mode includes the requested Maik Cat instructions', function 
 
     @unlink($jsonPath);
 });
+
+test('flex tier sends an image-only request and uses the discounted estimate', function () {
+    $record = ecotradeImageImportRecord([
+        'serial_code' => 'FLEX-IMAGE-100',
+        'product_name' => 'FLEX-IMAGE-100',
+        'main_image_url' => 'https://images.test/source/flex.png',
+        'image_urls' => ['https://images.test/source/flex.png'],
+    ]);
+    ecotradeImageImportItem($record);
+    $jsonPath = ecotradeImageImportTempFile(json_encode([$record], JSON_THROW_ON_ERROR), '.json');
+    $geminiPayload = null;
+
+    Http::fake(function (Request $request) use (&$geminiPayload) {
+        if ($request->url() === 'https://images.test/source/flex.png') {
+            return Http::response(ecotradeImageImportPngBytes(), 200, ['Content-Type' => 'image/png']);
+        }
+
+        if (str_contains($request->url(), 'generativelanguage.googleapis.com')) {
+            $geminiPayload = $request->data();
+
+            return Http::response(ecotradeGeminiResponse(ecotradeImageImportPngBytes()), 200);
+        }
+
+        return Http::response([], 404);
+    });
+
+    $this->artisan('ecotrade:import-product-images', [
+        'path' => $jsonPath,
+        '--test' => true,
+        '--service-tier' => 'flex',
+        '--max-cost-usd' => '0.02',
+    ])
+        ->expectsOutputToContain('Gemini service tier: flex')
+        ->expectsOutputToContain('estimated gemini cost usd: $0.0195')
+        ->assertExitCode(0);
+
+    expect($geminiPayload['service_tier'] ?? null)->toBe('flex')
+        ->and($geminiPayload['generationConfig']['responseModalities'] ?? null)->toBe(['IMAGE']);
+
+    Http::assertSentCount(2);
+    @unlink($jsonPath);
+});
+
+test('direct image linking downloads the Ecotrade source without Gemini and links siblings', function () {
+    $group = ecotradeImageImportGroup();
+    $record = ecotradeImageImportRecord([
+        'serial_code' => 'DIRECT-IMAGE-100',
+        'product_name' => 'DIRECT-IMAGE-100',
+        'product_url' => 'https://www.ecotradegroup.com/en/product/acura/direct-image-100',
+        'main_image_url' => 'https://images.test/source/direct.png',
+        'image_urls' => ['https://images.test/source/direct.png'],
+    ]);
+    $item = ecotradeImageImportItem($record, [], $group);
+    $sibling = Item::query()->create([
+        'id' => (string) Str::uuid(),
+        'car_group_id' => $group->id,
+        'model' => 'DIRECT-IMAGE-100 second assay',
+        'serial_code' => 'DIRECT IMAGE 100',
+        'weight_kg' => 1.4,
+        'pt_ppm' => 180,
+        'pd_ppm' => 240,
+        'rh_ppm' => 14,
+        'source' => 'excel_import',
+    ]);
+    $jsonPath = ecotradeImageImportTempFile(json_encode([$record], JSON_THROW_ON_ERROR), '.json');
+
+    Http::fake([
+        'https://images.test/source/direct.png' => Http::response(
+            ecotradeImageImportPngBytes(),
+            200,
+            ['Content-Type' => 'image/png'],
+        ),
+        '*' => Http::response([], 404),
+    ]);
+
+    $this->artisan('ecotrade:link-product-images', ['path' => $jsonPath])
+        ->expectsOutputToContain('Processed candidates: 1')
+        ->expectsOutputToContain('Database items linked: 1')
+        ->expectsOutputToContain('Failed: 0')
+        ->assertExitCode(0);
+
+    $media = $item->refresh()->getFirstMedia('images');
+
+    expect($media)->not->toBeNull()
+        ->and($media->file_name)->toBe('direct-image-100-ecotrade-direct.png')
+        ->and($media->getCustomProperty('source'))->toBe('ecotrade')
+        ->and($media->getCustomProperty('import_method'))->toBe('direct')
+        ->and($media->getCustomProperty('gemini_result'))->toBeNull()
+        ->and($sibling->refresh()->hasMedia('images'))->toBeTrue();
+
+    Http::assertSentCount(1);
+    @unlink($jsonPath);
+});
+
+test('direct image linking dry run makes no source image request or media write', function () {
+    $record = ecotradeImageImportRecord([
+        'serial_code' => 'DIRECT-DRY-RUN',
+        'product_name' => 'DIRECT-DRY-RUN',
+        'main_image_url' => 'https://images.test/source/direct-dry-run.png',
+        'image_urls' => ['https://images.test/source/direct-dry-run.png'],
+    ]);
+    $item = ecotradeImageImportItem($record);
+    $jsonPath = ecotradeImageImportTempFile(json_encode([$record], JSON_THROW_ON_ERROR), '.json');
+
+    Http::fake();
+
+    $this->artisan('ecotrade:link-product-images', [
+        'path' => $jsonPath,
+        '--dry-run' => true,
+    ])
+        ->expectsOutputToContain('candidates selected: 1')
+        ->expectsOutputToContain('Dry run completed without downloads or media writes.')
+        ->assertExitCode(0);
+
+    Http::assertNothingSent();
+    expect($item->refresh()->getFirstMedia('images'))->toBeNull();
+
+    @unlink($jsonPath);
+});
