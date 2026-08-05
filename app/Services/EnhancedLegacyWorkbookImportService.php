@@ -5,17 +5,21 @@ namespace App\Services;
 use App\Models\ImportBatch;
 use App\Models\ImportRowIssue;
 use App\Models\Item;
+use App\Support\Excel\WindowedWorkbook;
+use App\Support\Excel\WindowReadFilter;
 use App\Support\Items\CatalystSerialValidator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
-use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use RuntimeException;
 use Throwable;
 
 class EnhancedLegacyWorkbookImportService
 {
+    private const ROW_CHUNK_SIZE = 500;
+
     private int $inserted = 0;
 
     private int $skipped = 0;
@@ -43,16 +47,72 @@ class EnhancedLegacyWorkbookImportService
         }
 
         $this->resetState();
-        $reader = IOFactory::createReaderForFile($filePath);
-        $reader->setReadDataOnly(true);
-        $spreadsheet = $reader->load($filePath);
 
-        try {
-            foreach ($spreadsheet->getWorksheetIterator() as $sheet) {
-                $this->importSheet($batch, $sheet, $dryRun);
+        foreach ($this->worksheetInfos($filePath) as $sheetInfo) {
+            $sheetName = $this->worksheetName($sheetInfo);
+
+            if ($sheetName === null) {
+                continue;
             }
-        } finally {
-            $spreadsheet->disconnectWorksheets();
+
+            $totalRows = max(1, (int) ($sheetInfo['totalRows'] ?? 0));
+            $previewEnd = min(20, $totalRows);
+            [$previewSpreadsheet, $previewSheet] = $this->loadWorksheetWindow(
+                $filePath,
+                $sheetName,
+                1,
+                $previewEnd,
+                25,
+            );
+
+            try {
+                if ($this->shouldSkipSheet($previewSheet)) {
+                    continue;
+                }
+
+                $layout = $this->detectLayout($previewSheet);
+                $canonicalGroupName = $this->groupResolver->canonicalSheetName(
+                    $this->groupResolver->normalizeSheetName($sheetName),
+                );
+                $group = $this->groupResolver->resolve($sheetName, ! $dryRun);
+                $groupId = $group?->id;
+                $groupKey = $groupId ?? 'virtual:'.$canonicalGroupName;
+                $fallbackModel = $group?->name ?? $canonicalGroupName;
+                $startRow = max((int) $layout['start_row'], 1);
+
+                for ($chunkStart = $startRow; $chunkStart <= $totalRows; $chunkStart += self::ROW_CHUNK_SIZE) {
+                    $chunkEnd = min($totalRows, $chunkStart + self::ROW_CHUNK_SIZE - 1);
+                    [$spreadsheet, $sheet] = $this->loadWorksheetWindow(
+                        $filePath,
+                        $sheetName,
+                        $chunkStart,
+                        $chunkEnd,
+                        25,
+                    );
+
+                    try {
+                        $this->importSheetRows(
+                            $batch,
+                            $sheet,
+                            $dryRun,
+                            $layout,
+                            $groupId,
+                            $groupKey,
+                            $fallbackModel,
+                            $chunkStart,
+                            $chunkEnd,
+                        );
+                    } finally {
+                        $spreadsheet->disconnectWorksheets();
+                        unset($sheet, $spreadsheet);
+                        gc_collect_cycles();
+                    }
+                }
+            } finally {
+                $previewSpreadsheet->disconnectWorksheets();
+                unset($previewSheet, $previewSpreadsheet);
+                gc_collect_cycles();
+            }
         }
 
         return [
@@ -63,22 +123,21 @@ class EnhancedLegacyWorkbookImportService
         ];
     }
 
-    private function importSheet(ImportBatch $batch, Worksheet $sheet, bool $dryRun): void
-    {
-        if ($this->shouldSkipSheet($sheet)) {
-            return;
-        }
-
-        $layout = $this->detectLayout($sheet);
-        $canonicalGroupName = $this->groupResolver->canonicalSheetName(
-            $this->groupResolver->normalizeSheetName($sheet->getTitle()),
-        );
-        $group = $this->groupResolver->resolve($sheet->getTitle(), ! $dryRun);
-        $groupId = $group?->id;
-        $groupKey = $groupId ?? 'virtual:'.$canonicalGroupName;
-        $fallbackModel = $group?->name ?? $canonicalGroupName;
-
-        for ($rowIndex = $layout['start_row']; $rowIndex <= $sheet->getHighestDataRow(); $rowIndex++) {
+    /**
+     * @param  array<string,int>  $layout
+     */
+    private function importSheetRows(
+        ImportBatch $batch,
+        Worksheet $sheet,
+        bool $dryRun,
+        array $layout,
+        ?string $groupId,
+        string $groupKey,
+        string $fallbackModel,
+        int $startRow,
+        int $endRow,
+    ): void {
+        for ($rowIndex = $startRow; $rowIndex <= $endRow; $rowIndex++) {
             $data = $this->mapRow($sheet, $rowIndex, $layout, $fallbackModel);
 
             if (! $this->isPotentialDataRow($data)) {
@@ -93,6 +152,7 @@ class EnhancedLegacyWorkbookImportService
                 }
 
                 $this->invalid++;
+
                 continue;
             }
 
@@ -101,6 +161,7 @@ class EnhancedLegacyWorkbookImportService
 
             if (isset($this->seenSignatures[$signature])) {
                 $this->skipped++;
+
                 continue;
             }
 
@@ -109,6 +170,7 @@ class EnhancedLegacyWorkbookImportService
 
             if ($this->hasExactAssay($existing, $data)) {
                 $this->skipped++;
+
                 continue;
             }
 
@@ -120,6 +182,56 @@ class EnhancedLegacyWorkbookImportService
 
             $this->inserted++;
         }
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    private function worksheetInfos(string $filePath): array
+    {
+        return WindowedWorkbook::worksheetInfos($filePath);
+    }
+
+    /**
+     * @param  array<string,mixed>  $sheetInfo
+     */
+    private function worksheetName(array $sheetInfo): ?string
+    {
+        $name = (string) ($sheetInfo['worksheetName'] ?? $sheetInfo['sheetName'] ?? '');
+
+        return trim($name) === '' ? null : $name;
+    }
+
+    /**
+     * @return array{0:Spreadsheet,1:Worksheet}
+     */
+    private function loadWorksheetWindow(
+        string $filePath,
+        string $sheetName,
+        int $startRow,
+        int $endRow,
+        int $maxColumn,
+    ): array {
+        $reader = WindowedWorkbook::reader($filePath);
+        $reader->setReadDataOnly(true);
+
+        if (method_exists($reader, 'setReadEmptyCells')) {
+            $reader->setReadEmptyCells(false);
+        }
+
+        $reader->setLoadSheetsOnly([$sheetName]);
+        $reader->setReadFilter(new WindowReadFilter($startRow, $endRow, $maxColumn));
+
+        $spreadsheet = $reader->load(WindowedWorkbook::path($filePath, $maxColumn, [$sheetName]));
+        $sheet = $spreadsheet->getSheetByName($sheetName);
+
+        if (! $sheet instanceof Worksheet) {
+            $spreadsheet->disconnectWorksheets();
+
+            throw new RuntimeException('Could not load worksheet: '.$sheetName);
+        }
+
+        return [$spreadsheet, $sheet];
     }
 
     private function resetState(): void

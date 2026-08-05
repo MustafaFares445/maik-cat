@@ -5,13 +5,13 @@ namespace App\Services;
 use App\Data\ExcelItemRowData;
 use App\Models\CarGroup;
 use App\Models\Item;
+use App\Support\Excel\WindowedWorkbook;
 use App\Support\Excel\WindowReadFilter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
-use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use RuntimeException;
@@ -206,10 +206,7 @@ class ExcelItemEnrichmentService
      */
     private function worksheetInfos(string $path): array
     {
-        $reader = IOFactory::createReaderForFile($path);
-        $reader->setReadDataOnly(true);
-
-        return $reader->listWorksheetInfo($path);
+        return WindowedWorkbook::worksheetInfos($path);
     }
 
     /**
@@ -248,7 +245,7 @@ class ExcelItemEnrichmentService
      */
     private function loadWorksheetWindow(string $path, string $sheetName, int $startRow, int $endRow, int $maxColumn): array
     {
-        $reader = IOFactory::createReaderForFile($path);
+        $reader = WindowedWorkbook::reader($path);
         $reader->setReadDataOnly(true);
 
         if (method_exists($reader, 'setReadEmptyCells')) {
@@ -258,7 +255,7 @@ class ExcelItemEnrichmentService
         $reader->setLoadSheetsOnly([$sheetName]);
         $reader->setReadFilter(new WindowReadFilter($startRow, $endRow, $maxColumn));
 
-        $spreadsheet = $reader->load($path);
+        $spreadsheet = $reader->load(WindowedWorkbook::path($path, $maxColumn, [$sheetName]));
         $sheet = $spreadsheet->getSheetByName($sheetName);
 
         if (! $sheet instanceof Worksheet) {

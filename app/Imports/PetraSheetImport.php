@@ -14,6 +14,7 @@ use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithStartRow;
 use Maatwebsite\Excel\Row;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use Throwable;
 
 class PetraSheetImport implements OnEachRow, WithChunkReading, WithStartRow
@@ -51,7 +52,26 @@ class PetraSheetImport implements OnEachRow, WithChunkReading, WithStartRow
 
     public function onRow(Row $row): void
     {
-        $data = $this->mapRow($row->toArray());
+        $this->processValues($row->toArray());
+    }
+
+    public function processWorksheetWindow(Worksheet $sheet, int $startRow, int $endRow): void
+    {
+        for ($rowIndex = $startRow; $rowIndex <= $endRow; $rowIndex++) {
+            $values = [];
+
+            for ($column = 1; $column <= 7; $column++) {
+                $values[] = $sheet->getCellByColumnAndRow($column, $rowIndex)->getValue();
+            }
+
+            $this->processValues($values);
+        }
+    }
+
+    /** @param array<int|string,mixed> $values */
+    private function processValues(array $values): void
+    {
+        $data = $this->mapRow($values);
 
         if (! $this->isValidRow($data)) {
             $this->invalid++;

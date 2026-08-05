@@ -2,10 +2,10 @@
 
 namespace App\Services;
 
+use App\Support\Excel\WindowedWorkbook;
 use App\Support\Excel\WindowReadFilter;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
-use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use RuntimeException;
@@ -96,10 +96,7 @@ class ImportFormatDetector
     private function worksheetInfos(string $filePath): array
     {
         try {
-            $reader = IOFactory::createReaderForFile($filePath);
-            $reader->setReadDataOnly(true);
-
-            return $reader->listWorksheetInfo($filePath);
+            return WindowedWorkbook::worksheetInfos($filePath);
         } catch (Throwable $e) {
             throw new RuntimeException('Could not inspect workbook structure.', previous: $e);
         }
@@ -133,7 +130,7 @@ class ImportFormatDetector
      */
     private function loadWorksheetWindow(string $filePath, string $sheetName, int $startRow, int $endRow, int $maxColumn): array
     {
-        $reader = IOFactory::createReaderForFile($filePath);
+        $reader = WindowedWorkbook::reader($filePath);
         $reader->setReadDataOnly(true);
 
         if (method_exists($reader, 'setReadEmptyCells')) {
@@ -143,7 +140,7 @@ class ImportFormatDetector
         $reader->setLoadSheetsOnly([$sheetName]);
         $reader->setReadFilter(new WindowReadFilter($startRow, $endRow, $maxColumn));
 
-        $spreadsheet = $reader->load($filePath);
+        $spreadsheet = $reader->load(WindowedWorkbook::path($filePath, $maxColumn, [$sheetName]));
         $sheet = $spreadsheet->getSheetByName($sheetName);
 
         if (! $sheet instanceof Worksheet) {

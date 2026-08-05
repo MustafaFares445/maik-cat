@@ -4,6 +4,7 @@ namespace App\Imports;
 
 use App\Models\ImportBatch;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class PetraCatalogImport implements WithMultipleSheets
 {
@@ -27,5 +28,10 @@ class PetraCatalogImport implements WithMultipleSheets
     public function report(): array
     {
         return $this->sheetImport->report();
+    }
+
+    public function processWindow(Worksheet $sheet, int $startRow, int $endRow): void
+    {
+        $this->sheetImport->processWorksheetWindow($sheet, $startRow, $endRow);
     }
 }

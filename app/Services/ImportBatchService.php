@@ -5,12 +5,14 @@ namespace App\Services;
 use App\Imports\PetraCatalogImport;
 use App\Jobs\ImportBatchJob;
 use App\Models\ImportBatch;
+use App\Support\Excel\WindowedWorkbook;
+use App\Support\Excel\WindowReadFilter;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Maatwebsite\Excel\Facades\Excel;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use RuntimeException;
 use Throwable;
 
@@ -172,12 +174,61 @@ class ImportBatchService
                 $dryRun,
             );
 
-            Excel::import($import, $absolutePath);
-
-            return $import->report();
+            return $this->runPetraImportInWindows($import, $absolutePath, (string) ($detected['sheet_name'] ?? ''));
         }
 
         return $this->legacyWorkbookImporter->import($batch, $absolutePath, $dryRun);
+    }
+
+    /**
+     * @return array{rows_inserted:int,rows_skipped:int,rows_invalid:int,rows_flagged:int}
+     */
+    private function runPetraImportInWindows(
+        PetraCatalogImport $import,
+        string $filePath,
+        string $sheetName,
+    ): array {
+        if ($sheetName === '') {
+            throw new RuntimeException('Petra worksheet name was not detected.');
+        }
+
+        $sheetInfo = collect(WindowedWorkbook::worksheetInfos($filePath))
+            ->first(function (array $info) use ($sheetName): bool {
+                return (string) ($info['worksheetName'] ?? $info['sheetName'] ?? '') === $sheetName;
+            });
+
+        if (! is_array($sheetInfo)) {
+            throw new RuntimeException('Petra worksheet metadata could not be located.');
+        }
+
+        $totalRows = max(1, (int) ($sheetInfo['totalRows'] ?? 0));
+
+        for ($chunkStart = 2; $chunkStart <= $totalRows; $chunkStart += 500) {
+            $chunkEnd = min($totalRows, $chunkStart + 499);
+            $reader = WindowedWorkbook::reader($filePath);
+            $reader->setReadDataOnly(true);
+            $reader->setLoadSheetsOnly([$sheetName]);
+            $reader->setReadFilter(new WindowReadFilter($chunkStart, $chunkEnd, 7));
+
+            $spreadsheet = $reader->load(WindowedWorkbook::path($filePath, 7, [$sheetName]));
+            $sheet = $spreadsheet->getSheetByName($sheetName);
+
+            if (! $sheet instanceof Worksheet) {
+                $spreadsheet->disconnectWorksheets();
+
+                throw new RuntimeException('Could not load worksheet: '.$sheetName);
+            }
+
+            try {
+                $import->processWindow($sheet, $chunkStart, $chunkEnd);
+            } finally {
+                $spreadsheet->disconnectWorksheets();
+                unset($sheet, $spreadsheet, $reader);
+                gc_collect_cycles();
+            }
+        }
+
+        return $import->report();
     }
 
     private function createBatch(string $fileName, ?string $importedBy, string $status): ImportBatch
