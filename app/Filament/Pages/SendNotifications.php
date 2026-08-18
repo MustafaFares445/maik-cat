@@ -89,7 +89,7 @@ class SendNotifications extends Page implements HasActions, HasSchemas
                             ->label('Specific users')
                             ->multiple()
                             ->options(fn (): array => User::query()
-                                ->role('app_user')
+                                ->appUsers()
                                 ->where('is_active', true)
                                 ->orderBy('email')
                                 ->pluck('email', 'id')
