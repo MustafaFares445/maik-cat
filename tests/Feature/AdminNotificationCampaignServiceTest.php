@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\AdminNotificationCampaignService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Kreait\Firebase\Contract\Messaging;
+use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Role;
 
 uses(RefreshDatabase::class);
@@ -43,8 +44,8 @@ test('service sends campaign to specific users with locale fallback', function (
         'type' => NotificationType::GENERALE_NOTIFICATION,
         'title_en' => 'English title',
         'body_en' => 'English body',
-        'title_ar' => 'Ø¹Ù†ÙˆØ§Ù† Ø¹Ø±Ø¨ÙŠ',
-        'body_ar' => 'Ù…Ø­ØªÙˆÙ‰ Ø¹Ø±Ø¨ÙŠ',
+        'title_ar' => 'عنوان عربي',
+        'body_ar' => 'محتوى عربي',
         'title_hu' => null,
         'body_hu' => null,
     ]);
@@ -61,6 +62,47 @@ test('service sends campaign to specific users with locale fallback', function (
         ->and($arabicRecipient->language_used)->toBe('ar');
     expect($hungarianRecipient)->not->toBeNull()
         ->and($hungarianRecipient->language_used)->toBe('en');
+});
+
+test('service sends campaign to a legacy roleless app user and notifications api returns it', function () {
+    fakeMessaging();
+    seedRole('admin');
+    seedRole('app_user');
+
+    $sender = User::factory()->create()->assignRole('admin');
+    $legacyUser = User::factory()->create([
+        'is_active' => true,
+        'preferred_language' => 'en',
+        'fcm_token' => 'legacy-user-token',
+    ]);
+
+    $campaign = app(AdminNotificationCampaignService::class)->sendCampaign($sender, [
+        'audience_mode' => 'specific',
+        'user_ids' => [$legacyUser->id],
+        'type' => NotificationType::GENERALE_NOTIFICATION,
+        'title_en' => '<p><strong>Legacy title</strong></p>',
+        'body_en' => '<p>Legacy body</p>',
+    ]);
+
+    $recipient = $campaign->recipients->firstWhere('user_id', $legacyUser->id);
+    $databaseNotification = $legacyUser->notifications()->latest()->first();
+
+    expect($campaign->total_recipients)->toBe(1)
+        ->and($campaign->delivered_count)->toBe(1)
+        ->and($campaign->failed_count)->toBe(0)
+        ->and($recipient)->not->toBeNull()
+        ->and($recipient->notification_id)->not->toBeNull()
+        ->and($databaseNotification)->not->toBeNull()
+        ->and($databaseNotification->data['title'])->toBe('<p><strong>Legacy title</strong></p>');
+
+    Sanctum::actingAs($legacyUser);
+
+    $this->getJson(route('notifications.index'))
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('unreadCount', 1)
+        ->assertJsonPath('data.0.data.title', '<p><strong>Legacy title</strong></p>')
+        ->assertJsonPath('data.0.data.body', '<p>Legacy body</p>');
 });
 
 test('service sends campaign to active users inside an audience group', function () {
@@ -91,7 +133,7 @@ test('service sends campaign to active users inside an audience group', function
         ->and($campaign->recipients->pluck('user_id')->all())->toBe([$activeUser->id]);
 });
 
-test('service sends campaign to all active app users only', function () {
+test('service sends campaign to all active app users including legacy roleless users only', function () {
     fakeMessaging();
     seedRole('admin');
     seedRole('app_user');
@@ -99,6 +141,7 @@ test('service sends campaign to all active app users only', function () {
     $sender = User::factory()->create()->assignRole('admin');
     $activeOne = User::factory()->create(['is_active' => true])->assignRole('app_user');
     $activeTwo = User::factory()->create(['is_active' => true])->assignRole('app_user');
+    $legacyRoleless = User::factory()->create(['is_active' => true]);
     User::factory()->create(['is_active' => false])->assignRole('app_user');
     User::factory()->create(['is_active' => true])->assignRole('admin');
 
@@ -114,9 +157,10 @@ test('service sends campaign to all active app users only', function () {
     ]);
 
     $recipientIds = $campaign->recipients->pluck('user_id')->sort()->values()->all();
+    $expectedIds = collect([$activeOne->id, $activeTwo->id, $legacyRoleless->id])->sort()->values()->all();
 
-    expect($campaign->total_recipients)->toBe(2)
-        ->and($recipientIds)->toBe(collect([$activeOne->id, $activeTwo->id])->sort()->values()->all());
+    expect($campaign->total_recipients)->toBe(3)
+        ->and($recipientIds)->toBe($expectedIds);
 });
 
 test('service normalizes label-style notification type values', function () {
