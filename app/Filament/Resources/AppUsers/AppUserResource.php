@@ -53,12 +53,7 @@ class AppUserResource extends Resource
     {
         return parent::getEloquentQuery()
             ->with('roles')
-            ->where(function (Builder $query): void {
-                $query
-                    ->whereHas('roles', fn (Builder $roleQuery) => $roleQuery->where('name', 'app_user'))
-                    ->orWhereDoesntHave('roles');
-            })
-            ->whereDoesntHave('roles', fn (Builder $roleQuery) => $roleQuery->whereIn('name', ['super_admin', 'admin', 'content_manager']));
+            ->appUsers();
     }
 
     public static function canViewAny(): bool
