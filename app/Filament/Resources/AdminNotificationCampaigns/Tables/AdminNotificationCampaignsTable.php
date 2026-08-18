@@ -15,6 +15,7 @@ class AdminNotificationCampaignsTable
                 TextColumn::make('title_en')
                     ->label('English title')
                     ->searchable()
+                    ->html()
                     ->limit(50),
                 TextColumn::make('audience_mode')
                     ->label('Audience mode')
