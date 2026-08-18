@@ -9,6 +9,7 @@ use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -43,6 +44,20 @@ class User extends Authenticatable implements FilamentUser
             'password' => 'hashed',
             'is_active' => 'boolean',
         ];
+    }
+
+    public function scopeAppUsers(Builder $query): Builder
+    {
+        return $query
+            ->where(function (Builder $query): void {
+                $query
+                    ->whereHas('roles', fn (Builder $roleQuery) => $roleQuery->where('name', 'app_user'))
+                    ->orWhereDoesntHave('roles');
+            })
+            ->whereDoesntHave(
+                'roles',
+                fn (Builder $roleQuery) => $roleQuery->whereIn('name', ['super_admin', 'admin', 'content_manager']),
+            );
     }
 
     public function savedItems(): BelongsToMany
