@@ -27,7 +27,7 @@
         <div class="hero-lines hero-lines-right" aria-hidden="true"></div>
         <div class="hero shell">
             <div class="hero-copy">
-                <img class="brand-logo hero-enter" src="{{ asset('images/portfolio/logo.webp') }}" alt="Maik Cat" width="210" height="105">
+                <img class="brand-logo hero-enter" src="{{ asset('images/portfolio/logo.webp') }}?v=20260818-3" alt="Maik Cat" width="210" height="105">
                 <p class="eyebrow hero-enter">MAIK CAT <span>•</span></p>
                 <h1 class="hero-title hero-enter">Precision tools for <em>catalytic converter</em> professionals</h1>
                 <p class="hero-description hero-enter">Track live metal prices, calculate values, search parts, and browse the catalog — all in one industrial-grade mobile experience.</p>
@@ -73,7 +73,7 @@
             <div class="hero-visual hero-enter" data-parallax>
                 <div class="hero-dots" aria-hidden="true"></div>
                 <div class="orange-swoop" aria-hidden="true"></div>
-                <img class="hero-phone" src="{{ asset('images/portfolio/hero-phone.webp') }}" alt="Maik Cat metal prices mobile app" width="941" height="1672" fetchpriority="high">
+                <img class="hero-phone" src="{{ asset('images/portfolio/hero-phone.webp') }}?v=20260818-3" alt="Maik Cat metal prices mobile app" width="300" height="450" fetchpriority="high" decoding="async">
                 <img class="metal metal-platinum" src="{{ asset('images/portfolio/platinum-bar.webp') }}" alt="Platinum 999.5 one ounce bar" width="1254" height="1254" fetchpriority="high">
                 <img class="metal metal-palladium" src="{{ asset('images/portfolio/palladium-bar.webp') }}" alt="Palladium 999.5 one ounce bar" width="1254" height="1254" fetchpriority="high">
                 <img class="metal metal-rhodium" src="{{ asset('images/portfolio/rhodium-bar.webp') }}" alt="Rhodium 999.0 one ounce bar" width="1254" height="1254" fetchpriority="high">
@@ -107,7 +107,7 @@
 
         <div class="calculator-stage">
             <div class="calculator-glow" aria-hidden="true"></div>
-            <img class="calculator-phone" src="{{ asset('images/portfolio/calculator-phone.webp') }}" alt="Maik Cat catalytic converter calculator screen" width="941" height="1672" loading="lazy">
+            <img class="calculator-phone" src="{{ asset('images/portfolio/calculator-phone.webp') }}?v=20260818-3" alt="Maik Cat catalytic converter calculator screen" width="300" height="450" loading="lazy" decoding="async">
         </div>
 
         <div class="feature-actions">
@@ -136,7 +136,7 @@
 <footer class="site-footer">
     <div class="shell footer-grid">
         <div class="footer-brand">
-            <img src="{{ asset('images/portfolio/logo.webp') }}" alt="Maik Cat" width="150" height="75">
+            <img src="{{ asset('images/portfolio/logo.webp') }}?v=20260818-3" alt="Maik Cat" width="150" height="75">
             <p>Precision tools for catalytic converter professionals.</p>
         </div>
         <nav class="footer-links" aria-label="Legal">
