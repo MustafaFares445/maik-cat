@@ -1,9 +1,28 @@
 <?php
 
+use App\Enums\AppPlatform;
+use App\Models\AppVersion;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return view('welcome');
+    $placeholderStoreIds = ['com.example.app', '123456789'];
+    $storeLinks = [];
+
+    foreach (AppPlatform::values() as $platform) {
+        try {
+            $storeId = trim((string) AppVersion::query()
+                ->where('platform', $platform)
+                ->value('store_id'));
+        } catch (\Throwable) {
+            $storeId = '';
+        }
+
+        $storeLinks[$platform] = $storeId !== '' && ! in_array($storeId, $placeholderStoreIds, true)
+            ? AppPlatform::storeUrl($platform, $storeId)
+            : null;
+    }
+
+    return view('welcome', compact('storeLinks'));
 });
 
 Route::redirect('/privacy-policy', '/privacy-policy/en');
