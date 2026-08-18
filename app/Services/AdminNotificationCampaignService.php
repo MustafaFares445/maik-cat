@@ -32,6 +32,11 @@ class AdminNotificationCampaignService
     public function sendCampaign(User $sender, array $data): AdminNotificationCampaign
     {
         $type = NotificationType::normalize((string) ($data['type'] ?? ''));
+        $recipients = $this->resolveRecipients($data);
+
+        if (($data['audience_mode'] ?? 'specific') === 'specific' && $recipients->isEmpty()) {
+            throw new RuntimeException('Selected users are not active app users.');
+        }
 
         $campaign = AdminNotificationCampaign::query()->create([
             'sent_by' => $sender->getKey(),
@@ -48,7 +53,6 @@ class AdminNotificationCampaignService
             'status' => 'sending',
         ]);
 
-        $recipients = $this->resolveRecipients($data);
         $totalRecipients = $recipients->count();
         $deliveredCount = 0;
         $failedCount = 0;
@@ -80,6 +84,10 @@ class AdminNotificationCampaignService
                     ->where('type', AdminCampaignNotification::class)
                     ->latest('created_at')
                     ->value('id');
+
+                if (! is_string($notificationId) || $notificationId === '') {
+                    throw new RuntimeException('Notification was not persisted to the database.');
+                }
 
                 $recipient->forceFill([
                     'notification_id' => $notificationId,
@@ -120,7 +128,7 @@ class AdminNotificationCampaignService
 
         if ($audienceMode === 'all') {
             return User::query()
-                ->role('app_user')
+                ->appUsers()
                 ->where('is_active', true)
                 ->orderBy('id')
                 ->get();
@@ -141,7 +149,7 @@ class AdminNotificationCampaignService
             }
 
             return User::query()
-                ->role('app_user')
+                ->appUsers()
                 ->where('is_active', true)
                 ->whereIn('id', $audience->users()->pluck('users.id'))
                 ->orderBy('id')
@@ -159,7 +167,7 @@ class AdminNotificationCampaignService
         }
 
         return User::query()
-            ->role('app_user')
+            ->appUsers()
             ->where('is_active', true)
             ->whereIn('id', $specificUserIds)
             ->orderBy('id')
