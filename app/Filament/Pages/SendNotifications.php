@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\AdminNotificationCampaignService;
 use Filament\Actions\Concerns\InteractsWithActions;
 use Filament\Actions\Contracts\HasActions;
+use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
@@ -98,13 +99,11 @@ class SendNotifications extends Page implements HasActions, HasSchemas
                             ->required(fn (Get $get): bool => $get('audience_mode') === 'specific')
                             ->searchable()
                             ->columnSpanFull(),
-                        Select::make('type')
-                            ->label('Notification type')
-                            ->options(NotificationType::labels())
-                            ->required(),
+                        Hidden::make('type')
+                            ->default(NotificationType::GENERALE_NOTIFICATION),
                     ]),
                 Section::make('Localized content')
-                    ->description('English content is required. Arabic and Hungarian are optional and fallback to English. Rich formatting is supported.')
+                    ->description('English content is required. Arabic and Hungarian are optional and fallback to English. Rich formatting and emojis are supported.')
                     ->columns(2)
                     ->components([
                         RichEditor::make('title_en')
@@ -159,7 +158,7 @@ class SendNotifications extends Page implements HasActions, HasSchemas
         }
 
         $data = $this->form->getState();
-        $data['type'] = NotificationType::normalize((string) ($data['type'] ?? ''));
+        $data['type'] = NotificationType::GENERALE_NOTIFICATION;
 
         try {
             app(AdminNotificationCampaignService::class)->sendCampaign($sender, $data);
@@ -189,7 +188,7 @@ class SendNotifications extends Page implements HasActions, HasSchemas
     private function editorToolbarButtons(): array
     {
         return [
-            ['bold', 'italic', 'underline', 'strike', 'textColor'],
+            ['bold', 'italic', 'underline', 'strike'],
             ['h2', 'h3'],
             ['bulletList', 'orderedList', 'blockquote'],
             ['undo', 'redo'],
