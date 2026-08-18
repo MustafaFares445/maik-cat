@@ -8,6 +8,8 @@ use App\Services\Ecotrade\EcotradeDirectProductImageImporter;
 use App\Services\Ecotrade\EcotradeJsonReader;
 use App\Services\Ecotrade\EcotradeProductImageCandidateResolver;
 use Illuminate\Console\Command;
+use JsonException;
+use RuntimeException;
 use Throwable;
 
 class LinkEcotradeProductImagesCommand extends Command
@@ -16,6 +18,8 @@ class LinkEcotradeProductImagesCommand extends Command
         {path=ecotrade_products_all.json : Path to Ecotrade JSON file}
         {--dry-run : Report candidates without downloading images or writing media}
         {--limit= : Maximum number of Ecotrade product candidates to process}
+        {--item-ids-file= : JSON file containing the item IDs allowed for linking}
+        {--allow-cross-group : Permit unique cross-group matches for allowlisted items}
         {--sleep-ms=0 : Milliseconds to sleep after each processed candidate}
         {--replace-existing : Replace item images that already exist}';
 
@@ -32,10 +36,24 @@ class LinkEcotradeProductImagesCommand extends Command
             $replaceExisting = (bool) $this->option('replace-existing');
             $limit = $this->limit();
             $sleepMs = max(0, (int) $this->option('sleep-ms'));
-            $resolved = $resolver->resolve($reader->read($path), [
+            $allowedItemIds = $this->allowedItemIds();
+            $allowCrossGroup = (bool) $this->option('allow-cross-group');
+
+            if ($allowCrossGroup && $allowedItemIds === null) {
+                throw new RuntimeException('--allow-cross-group requires --item-ids-file.');
+            }
+
+            $options = [
                 'replace_existing' => $replaceExisting,
                 'limit' => $limit,
-            ]);
+                'allow_cross_group' => $allowCrossGroup,
+            ];
+
+            if ($allowedItemIds !== null) {
+                $options['allowed_item_ids'] = $allowedItemIds;
+            }
+
+            $resolved = $resolver->resolve($reader->read($path), $options);
             $summary = $resolved['summary'];
             $candidates = $resolved['candidates'];
 
@@ -43,6 +61,8 @@ class LinkEcotradeProductImagesCommand extends Command
             $this->line('File: '.basename($path));
             $this->line('Dry run: '.($dryRun ? 'yes' : 'no'));
             $this->line('Replace existing: '.($replaceExisting ? 'yes' : 'no'));
+            $this->line('Allowed item IDs: '.($allowedItemIds === null ? 'all' : count($allowedItemIds)));
+            $this->line('Allow cross-group matches: '.($allowCrossGroup ? 'yes' : 'no'));
 
             foreach ($summary as $key => $value) {
                 $this->line(str_replace('_', ' ', $key).': '.$value);
@@ -103,5 +123,36 @@ class LinkEcotradeProductImagesCommand extends Command
         $limit = $this->option('limit');
 
         return is_numeric($limit) ? max(1, (int) $limit) : null;
+    }
+
+    /** @return list<string>|null */
+    private function allowedItemIds(): ?array
+    {
+        $path = trim((string) $this->option('item-ids-file'));
+
+        if ($path === '') {
+            return null;
+        }
+
+        $contents = file_get_contents($path);
+
+        if ($contents === false) {
+            throw new RuntimeException('Unable to read allowed item IDs file: '.$path);
+        }
+
+        try {
+            $itemIds = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+        } catch (JsonException $exception) {
+            throw new RuntimeException('Allowed item IDs file must contain valid JSON.', previous: $exception);
+        }
+
+        if (! is_array($itemIds) || ! array_is_list($itemIds)) {
+            throw new RuntimeException('Allowed item IDs file must contain a JSON array.');
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            static fn (mixed $itemId): string => trim((string) $itemId),
+            $itemIds,
+        ))));
     }
 }

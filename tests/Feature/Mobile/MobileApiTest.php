@@ -185,6 +185,79 @@ test('search endpoint accepts text and categoryId', function () {
     }
 });
 
+test('item search ignores common serial code separators', function (string $search) {
+    mockItemMetalsSpotServiceAscii();
+
+    $group = CarGroup::factory()->create(['name' => 'MERCEDES']);
+    $matching = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'KT 1128',
+        'model' => 'MERCEDES CATALYST',
+    ]);
+
+    $imagePath = mobileApiAttachImage($matching);
+
+    try {
+        $response = getJson('/api/items?'.http_build_query(['text' => $search]));
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $matching->id);
+        $response->assertJsonPath('meta.total', 1);
+    } finally {
+        @unlink($imagePath);
+    }
+})->with([
+    'stored spacing' => 'KT 1128',
+    'no separator' => 'KT1128',
+    'hyphen' => 'KT-1128',
+    'period and lowercase' => 'kt.1128',
+    'slash' => 'KT/1128',
+]);
+
+test('item search ignores separators in extra codes', function () {
+    mockItemMetalsSpotServiceAscii();
+
+    $item = Item::factory()->create([
+        'serial_code' => 'PRIMARY-100',
+        'model' => 'CATALYST',
+    ]);
+    ExtraCode::factory()->create([
+        'item_id' => $item->id,
+        'code' => 'ALT-KT 1128',
+    ]);
+
+    $imagePath = mobileApiAttachImage($item);
+
+    try {
+        $response = getJson('/api/items?text=ALTKT1128');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $item->id);
+    } finally {
+        @unlink($imagePath);
+    }
+});
+
+test('item search containing only separators does not match every item', function () {
+    $visibleItem = Item::factory()->create([
+        'serial_code' => 'KT 1128',
+        'model' => 'MERCEDES CATALYST',
+    ]);
+    $imagePath = mobileApiAttachImage($visibleItem);
+
+    try {
+        $response = getJson('/api/items?text=---');
+
+        $response->assertOk();
+        $response->assertJsonCount(0, 'data');
+        $response->assertJsonPath('meta.total', 0);
+    } finally {
+        @unlink($imagePath);
+    }
+});
+
 test('item search endpoint accepts text and carGroup', function () {
     mockItemMetalsSpotServiceAscii();
 

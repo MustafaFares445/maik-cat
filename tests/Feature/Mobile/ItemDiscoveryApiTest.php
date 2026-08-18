@@ -19,10 +19,14 @@ function itemDiscoveryApiAttachImage(Item $item): void
     $pngPath = $path.'.png';
     @unlink($path);
 
-    file_put_contents(
-        $pngPath,
-        base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z7j8AAAAASUVORK5CYII=', true),
-    );
+    $image = imagecreatetruecolor(48, 48);
+    $background = imagecolorallocate($image, 232, 232, 232);
+    $accent = imagecolorallocate($image, 92, 92, 92);
+
+    imagefill($image, 0, 0, $background);
+    imagefilledellipse($image, 24, 24, 30, 30, $accent);
+    imagepng($image, $pngPath);
+    imagedestroy($image);
 
     $item->addMedia($pngPath)->toMediaCollection('images');
 }

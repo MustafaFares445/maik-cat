@@ -16,7 +16,7 @@ final class EcotradeSourceImageDownloader
         $timeout = max(1, (int) config('services.gemini.image_download_timeout', 30));
 
         try {
-            $response = Http::timeout($timeout)->get($url)->throw();
+            $response = Http::connectTimeout($timeout)->timeout($timeout)->get($url)->throw();
         } catch (RequestException $exception) {
             throw new RuntimeException('Unable to download Ecotrade source image: '.$exception->getMessage(), previous: $exception);
         }

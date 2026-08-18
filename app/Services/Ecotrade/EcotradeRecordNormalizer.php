@@ -3,10 +3,14 @@
 namespace App\Services\Ecotrade;
 
 use App\Data\EcotradeProductData;
+use App\Models\Item;
+use App\Support\Items\CatalystSerialValidator;
 use Illuminate\Support\Str;
 
 class EcotradeRecordNormalizer
 {
+    private const int MIN_ALTERNATE_SERIAL_LENGTH = 6;
+
     /**
      * @param  array<string, mixed>  $record
      */
@@ -73,6 +77,72 @@ class EcotradeRecordNormalizer
             raw: $record,
             invalidReason: $invalidReason,
         );
+    }
+
+    /** @return list<string> */
+    public function serialFamilies(EcotradeProductData $product): array
+    {
+        $families = [Item::normalizeSerialValue($product->serialCode)];
+
+        foreach ($this->alternateSerialCandidates($product) as $candidate) {
+            if ($this->isAlternateSerialCandidate($candidate)) {
+                $families[] = Item::normalizeSerialValue($candidate);
+            }
+        }
+
+        return array_values(array_unique(array_filter($families)));
+    }
+
+    /** @return list<string> */
+    private function alternateSerialCandidates(EcotradeProductData $product): array
+    {
+        $productName = trim($product->productName);
+        $serialCode = trim($product->serialCode);
+
+        if ($productName === '' || Item::normalizeSerialValue($productName) === Item::normalizeSerialValue($serialCode)) {
+            return [];
+        }
+
+        if (preg_match('/^'.preg_quote($productName, '/').'\s+(.+)$/iu', $serialCode, $matches) === 1) {
+            return [$productName, $matches[1], ...$this->serialTokens($matches[1])];
+        }
+
+        $serialTokens = $this->serialTokens($serialCode);
+        $productTokens = $this->serialTokens($productName);
+
+        return $this->containSameValidatedTokens($serialTokens, $productTokens) ? $serialTokens : [];
+    }
+
+    /** @return list<string> */
+    private function serialTokens(string $serial): array
+    {
+        return preg_split('/[\s,;|]+/u', $serial, flags: PREG_SPLIT_NO_EMPTY) ?: [];
+    }
+
+    /** @param list<string> $serialTokens @param list<string> $productTokens */
+    private function containSameValidatedTokens(array $serialTokens, array $productTokens): bool
+    {
+        if (count($serialTokens) < 2 || count($serialTokens) !== count($productTokens)) {
+            return false;
+        }
+
+        $normalize = static fn (array $tokens): array => collect($tokens)
+            ->map(static fn (string $token): string => Item::normalizeSerialValue($token))
+            ->sort()
+            ->values()
+            ->all();
+
+        return $normalize($serialTokens) === $normalize($productTokens)
+            && collect($serialTokens)->every($this->isAlternateSerialCandidate(...));
+    }
+
+    private function isAlternateSerialCandidate(string $candidate): bool
+    {
+        $normalized = Item::normalizeSerialValue($candidate);
+
+        return CatalystSerialValidator::isUsable($candidate)
+            && mb_strlen($normalized) >= self::MIN_ALTERNATE_SERIAL_LENGTH
+            && preg_match('/\d/u', $normalized) === 1;
     }
 
     private function extractBrandSlug(?string $brandPageUrl, ?string $fallback = null, ?string $secondaryFallback = null): ?string

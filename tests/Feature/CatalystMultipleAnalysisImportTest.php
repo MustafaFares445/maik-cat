@@ -18,7 +18,7 @@ uses(RefreshDatabase::class);
 
 function catalystWorkbookPath(array $dataRows): string
 {
-    $spreadsheet = new Spreadsheet();
+    $spreadsheet = new Spreadsheet;
     $sheet = $spreadsheet->getActiveSheet();
     $sheet->setTitle('AUDI VW');
     $sheet->fromArray([
@@ -40,9 +40,14 @@ function catalystWorkbookPath(array $dataRows): string
 function attachTestItemImage(Item $item): void
 {
     $path = tempnam(sys_get_temp_dir(), 'item_image_').'.png';
-    file_put_contents($path, base64_decode(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z4l8AAAAASUVORK5CYII='
-    ));
+    $image = imagecreatetruecolor(48, 48);
+    $background = imagecolorallocate($image, 232, 232, 232);
+    $accent = imagecolorallocate($image, 92, 92, 92);
+
+    imagefill($image, 0, 0, $background);
+    imagefilledellipse($image, 24, 24, 30, 30, $accent);
+    imagepng($image, $path);
+    imagedestroy($image);
 
     $item->addMedia($path)
         ->usingFileName('source.png')

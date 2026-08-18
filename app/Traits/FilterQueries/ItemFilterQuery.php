@@ -2,6 +2,7 @@
 
 namespace App\Traits\FilterQueries;
 
+use App\Models\Item;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -22,17 +23,7 @@ trait ItemFilterQuery
                 AllowedFilter::callback('text', static function (Builder $query, string $value): void {
                     $search = trim($value);
 
-                    if ($search === '') {
-                        return;
-                    }
-
-                    $query->where(function (Builder $inner) use ($search): void {
-                        $inner->where('serial_code', 'like', "%{$search}%")
-                            ->orWhere('model', 'like', "%{$search}%")
-                            ->orWhereHas('extraCodes', static function (Builder $codeQuery) use ($search): void {
-                                $codeQuery->where('code', 'like', "%{$search}%");
-                            });
-                    });
+                    self::applyTextSearch($query, $search);
                 }),
                 AllowedFilter::callback('car_group', static function (Builder $query, string $value): void {
                     $group = trim($value);
@@ -59,5 +50,33 @@ trait ItemFilterQuery
                 AllowedSort::field('model'),
             )
             ->defaultSort('-created_at');
+    }
+
+    private static function applyTextSearch(Builder $query, string $search): void
+    {
+        if ($search === '') {
+            return;
+        }
+
+        $normalizedSearch = Item::normalizeSerialValue($search);
+
+        $query->where(static function (Builder $inner) use ($normalizedSearch, $search): void {
+            $inner->where('serial_code', 'like', "%{$search}%")
+                ->orWhere('model', 'like', "%{$search}%")
+                ->orWhereHas('extraCodes', static fn (Builder $codes): Builder => $codes->where('code', 'like', "%{$search}%"));
+
+            if ($normalizedSearch !== '') {
+                self::applyNormalizedCodeSearch($inner, $normalizedSearch);
+            }
+        });
+    }
+
+    private static function applyNormalizedCodeSearch(Builder $query, string $normalizedSearch): void
+    {
+        $query->orWhere('normalized_serial', 'like', "%{$normalizedSearch}%")
+            ->orWhereHas('extraCodes', static fn (Builder $codes): Builder => $codes->whereRaw(
+                "REPLACE(REPLACE(REPLACE(REPLACE(UPPER(code), ' ', ''), '-', ''), '.', ''), '/', '') LIKE ?",
+                ["%{$normalizedSearch}%"],
+            ));
     }
 }

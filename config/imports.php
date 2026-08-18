@@ -25,6 +25,7 @@ return [
         'porsche' => 'AUDI VW',
         'bmw' => 'BMW',
         'mini' => 'BMW',
+        'mini-cooper' => 'BMW',
         'mercedes' => 'MERCEDES',
         'mercedes-benz' => 'MERCEDES',
         'smart' => 'MERCEDES',

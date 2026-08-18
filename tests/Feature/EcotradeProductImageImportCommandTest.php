@@ -552,3 +552,55 @@ test('direct image linking dry run makes no source image request or media write'
 
     @unlink($jsonPath);
 });
+
+test('direct image linking can be restricted to an item ID allowlist', function () {
+    $allowedRecord = ecotradeImageImportRecord([
+        'serial_code' => 'DIRECT-ALLOWED-100',
+        'product_name' => 'DIRECT-ALLOWED-100',
+        'main_image_url' => 'https://images.test/source/direct-allowed.png',
+        'image_urls' => ['https://images.test/source/direct-allowed.png'],
+    ]);
+    $excludedRecord = ecotradeImageImportRecord([
+        'serial_code' => 'DIRECT-EXCLUDED-200',
+        'product_name' => 'DIRECT-EXCLUDED-200',
+        'main_image_url' => 'https://images.test/source/direct-excluded.png',
+        'image_urls' => ['https://images.test/source/direct-excluded.png'],
+    ]);
+    $group = ecotradeImageImportGroup();
+    $allowedItem = ecotradeImageImportItem($allowedRecord, group: $group);
+    $excludedItem = ecotradeImageImportItem($excludedRecord, group: $group);
+    $jsonPath = ecotradeImageImportTempFile(json_encode([$allowedRecord, $excludedRecord], JSON_THROW_ON_ERROR), '.json');
+    $itemIdsPath = ecotradeImageImportTempFile(json_encode([$allowedItem->id], JSON_THROW_ON_ERROR), '.json');
+
+    Http::fake();
+
+    $this->artisan('ecotrade:link-product-images', [
+        'path' => $jsonPath,
+        '--dry-run' => true,
+        '--item-ids-file' => $itemIdsPath,
+    ])
+        ->expectsOutputToContain('Allowed item IDs: 1')
+        ->expectsOutputToContain('candidates selected: 1')
+        ->assertExitCode(0);
+
+    Http::assertNothingSent();
+    expect($allowedItem->refresh()->getFirstMedia('images'))->toBeNull()
+        ->and($excludedItem->refresh()->getFirstMedia('images'))->toBeNull();
+
+    @unlink($jsonPath);
+    @unlink($itemIdsPath);
+});
+
+test('cross-group direct linking requires an item ID allowlist', function () {
+    $jsonPath = ecotradeImageImportTempFile('[]', '.json');
+
+    $this->artisan('ecotrade:link-product-images', [
+        'path' => $jsonPath,
+        '--dry-run' => true,
+        '--allow-cross-group' => true,
+    ])
+        ->expectsOutputToContain('--allow-cross-group requires --item-ids-file.')
+        ->assertExitCode(1);
+
+    @unlink($jsonPath);
+});

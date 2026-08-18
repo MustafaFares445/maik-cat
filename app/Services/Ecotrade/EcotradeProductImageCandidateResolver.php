@@ -22,8 +22,8 @@ class EcotradeProductImageCandidateResolver
     ) {}
 
     /**
-     * @param array<int,array<string,mixed>> $records
-     * @param array<string,mixed> $options
+     * @param  array<int,array<string,mixed>>  $records
+     * @param  array<string,mixed>  $options
      * @return array{summary:array<string,int>,candidates:list<EcotradeProductImageCandidate>,copy_sources:list<Item>}
      */
     public function resolve(array $records, array $options = []): array
@@ -38,6 +38,7 @@ class EcotradeProductImageCandidateResolver
         $failedSourceHashes = $this->lookupSet($options['failed_source_hashes'] ?? []);
         $failedCheckpointAvailable = (bool) ($options['failed_checkpoint_available'] ?? false);
         $retryIncompleteOnly = (bool) ($options['retry_incomplete_only'] ?? false);
+        $allowCrossGroup = (bool) ($options['allow_cross_group'] ?? false);
         $allowedItemIds = array_key_exists('allowed_item_ids', $options)
             ? $this->lookupSet((array) $options['allowed_item_ids'])
             : null;
@@ -52,6 +53,7 @@ class EcotradeProductImageCandidateResolver
 
             if (! $product->isValid() || ! CatalystSerialValidator::isUsable($product->serialCode)) {
                 $summary['records_invalid']++;
+
                 continue;
             }
 
@@ -59,6 +61,7 @@ class EcotradeProductImageCandidateResolver
 
             if (! is_string($product->mainImageUrl) || trim($product->mainImageUrl) === '') {
                 $summary['records_without_main_image']++;
+
                 continue;
             }
 
@@ -66,18 +69,22 @@ class EcotradeProductImageCandidateResolver
 
             if ($this->isRejectedImageUrl($product->mainImageUrl)) {
                 $summary['records_rejected_placeholder_image']++;
+
                 continue;
             }
 
             $groupName = $this->canonicalGroupFor($product, $groupIds);
-            $serial = Item::normalizeSerialValue($product->serialCode);
+            $serials = $this->normalizer->serialFamilies($product);
 
-            if ($groupName === '' || $serial === '') {
+            if ($groupName === '' || $serials === []) {
                 $summary['records_invalid']++;
+
                 continue;
             }
 
-            $productsByNamedFamily[$groupName.'|'.$serial][] = $product;
+            foreach ($serials as $serial) {
+                $productsByNamedFamily[$groupName.'|'.$serial][] = $product;
+            }
         }
 
         [$productsByFamily, $serialsByGroup] = $this->resolveProductFamilies(
@@ -87,15 +94,27 @@ class EcotradeProductImageCandidateResolver
         );
         $summary['families_available'] = count($productsByFamily);
         $itemsByFamily = $this->loadItemsByFamily($serialsByGroup);
+        $itemsBySerial = $allowCrossGroup
+            ? $this->loadItemsBySerial(array_merge(...array_values($serialsByGroup)))
+            : [];
         $candidates = [];
         $copySources = [];
 
         foreach ($productsByFamily as $familyKey => $product) {
+            [, $familySerial] = explode('|', $familyKey, 2);
             /** @var Collection<int,Item> $items */
             $items = ($itemsByFamily[$familyKey] ?? collect())->unique('id')->values();
 
+            if ($allowCrossGroup) {
+                $items = $items
+                    ->merge($itemsBySerial[$familySerial] ?? collect())
+                    ->unique('id')
+                    ->values();
+            }
+
             if ($items->isEmpty()) {
                 $summary['families_without_items']++;
+
                 continue;
             }
 
@@ -107,8 +126,13 @@ class EcotradeProductImageCandidateResolver
                 ->unique();
 
             if ($primaryFamilies->count() > 1) {
-                $summary['families_ambiguous']++;
-                continue;
+                $items = $this->exactPrimaryItems($items, $familySerial);
+
+                if ($items->isEmpty()) {
+                    $summary['families_ambiguous']++;
+
+                    continue;
+                }
             }
 
             $summary['matched_items'] += $items->count();
@@ -126,13 +150,15 @@ class EcotradeProductImageCandidateResolver
                 continue;
             }
 
-            $existingImageSource = $items->first(
+            $existingImagePool = $allowCrossGroup ? $eligibleItems : $items;
+            $existingImageSource = $existingImagePool->first(
                 static fn (Item $item): bool => $item->getFirstMedia('images') !== null,
             );
 
             if ($existingImageSource instanceof Item && ! $replaceExisting) {
                 $copySources[(string) $existingImageSource->id] = $existingImageSource;
                 $summary['skipped_existing_image']++;
+
                 continue;
             }
 
@@ -154,19 +180,17 @@ class EcotradeProductImageCandidateResolver
                 continue;
             }
 
-            $summary['candidates_available']++;
-
-            if ($limit !== null && count($candidates) >= $limit) {
-                continue;
-            }
-
             $candidates[] = new EcotradeProductImageCandidate(
                 $target,
                 $product,
                 (string) $product->mainImageUrl,
             );
-            $summary['candidates_selected']++;
         }
+
+        $candidates = $this->uniqueSafeCandidates($candidates, $summary);
+        $summary['candidates_available'] = count($candidates);
+        $candidates = $limit === null ? $candidates : array_slice($candidates, 0, $limit);
+        $summary['candidates_selected'] = count($candidates);
 
         $summary['copy_sources_available'] = count($copySources);
 
@@ -175,6 +199,28 @@ class EcotradeProductImageCandidateResolver
             'candidates' => $candidates,
             'copy_sources' => array_values($copySources),
         ];
+    }
+
+    /**
+     * @param  list<EcotradeProductImageCandidate>  $candidates
+     * @param  array<string,int>  $summary
+     * @return list<EcotradeProductImageCandidate>
+     */
+    private function uniqueSafeCandidates(array $candidates, array &$summary): array
+    {
+        return collect($candidates)
+            ->groupBy(static fn (EcotradeProductImageCandidate $candidate): string => (string) $candidate->item->id)
+            ->flatMap(function (Collection $itemCandidates) use (&$summary): array {
+                if ($itemCandidates->pluck('sourceImageUrl')->unique()->count() > 1) {
+                    $summary['families_ambiguous']++;
+
+                    return [];
+                }
+
+                return [$itemCandidates->first()];
+            })
+            ->values()
+            ->all();
     }
 
     /** @return array<string,int> */
@@ -205,9 +251,9 @@ class EcotradeProductImageCandidateResolver
     }
 
     /**
-     * @param array<string,list<EcotradeProductData>> $productsByNamedFamily
-     * @param array<string,string> $groupIds
-     * @param array<string,int> $summary
+     * @param  array<string,list<EcotradeProductData>>  $productsByNamedFamily
+     * @param  array<string,string>  $groupIds
+     * @param  array<string,int>  $summary
      * @return array{0:array<string,EcotradeProductData>,1:array<string,list<string>>}
      */
     private function resolveProductFamilies(array $productsByNamedFamily, array $groupIds, array &$summary): array
@@ -221,6 +267,7 @@ class EcotradeProductImageCandidateResolver
 
             if (! is_string($groupId) || $groupId === '') {
                 $summary['families_without_group']++;
+
                 continue;
             }
 
@@ -232,6 +279,7 @@ class EcotradeProductImageCandidateResolver
 
             if ($imageUrls->count() > 1) {
                 $summary['families_ambiguous']++;
+
                 continue;
             }
 
@@ -262,15 +310,7 @@ class EcotradeProductImageCandidateResolver
                 ->where('car_group_id', $groupId)
                 ->get()
                 ->each(function (Item $item) use ($groupId, $wanted, &$itemsByFamily): void {
-                    $codes = collect([
-                        $item->normalized_serial ?: $item->serial_code,
-                        ...$item->extraCodes->pluck('code')->all(),
-                    ])
-                        ->map(static fn (mixed $code): string => Item::normalizeSerialValue($code))
-                        ->filter()
-                        ->unique();
-
-                    foreach ($codes as $code) {
+                    foreach ($this->normalizedItemCodes($item) as $code) {
                         if (! isset($wanted[$code])) {
                             continue;
                         }
@@ -285,10 +325,55 @@ class EcotradeProductImageCandidateResolver
         return $itemsByFamily;
     }
 
+    /** @param list<string> $serials @return array<string,Collection<int,Item>> */
+    private function loadItemsBySerial(array $serials): array
+    {
+        $itemsBySerial = [];
+        $wanted = $this->lookupSet($serials);
+
+        Item::query()
+            ->with(['media', 'extraCodes'])
+            ->get()
+            ->each(function (Item $item) use ($wanted, &$itemsBySerial): void {
+                foreach ($this->normalizedItemCodes($item) as $code) {
+                    if (! isset($wanted[$code])) {
+                        continue;
+                    }
+
+                    $itemsBySerial[$code] ??= collect();
+                    $itemsBySerial[$code]->push($item);
+                }
+            });
+
+        return $itemsBySerial;
+    }
+
+    /** @return Collection<int,string> */
+    private function normalizedItemCodes(Item $item): Collection
+    {
+        return collect([
+            $item->normalized_serial ?: $item->serial_code,
+            ...$item->extraCodes->pluck('code')->all(),
+        ])
+            ->map(static fn (mixed $code): string => Item::normalizeSerialValue($code))
+            ->filter()
+            ->unique();
+    }
+
+    /** @param Collection<int,Item> $items @return Collection<int,Item> */
+    private function exactPrimaryItems(Collection $items, string $familySerial): Collection
+    {
+        return $items
+            ->filter(static fn (Item $item): bool => Item::normalizeSerialValue(
+                $item->normalized_serial ?: $item->serial_code,
+            ) === $familySerial)
+            ->values();
+    }
+
     /**
-     * @param Collection<int,Item> $items
-     * @param array<string,true>|null $allowedItemIds
-     * @param array<string,int> $summary
+     * @param  Collection<int,Item>  $items
+     * @param  array<string,true>|null  $allowedItemIds
+     * @param  array<string,int>  $summary
      * @return Collection<int,Item>
      */
     private function eligibleItems(Collection $items, ?array $allowedItemIds, array &$summary): Collection
@@ -324,6 +409,7 @@ class EcotradeProductImageCandidateResolver
 
         if (isset($completedItemIds[$itemId]) || ($sourceHash !== null && isset($completedSourceHashes[$sourceHash]))) {
             $summary['skipped_checkpointed']++;
+
             return true;
         }
 
@@ -334,6 +420,7 @@ class EcotradeProductImageCandidateResolver
             && ($sourceHash === null || ! isset($failedSourceHashes[$sourceHash]))
         ) {
             $summary['skipped_not_failed_checkpoint']++;
+
             return true;
         }
 
