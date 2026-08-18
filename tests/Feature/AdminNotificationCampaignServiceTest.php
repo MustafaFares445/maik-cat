@@ -105,6 +105,40 @@ test('service sends campaign to a legacy roleless app user and notifications api
         ->assertJsonPath('data.0.data.body', '<p>Legacy body</p>');
 });
 
+test('service persists emoji content in database notifications without an fcm token', function () {
+    fakeMessaging();
+    seedRole('admin');
+    seedRole('app_user');
+
+    $sender = User::factory()->create()->assignRole('admin');
+    $recipientUser = User::factory()->create([
+        'preferred_language' => 'en',
+        'is_active' => true,
+        'fcm_token' => null,
+    ])->assignRole('app_user');
+
+    $campaign = app(AdminNotificationCampaignService::class)->sendCampaign($sender, [
+        'audience_mode' => 'specific',
+        'user_ids' => [$recipientUser->id],
+        'type' => NotificationType::GENERALE_NOTIFICATION,
+        'title_en' => '<p>New update 🚗✨</p>',
+        'body_en' => '<p>Fresh inventory is available 🔧📦</p>',
+    ]);
+
+    $recipient = $campaign->recipients->firstWhere('user_id', $recipientUser->id);
+    $databaseNotification = $recipientUser->notifications()->latest()->first();
+
+    expect($campaign->type)->toBe(NotificationType::GENERALE_NOTIFICATION)
+        ->and($campaign->total_recipients)->toBe(1)
+        ->and($campaign->delivered_count)->toBe(1)
+        ->and($campaign->failed_count)->toBe(0)
+        ->and($recipient)->not->toBeNull()
+        ->and($databaseNotification)->not->toBeNull()
+        ->and($recipient->notification_id)->toBe($databaseNotification->id)
+        ->and($databaseNotification->data['title'])->toBe('<p>New update 🚗✨</p>')
+        ->and($databaseNotification->data['body'])->toBe('<p>Fresh inventory is available 🔧📦</p>');
+});
+
 test('service sends campaign to active users inside an audience group', function () {
     fakeMessaging();
     seedRole('admin');
