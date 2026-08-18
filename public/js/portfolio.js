@@ -1,17 +1,17 @@
 (() => {
     document.documentElement.classList.add('js');
 
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
-    const revealEverything = () => {
-        document.querySelectorAll('.reveal').forEach((el) => el.classList.add('visible'));
+    const revealAll = () => {
+        document.querySelectorAll('.reveal').forEach((element) => element.classList.add('visible'));
     };
 
-    window.addEventListener('DOMContentLoaded', () => {
+    const boot = () => {
         requestAnimationFrame(() => document.body.classList.add('ready'));
 
-        if (reducedMotion || !('IntersectionObserver' in window)) {
-            revealEverything();
+        if (prefersReducedMotion.matches || !('IntersectionObserver' in window)) {
+            revealAll();
             return;
         }
 
@@ -22,30 +22,20 @@
                 currentObserver.unobserve(entry.target);
             });
         }, {
-            threshold: 0.16,
-            rootMargin: '0px 0px -10% 0px',
+            threshold: 0.12,
+            rootMargin: '0px 0px -6% 0px',
         });
 
-        document.querySelectorAll('.reveal').forEach((el) => observer.observe(el));
+        document.querySelectorAll('.reveal').forEach((element) => observer.observe(element));
+    };
 
-        document.querySelectorAll('[data-tilt]').forEach((el) => {
-            const strength = Number(el.dataset.strength || 4);
-
-            el.addEventListener('pointermove', (event) => {
-                if (event.pointerType === 'touch') return;
-
-                const rect = el.getBoundingClientRect();
-                const x = (event.clientX - rect.left) / rect.width - 0.5;
-                const y = (event.clientY - rect.top) / rect.height - 0.5;
-
-                el.style.setProperty('--ry', `${x * strength}deg`);
-                el.style.setProperty('--rx', `${y * -strength}deg`);
-            });
-
-            el.addEventListener('pointerleave', () => {
-                el.style.setProperty('--ry', '0deg');
-                el.style.setProperty('--rx', '0deg');
-            });
-        });
+    document.addEventListener('visibilitychange', () => {
+        document.body.classList.toggle('animation-paused', document.hidden);
     });
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', boot, { once: true });
+    } else {
+        boot();
+    }
 })();
