@@ -27,6 +27,10 @@ class Item extends Model implements HasMedia
 
     private static ?bool $hasAssayFingerprintColumn = null;
 
+    private static bool $skipAssayFingerprintConflicts = false;
+
+    private static int $assayFingerprintConflictSkips = 0;
+
     protected $fillable = [
         'car_group_id',
         'model',
@@ -59,15 +63,44 @@ class Item extends Model implements HasMedia
 
     protected static function booted(): void
     {
-        static::saving(function (Item $item): void {
+        static::saving(function (Item $item) {
             $item->normalized_serial = self::normalizeSerialValue($item->serial_code);
 
             self::$hasAssayFingerprintColumn ??= Schema::hasColumn($item->getTable(), 'assay_fingerprint');
 
             if (self::$hasAssayFingerprintColumn) {
                 $item->assay_fingerprint = ItemAssayFingerprint::fromItem($item);
+
+                if (
+                    self::$skipAssayFingerprintConflicts
+                    && $item->assay_fingerprint !== null
+                    && self::query()
+                        ->where('assay_fingerprint', $item->assay_fingerprint)
+                        ->when($item->exists, static fn (Builder $query): Builder => $query->whereKeyNot($item->getKey()))
+                        ->exists()
+                ) {
+                    self::$assayFingerprintConflictSkips++;
+
+                    return false;
+                }
             }
         });
+    }
+
+    public static function beginSkippingAssayFingerprintConflicts(): void
+    {
+        self::$skipAssayFingerprintConflicts = true;
+        self::$assayFingerprintConflictSkips = 0;
+    }
+
+    public static function endSkippingAssayFingerprintConflicts(): int
+    {
+        $skipped = self::$assayFingerprintConflictSkips;
+
+        self::$skipAssayFingerprintConflicts = false;
+        self::$assayFingerprintConflictSkips = 0;
+
+        return $skipped;
     }
 
     public static function normalizeSerialValue(mixed $serial): string
