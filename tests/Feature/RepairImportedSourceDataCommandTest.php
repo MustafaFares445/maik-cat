@@ -184,3 +184,67 @@ test('repairs serial codes from an Excel workbook row', function () {
         @unlink($path);
     }
 });
+
+test('skips Excel repair rows that would duplicate an existing assay fingerprint', function () {
+    $group = CarGroup::query()->create([
+        'id' => (string) Str::uuid(),
+        'name' => 'Toyota',
+        'excel_sheet_name' => 'TOYOTA',
+        'region' => 'Asian',
+        'source' => 'ecotrade',
+    ]);
+
+    Item::query()->create([
+        'id' => (string) Str::uuid(),
+        'car_group_id' => $group->id,
+        'model' => 'Other Toyota Model',
+        'serial_code' => 'VVTI',
+        'normalized_serial' => Item::normalizeSerialValue('VVTI'),
+        'weight_kg' => 0.95,
+        'pt_ppm' => 2383.5,
+        'pd_ppm' => 26.25,
+        'rh_ppm' => 687.75,
+        'shape_code' => null,
+        'details' => 'existing item with the accepted fingerprint',
+        'source' => 'excel_import',
+    ]);
+
+    $item = Item::query()->create([
+        'id' => (string) Str::uuid(),
+        'car_group_id' => $group->id,
+        'model' => 'Toyota',
+        'serial_code' => 'WRONG-VVTI',
+        'normalized_serial' => Item::normalizeSerialValue('WRONG-VVTI'),
+        'weight_kg' => 0.95,
+        'pt_ppm' => 2383.5,
+        'pd_ppm' => 26.25,
+        'rh_ppm' => 687.75,
+        'shape_code' => null,
+        'details' => '2731 | TOYOTA | VVTI | SIYANA NO NUMBER | manifold 2pcs',
+        'source' => 'excel_import',
+    ]);
+
+    $path = repairWorkbookPath([
+        'Toyota' => [
+            ['ConverterRefNo', 'AdditionalDescription', 'ManufacturerName', 'WeightOfCarrier', 'PtContentGT', 'PdContentGT', 'RhContentGT'],
+            ['VVTI', '2731 | TOYOTA | VVTI | SIYANA NO NUMBER | manifold 2pcs', 'Toyota', 0.95, 2383.5, 26.25, 687.75],
+        ],
+    ]);
+
+    try {
+        $this->artisan('imports:repair-source-data', [
+            'paths' => [$path],
+            '--dry-run' => true,
+        ])
+            ->expectsOutputToContain('rows_updated: 0')
+            ->expectsOutputToContain('rows_skipped_assay_fingerprint_conflict: 1')
+            ->assertExitCode(0);
+
+        $item->refresh();
+
+        expect($item->serial_code)->toBe('WRONG-VVTI')
+            ->and($item->normalized_serial)->toBe(Item::normalizeSerialValue('WRONG-VVTI'));
+    } finally {
+        @unlink($path);
+    }
+});
