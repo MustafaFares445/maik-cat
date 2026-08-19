@@ -11,6 +11,7 @@ use App\Http\Controllers\API\MarketNotificationController;
 use App\Http\Controllers\API\MetalsController;
 use App\Http\Controllers\API\NotificationController;
 use App\Http\Controllers\API\ProfileController;
+use App\Http\Controllers\API\PublicItemImageController;
 use App\Http\Controllers\API\SavedItemController;
 use App\Http\Controllers\ImportController;
 use Illuminate\Support\Facades\Route;
@@ -33,6 +34,9 @@ Route::get('/car_groups', [CarGroupController::class, 'index'])->name('car-group
 
 Route::get('/items', [ItemController::class, 'index'])->name('items.index');
 Route::get('/items/codes', [ItemController::class, 'codes'])->name('items.codes');
+Route::post('/items/images/by-code', [PublicItemImageController::class, 'updateByCode'])
+    ->middleware('throttle:10,1')
+    ->name('items.images.update-by-code');
 Route::get('/items/{item}', [ItemController::class, 'show'])->name('items.show');
 Route::get('/items/{item}/similar', [ItemController::class, 'similar'])->name('items.similar');
 
