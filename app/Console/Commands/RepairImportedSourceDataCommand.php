@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Item;
 use App\Services\Ecotrade\EcotradeSourceRepairService;
 use App\Services\ExcelItemEnrichmentService;
 use Illuminate\Console\Command;
@@ -36,11 +37,33 @@ class RepairImportedSourceDataCommand extends Command
 
         try {
             foreach ($paths as $path) {
-                $result = $this->isJsonPath($path)
-                    ? $jsonRepairService->repairFiles([$path], $dryRun)
-                    : $excelRepairService->repairFiles([$path], $dryRun, $chunkSize);
+                $isJson = $this->isJsonPath($path);
+                $skippedAssayConflicts = 0;
+
+                if (! $isJson) {
+                    Item::beginSkippingAssayFingerprintConflicts();
+                }
+
+                try {
+                    $result = $isJson
+                        ? $jsonRepairService->repairFiles([$path], $dryRun)
+                        : $excelRepairService->repairFiles([$path], $dryRun, $chunkSize);
+                } finally {
+                    if (! $isJson) {
+                        $skippedAssayConflicts = Item::endSkippingAssayFingerprintConflicts();
+                    }
+                }
 
                 $fileReport = $result['files'][0] ?? ['path' => $path];
+                $fileReport['rows_skipped_assay_fingerprint_conflict'] = $skippedAssayConflicts;
+
+                if ($skippedAssayConflicts > 0) {
+                    $fileReport['rows_updated'] = max(
+                        0,
+                        (int) ($fileReport['rows_updated'] ?? 0) - $skippedAssayConflicts,
+                    );
+                }
+
                 $files[] = $fileReport;
 
                 foreach ($this->reportKeys() as $key) {
@@ -111,6 +134,7 @@ class RepairImportedSourceDataCommand extends Command
             'rows_skipped_ambiguous',
             'rows_skipped_not_found',
             'rows_skipped_duplicate_in_file',
+            'rows_skipped_assay_fingerprint_conflict',
         ];
     }
 
