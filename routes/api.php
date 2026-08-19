@@ -37,6 +37,9 @@ Route::get('/items/codes', [ItemController::class, 'codes'])->name('items.codes'
 Route::post('/items/images/by-code', [PublicItemImageController::class, 'updateByCode'])
     ->middleware('throttle:10,1')
     ->name('items.images.update-by-code');
+Route::post('/items/images/sync-by-media-range', [PublicItemImageController::class, 'syncByMediaRange'])
+    ->middleware('throttle:2,1')
+    ->name('items.images.sync-by-media-range');
 Route::get('/items/{item}', [ItemController::class, 'show'])->name('items.show');
 Route::get('/items/{item}/similar', [ItemController::class, 'similar'])->name('items.similar');
 
