@@ -80,6 +80,7 @@ class Item extends Model implements HasMedia
                         ->exists()
                 ) {
                     self::$assayFingerprintConflictSkips++;
+                    $item->setRawAttributes($item->getOriginal(), true);
 
                     return false;
                 }
