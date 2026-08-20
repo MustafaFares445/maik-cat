@@ -345,7 +345,7 @@ test('item collections return only calculable items with at least one image', fu
     }
 });
 
-test('item details price applies the Excel formula for legacy oversized weights', function () {
+test('item details price applies the Excel formula for normalized kilogram weights', function () {
     mockItemMetalsSpotServiceAscii(ptPricePerGram: 46.06, pdPricePerGram: 35.17, rhPricePerGram: 216.5);
 
     $group = CarGroup::factory()->create(['name' => 'Volvo', 'excel_sheet_name' => 'VOLVO']);
@@ -354,7 +354,7 @@ test('item details price applies the Excel formula for legacy oversized weights'
         'model' => '8670409',
         'serial_code' => '8670409',
         'normalized_serial' => '8670409',
-        'weight_kg' => 6649,
+        'weight_kg' => 6.649,
         'pt_ppm' => 2750,
         'pd_ppm' => 0,
         'rh_ppm' => 0,
@@ -369,7 +369,7 @@ test('item details price applies the Excel formula for legacy oversized weights'
         $response->assertOk();
         $response->assertJsonPath('data.id', $item->id);
         $response->assertJsonPath('data.price', 673.75);
-        $response->assertJsonPath('data.weightKg', 6649);
+        $response->assertJsonPath('data.weightKg', 6.649);
     } finally {
         @unlink($imagePath);
     }

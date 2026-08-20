@@ -12,6 +12,7 @@ beforeEach(function (): void {
         'services.metals.rapidapi_key' => 'test-key',
         'services.metals.timeout' => 5,
         'services.metals.cache_ttl' => 60,
+        'services.metals.fallback_ttl' => 86400,
     ]);
 });
 
@@ -43,6 +44,7 @@ test('fetches and normalizes PT PD RH from Metal Sentinel using bid', function (
 
     expect($result['source'])->toBe('metal-sentinel')
         ->and($result['cached'])->toBeFalse()
+        ->and($result['stale'])->toBeFalse()
         ->and($result['currency'])->toBe('USD')
         ->and($result['fx_rate'])->toBe(1.0)
         ->and($result['data'])->toHaveCount(3);
@@ -142,6 +144,36 @@ test('throws when upstream returns error status', function (): void {
 
     expect(fn () => $service->all('USD'))
         ->toThrow(RuntimeException::class, MetalsSpotService::UPSTREAM_UNAVAILABLE_MESSAGE);
+});
+
+test('uses the last successful snapshot when the upstream becomes unavailable', function (): void {
+    $requestCount = 0;
+
+    Http::fake(function () use (&$requestCount) {
+        $requestCount++;
+
+        if ($requestCount > 3) {
+            return Http::response([], 503);
+        }
+
+        return Http::response([
+            'bid' => 1000.0,
+            'change' => 0.0,
+            'changePercent' => 0.0,
+        ], 200);
+    });
+
+    $service = app(MetalsSpotService::class);
+    $fresh = $service->all('USD');
+    $fallback = $service->refresh('USD');
+
+    expect($fresh['stale'])->toBeFalse()
+        ->and($fallback['cached'])->toBeTrue()
+        ->and($fallback['stale'])->toBeTrue()
+        ->and($fallback['updated_at'])->toBe($fresh['updated_at'])
+        ->and($fallback['data'])->toBe($fresh['data']);
+
+    Http::assertSentCount(6);
 });
 
 test('throws when api key is missing', function (): void {

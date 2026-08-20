@@ -7,6 +7,9 @@ use App\Models\CarGroup;
 use App\Models\Item;
 use App\Support\Excel\WindowedWorkbook;
 use App\Support\Excel\WindowReadFilter;
+use App\Support\Items\ItemAssayFingerprint;
+use App\Support\Items\LegacyItemWeightNormalizer;
+use App\Support\Items\LegacyMaikAssayNormalizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -584,6 +587,12 @@ class ExcelItemEnrichmentService
             return;
         }
 
+        if ($this->wouldDuplicateAssayFingerprint($item, $updates)) {
+            $report['rows_skipped_existing_assay']++;
+
+            return;
+        }
+
         $item->fill($updates);
         $item->save();
 
@@ -688,6 +697,27 @@ class ExcelItemEnrichmentService
         }
 
         return $updates;
+    }
+
+    /**
+     * @param  array<string, mixed>  $updates
+     */
+    private function wouldDuplicateAssayFingerprint(Item $item, array $updates): bool
+    {
+        $fingerprint = ItemAssayFingerprint::make(
+            $updates['car_group_id'] ?? $item->car_group_id,
+            $updates['normalized_serial'] ?? $updates['serial_code'] ?? $item->normalized_serial ?? $item->serial_code,
+            $updates['weight_kg'] ?? $item->weight_kg,
+            $updates['pt_ppm'] ?? $item->pt_ppm,
+            $updates['pd_ppm'] ?? $item->pd_ppm,
+            $updates['rh_ppm'] ?? $item->rh_ppm,
+        );
+
+        return $fingerprint !== null
+            && Item::query()
+                ->where('assay_fingerprint', $fingerprint)
+                ->whereKeyNot($item->getKey())
+                ->exists();
     }
 
     /**
@@ -804,7 +834,7 @@ class ExcelItemEnrichmentService
         }
 
         if ($bestScore === 0) {
-            return [
+            return $this->withAssayMultiplier($sheet, [
                 'start_row' => 4,
                 'model' => 1,
                 'serial' => 2,
@@ -815,7 +845,7 @@ class ExcelItemEnrichmentService
                 'extra_codes' => 11,
                 'details' => 13,
                 'shape_code' => 17,
-            ];
+            ]);
         }
 
         $mapped = [
@@ -891,7 +921,7 @@ class ExcelItemEnrichmentService
             }
         }
 
-        return [
+        return $this->withAssayMultiplier($sheet, [
             'start_row' => $bestRow + 1,
             'model' => (int) ($mapped['model'] ?? 0),
             'serial' => (int) ($mapped['serial'] ?? 2),
@@ -902,7 +932,15 @@ class ExcelItemEnrichmentService
             'extra_codes' => (int) ($mapped['extra_codes'] ?? 0),
             'details' => (int) ($mapped['details'] ?? 0),
             'shape_code' => (int) ($mapped['shape_code'] ?? 0),
-        ];
+        ]);
+    }
+
+    /** @param array<string,int|float> $layout */
+    private function withAssayMultiplier(Worksheet $sheet, array $layout): array
+    {
+        $layout['assay_multiplier'] = LegacyMaikAssayNormalizer::assayMultiplier($sheet, $layout);
+
+        return $layout;
     }
 
     private function inferLegacyHeaderRole(string $header): ?string
@@ -1000,13 +1038,17 @@ class ExcelItemEnrichmentService
             return $this->cleanString($sheet->getCellByColumnAndRow($column, $rowIndex)->getValue());
         };
 
+        $assayMultiplier = (float) ($layout['assay_multiplier'] ?? 1.0);
+
         return [
             'model' => $model,
             'serial_code' => $this->readStringColumn($sheet, (int) ($layout['serial'] ?? 0), $rowIndex),
-            'weight_kg' => $this->readDecimalColumn($sheet, (int) ($layout['weight'] ?? 0), $rowIndex, 8, 3),
-            'pt_ppm' => $this->readDecimalColumn($sheet, (int) ($layout['pt'] ?? 0), $rowIndex, 10, 4),
-            'pd_ppm' => $this->readDecimalColumn($sheet, (int) ($layout['pd'] ?? 0), $rowIndex, 10, 4),
-            'rh_ppm' => $this->readDecimalColumn($sheet, (int) ($layout['rh'] ?? 0), $rowIndex, 10, 4),
+            'weight_kg' => LegacyItemWeightNormalizer::toKilograms(
+                $this->readDecimalColumn($sheet, (int) ($layout['weight'] ?? 0), $rowIndex, 8, 3),
+            ),
+            'pt_ppm' => LegacyMaikAssayNormalizer::toPpm($this->readDecimalColumn($sheet, (int) ($layout['pt'] ?? 0), $rowIndex, 10, 4), $assayMultiplier),
+            'pd_ppm' => LegacyMaikAssayNormalizer::toPpm($this->readDecimalColumn($sheet, (int) ($layout['pd'] ?? 0), $rowIndex, 10, 4), $assayMultiplier),
+            'rh_ppm' => LegacyMaikAssayNormalizer::toPpm($this->readDecimalColumn($sheet, (int) ($layout['rh'] ?? 0), $rowIndex, 10, 4), $assayMultiplier),
             'extra_codes' => $readOptional((int) ($layout['extra_codes'] ?? 0)),
             'details' => $readOptional((int) ($layout['details'] ?? 0)),
             'shape_code' => $this->readShapeCodeColumn($sheet, (int) ($layout['shape_code'] ?? 0), $rowIndex),
@@ -1371,6 +1413,7 @@ class ExcelItemEnrichmentService
             'rows_skipped_ambiguous' => 0,
             'rows_skipped_not_found' => 0,
             'rows_skipped_duplicate_in_file' => 0,
+            'rows_skipped_existing_assay' => 0,
         ];
     }
 
@@ -1389,6 +1432,7 @@ class ExcelItemEnrichmentService
             'rows_skipped_ambiguous',
             'rows_skipped_not_found',
             'rows_skipped_duplicate_in_file',
+            'rows_skipped_existing_assay',
         ];
     }
 

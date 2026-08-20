@@ -184,3 +184,63 @@ test('repairs serial codes from an Excel workbook row', function () {
         @unlink($path);
     }
 });
+
+test('skips an Excel repair when its target assay already belongs to an existing item', function () {
+    $group = CarGroup::query()->create([
+        'id' => (string) Str::uuid(),
+        'name' => 'Toyota',
+        'excel_sheet_name' => 'TOYOTA',
+        'region' => 'Asian',
+        'source' => 'ecotrade',
+    ]);
+
+    $attributes = [
+        'car_group_id' => $group->id,
+        'model' => 'Toyota',
+        'weight_kg' => 0.95,
+        'pt_ppm' => 2383.5,
+        'pd_ppm' => 26.25,
+        'rh_ppm' => 687.75,
+        'shape_code' => null,
+        'source' => 'excel_import',
+    ];
+
+    $itemToRepair = Item::query()->create([
+        ...$attributes,
+        'id' => (string) Str::uuid(),
+        'serial_code' => 'WRONG SERIAL',
+        'normalized_serial' => Item::normalizeSerialValue('WRONG SERIAL'),
+        'details' => '2731 | TOYOTA | VVTI | SIYANA NO NUMBER | manifold 2pcs',
+    ]);
+
+    Item::query()->create([
+        ...$attributes,
+        'id' => (string) Str::uuid(),
+        'serial_code' => 'VVTI',
+        'normalized_serial' => Item::normalizeSerialValue('VVTI'),
+        'details' => 'Already repaired item',
+    ]);
+
+    $path = repairWorkbookPath([
+        'Toyota' => [
+            ['ConverterRefNo', 'AdditionalDescription', 'ManufacturerName', 'WeightOfCarrier', 'PtContentGT', 'PdContentGT', 'RhContentGT'],
+            ['VVTI', '2731 | TOYOTA | VVTI | SIYANA NO NUMBER | manifold 2pcs', 'Toyota', 0.95, 2383.5, 26.25, 687.75],
+        ],
+    ]);
+
+    try {
+        $this->artisan('imports:repair-source-data', [
+            'paths' => [$path],
+        ])
+            ->expectsOutputToContain('rows_updated: 0')
+            ->expectsOutputToContain('rows_skipped_existing_assay: 1')
+            ->assertExitCode(0);
+
+        $itemToRepair->refresh();
+
+        expect($itemToRepair->serial_code)->toBe('WRONG SERIAL')
+            ->and($itemToRepair->normalized_serial)->toBe(Item::normalizeSerialValue('WRONG SERIAL'));
+    } finally {
+        @unlink($path);
+    }
+});

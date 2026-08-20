@@ -57,7 +57,7 @@ test('item price service matches the Excel formula and uses the live metals snap
         ->and($service->priceFor($secondItem))->toBe(44.0);
 });
 
-test('item price service applies the Excel formula after normalizing legacy gram weights', function (): void {
+test('item price service applies the Excel formula to normalized kilogram weights', function (): void {
     $spotPayload = [
         'source' => 'metal-sentinel',
         'cached' => false,
@@ -91,7 +91,7 @@ test('item price service applies the Excel formula after normalizing legacy gram
     app()->instance(MetalsSpotService::class, $mock);
 
     $item = new Item([
-        'weight_kg' => 6649,
+        'weight_kg' => 6.649,
         'pt_ppm' => 2750,
         'pd_ppm' => 0,
         'rh_ppm' => 0,

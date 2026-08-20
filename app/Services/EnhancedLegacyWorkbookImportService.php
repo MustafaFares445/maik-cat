@@ -8,6 +8,8 @@ use App\Models\Item;
 use App\Support\Excel\WindowedWorkbook;
 use App\Support\Excel\WindowReadFilter;
 use App\Support\Items\CatalystSerialValidator;
+use App\Support\Items\LegacyItemWeightNormalizer;
+use App\Support\Items\LegacyMaikAssayNormalizer;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
@@ -268,7 +270,7 @@ class EnhancedLegacyWorkbookImportService
         return true;
     }
 
-    /** @return array{start_row:int,model:int,serial:int,weight:int,pt:int,pd:int,rh:int,extra_codes:int,details:int,shape_code:int} */
+    /** @return array{start_row:int,model:int,serial:int,weight:int,pt:int,pd:int,rh:int,extra_codes:int,details:int,shape_code:int,assay_multiplier:float} */
     private function detectLayout(Worksheet $sheet): array
     {
         $highestColumn = Coordinate::columnIndexFromString($sheet->getHighestDataColumn());
@@ -326,7 +328,7 @@ class EnhancedLegacyWorkbookImportService
 
         $fallback = $this->fallbackLayout();
 
-        return [
+        return $this->withAssayMultiplier($sheet, [
             'start_row' => $bestHeaderRow + 1,
             'model' => (int) ($columns['model'] ?? $fallback['model']),
             'serial' => (int) ($columns['serial'] ?? $fallback['serial']),
@@ -337,10 +339,10 @@ class EnhancedLegacyWorkbookImportService
             'extra_codes' => (int) ($columns['extra_codes'] ?? $fallback['extra_codes']),
             'details' => (int) ($columns['details'] ?? $fallback['details']),
             'shape_code' => (int) ($columns['shape_code'] ?? $fallback['shape_code']),
-        ];
+        ]);
     }
 
-    /** @return array{start_row:int,model:int,serial:int,weight:int,pt:int,pd:int,rh:int,extra_codes:int,details:int,shape_code:int} */
+    /** @return array{start_row:int,model:int,serial:int,weight:int,pt:int,pd:int,rh:int,extra_codes:int,details:int,shape_code:int,assay_multiplier:float} */
     private function fallbackLayout(): array
     {
         return [
@@ -354,7 +356,16 @@ class EnhancedLegacyWorkbookImportService
             'extra_codes' => 11,
             'details' => 13,
             'shape_code' => 17,
+            'assay_multiplier' => 1.0,
         ];
+    }
+
+    /** @param array<string,int|float> $layout */
+    private function withAssayMultiplier(Worksheet $sheet, array $layout): array
+    {
+        $layout['assay_multiplier'] = LegacyMaikAssayNormalizer::assayMultiplier($sheet, $layout);
+
+        return $layout;
     }
 
     private function headerRole(string $header): ?string
@@ -389,16 +400,18 @@ class EnhancedLegacyWorkbookImportService
         return null;
     }
 
-    /** @param array<string,int> $layout @return array<string,mixed> */
+    /** @param array<string,int|float> $layout @return array<string,mixed> */
     private function mapRow(Worksheet $sheet, int $rowIndex, array $layout, string $fallbackModel): array
     {
+        $assayMultiplier = (float) ($layout['assay_multiplier'] ?? 1.0);
+
         return [
             'model' => $this->stringCell($sheet, $layout['model'], $rowIndex) ?? $fallbackModel,
             'serial_code' => $this->stringCell($sheet, $layout['serial'], $rowIndex),
-            'weight_kg' => $this->numberCell($sheet, $layout['weight'], $rowIndex),
-            'pt_ppm' => $this->numberCell($sheet, $layout['pt'], $rowIndex),
-            'pd_ppm' => $this->numberCell($sheet, $layout['pd'], $rowIndex),
-            'rh_ppm' => $this->numberCell($sheet, $layout['rh'], $rowIndex),
+            'weight_kg' => LegacyItemWeightNormalizer::toKilograms($this->numberCell($sheet, $layout['weight'], $rowIndex)),
+            'pt_ppm' => LegacyMaikAssayNormalizer::toPpm($this->numberCell($sheet, $layout['pt'], $rowIndex), $assayMultiplier),
+            'pd_ppm' => LegacyMaikAssayNormalizer::toPpm($this->numberCell($sheet, $layout['pd'], $rowIndex), $assayMultiplier),
+            'rh_ppm' => LegacyMaikAssayNormalizer::toPpm($this->numberCell($sheet, $layout['rh'], $rowIndex), $assayMultiplier),
             'extra_codes' => $this->stringCell($sheet, $layout['extra_codes'], $rowIndex),
             'details' => $this->stringCell($sheet, $layout['details'], $rowIndex),
             'shape_code' => $this->stringCell($sheet, $layout['shape_code'], $rowIndex),

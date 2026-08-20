@@ -111,6 +111,7 @@ class RepairImportedSourceDataCommand extends Command
             'rows_skipped_ambiguous',
             'rows_skipped_not_found',
             'rows_skipped_duplicate_in_file',
+            'rows_skipped_existing_assay',
         ];
     }
 

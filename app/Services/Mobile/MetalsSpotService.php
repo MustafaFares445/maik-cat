@@ -18,6 +18,8 @@ class MetalsSpotService
 
     private const string SOURCE = 'metal-sentinel';
 
+    private const string LAST_KNOWN_CACHE_PREFIX = 'metals_spot_sentinel_last_known_v1:';
+
     /** @var array<string, array{name_en: string, name_ar: string, symbol: string, api_symbol: string}> */
     private array $meta = [
         'platinum' => ['name_en' => 'Platinum', 'name_ar' => 'بلاتين', 'symbol' => 'Pt', 'api_symbol' => 'PT'],
@@ -26,7 +28,7 @@ class MetalsSpotService
     ];
 
     /**
-     * @return array{source: string, cached: bool, updated_at: string, currency: string, fx_rate: float, data: array<int, array<string, mixed>>}
+     * @return array{source: string, cached: bool, stale: bool, updated_at: string, currency: string, fx_rate: float, data: array<int, array<string, mixed>>}
      */
     public function all(string $currency = 'USD'): array
     {
@@ -40,12 +42,37 @@ class MetalsSpotService
             $payload = Cache::remember($cacheKey, $ttl, fn (): array => $this->fetchFreshPayload($currency));
         } catch (Throwable $e) {
             Cache::forget($cacheKey);
-            throw $e;
+
+            $fallback = Cache::get($this->lastKnownCacheKey($currency));
+
+            if (! $this->isUsablePayload($fallback)) {
+                throw $e;
+            }
+
+            Log::warning('Using the last known metal prices after an upstream failure', [
+                'currency' => $currency,
+                'updated_at' => $fallback['updated_at'],
+            ]);
+
+            return [
+                ...$fallback,
+                'cached' => true,
+                'stale' => true,
+                'currency' => $currency,
+                'fx_rate' => 1.0,
+            ];
         }
+
+        Cache::put(
+            $this->lastKnownCacheKey($currency),
+            $payload,
+            (int) config('services.metals.fallback_ttl', 86400),
+        );
 
         return [
             ...$payload,
             'cached' => $hit,
+            'stale' => false,
             'currency' => $currency,
             'fx_rate' => 1.0,
         ];
@@ -63,7 +90,7 @@ class MetalsSpotService
     }
 
     /**
-     * @return array{source: string, cached: bool, updated_at: string, currency: string, fx_rate: float, data: array<int, array<string, mixed>>}
+     * @return array{source: string, cached: bool, stale: bool, updated_at: string, currency: string, fx_rate: float, data: array<int, array<string, mixed>>}
      */
     public function refresh(string $currency = 'USD'): array
     {
@@ -77,6 +104,36 @@ class MetalsSpotService
     private function cacheKey(string $currency): string
     {
         return 'metals_spot_sentinel_v2:'.strtoupper($currency);
+    }
+
+    private function lastKnownCacheKey(string $currency): string
+    {
+        return self::LAST_KNOWN_CACHE_PREFIX.strtoupper($currency);
+    }
+
+    private function isUsablePayload(mixed $payload): bool
+    {
+        if (! is_array($payload) || ! is_array($payload['data'] ?? null)) {
+            return false;
+        }
+
+        $positiveMetalKeys = [];
+
+        foreach ($payload['data'] as $row) {
+            if (! is_array($row) || ! is_string($row['key'] ?? null)) {
+                continue;
+            }
+
+            $priceOz = $row['price_oz'] ?? null;
+            $priceGram = $row['price_gram'] ?? null;
+
+            if ((is_numeric($priceOz) && (float) $priceOz > 0)
+                || (is_numeric($priceGram) && (float) $priceGram > 0)) {
+                $positiveMetalKeys[$row['key']] = true;
+            }
+        }
+
+        return count(array_intersect(array_keys($this->meta), array_keys($positiveMetalKeys))) === count($this->meta);
     }
 
     /**

@@ -11,8 +11,6 @@ class ItemPriceService
 
     private const float EXCEL_TROY_OUNCE_GRAMS = 31.1043;
 
-    private const float OVERSIZED_WEIGHT_THRESHOLD_KG = 50.0;
-
     private const float GRAMS_PER_KILOGRAM = 1000.0;
 
     /** @var array<string, array{platinum: float, palladium: float, rhodium: float}> */
@@ -37,8 +35,7 @@ class ItemPriceService
         $currency = $this->normalizeCurrency($currency);
         $prices = $this->metalPrices($currency);
 
-        $rawWeightKg = max((float) ($item->weight_kg ?? 0), 0.0);
-        $weightKg = $this->normalizedWeightKg($rawWeightKg);
+        $weightKg = max((float) ($item->weight_kg ?? 0), 0.0);
         $ptPpm = max((float) ($item->pt_ppm ?? 0), 0.0);
         $pdPpm = max((float) ($item->pd_ppm ?? 0), 0.0);
         $rhPpm = max((float) ($item->rh_ppm ?? 0), 0.0);
@@ -122,15 +119,6 @@ class ItemPriceService
         }
 
         return null;
-    }
-
-    private function normalizedWeightKg(float $rawWeightKg): float
-    {
-        if ($rawWeightKg > self::OVERSIZED_WEIGHT_THRESHOLD_KG) {
-            return $rawWeightKg / self::GRAMS_PER_KILOGRAM;
-        }
-
-        return $rawWeightKg;
     }
 
     private function normalizeRatePercent(float $ratePercent): float
