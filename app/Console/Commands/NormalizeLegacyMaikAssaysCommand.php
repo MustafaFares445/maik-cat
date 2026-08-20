@@ -16,14 +16,16 @@ class NormalizeLegacyMaikAssaysCommand extends Command
     private const string LEGACY_SOURCE = 'legacy_maik_g_per_kg';
 
     protected $signature = 'items:normalize-legacy-maik-assays
-        {path=excel/maik.xlsx : Historical Maik workbook containing gram-per-kilogram assay values}
+        {--path= : Override the codebase legacy Maik workbook path}
         {--dry-run : Report exact source matches without changing items}';
 
     protected $description = 'Convert source-verified legacy Maik gram-per-kilogram assays to ppm';
 
     public function handle(): int
     {
-        $path = (string) $this->argument('path');
+        $path = filled($this->option('path'))
+            ? (string) $this->option('path')
+            : base_path('excel/maik.xlsx');
 
         if (! is_file($path)) {
             $this->error('Workbook not found: '.$path);

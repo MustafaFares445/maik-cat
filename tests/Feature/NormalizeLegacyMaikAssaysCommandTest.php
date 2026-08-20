@@ -43,7 +43,7 @@ test('normalizes only items exactly verified against the legacy Maik workbook', 
     $path = legacyMaikWorkbookPath();
 
     try {
-        $this->artisan('items:normalize-legacy-maik-assays', ['path' => $path])
+        $this->artisan('items:normalize-legacy-maik-assays', ['--path' => $path])
             ->expectsOutputToContain('matched_items: 1')
             ->expectsOutputToContain('updated_items: 1')
             ->assertExitCode(0);
@@ -55,7 +55,7 @@ test('normalizes only items exactly verified against the legacy Maik workbook', 
             ->and($unmatched->source)->toBe('excel_import');
 
         $this->artisan('items:normalize-legacy-maik-assays', [
-            'path' => $path,
+            '--path' => $path,
             '--dry-run' => true,
         ])
             ->expectsOutputToContain('verified_existing_items: 1')
