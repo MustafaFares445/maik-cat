@@ -18,7 +18,10 @@ class NotificationAudienceForm
             ->components([
                 Section::make('Audience group')
                     ->description('Create reusable user groups for targeted messaging.')
-                    ->columns(2)
+                    ->columns([
+                        'default' => 1,
+                        'md' => 2,
+                    ])
                     ->components([
                         TextInput::make('name')
                             ->required()
