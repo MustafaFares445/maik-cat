@@ -21,7 +21,10 @@ class ItemForm
             ->components([
                 Section::make('Item details')
                     ->description('Manage converter specs, category mapping, and app-ready media.')
-                    ->columns(2)
+                    ->columns([
+                        'default' => 1,
+                        'md' => 2,
+                    ])
                     ->columnSpanFull()
                     ->components([
                         Select::make('car_group_id')
@@ -71,7 +74,7 @@ class ItemForm
 
                                 return new HtmlString(
                                     sprintf(
-                                        '<img src="%s" alt="Current item image" class="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-2 object-contain" loading="lazy" />',
+                                        '<img src="%s" alt="Current item image" class="h-auto w-full max-w-full sm:max-w-sm rounded-lg border border-gray-200 bg-white p-2 object-contain" loading="lazy" />',
                                         e($url),
                                     ),
                                 );
