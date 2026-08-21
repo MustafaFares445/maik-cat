@@ -5,6 +5,14 @@ use App\Models\AppVersion;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
+    $defaultStoreIds = [
+        AppPlatform::ANDROID => 'maik.cat.android',
+        AppPlatform::IOS => '6800437659',
+    ];
+    $defaultStoreLinks = [
+        AppPlatform::ANDROID => 'https://play.google.com/store/apps/details?id=maik.cat.android',
+        AppPlatform::IOS => 'https://apps.apple.com/us/app/maik-cat/id6800437659',
+    ];
     $placeholderStoreIds = ['com.example.app', '123456789'];
     $storeLinks = [];
 
@@ -17,9 +25,13 @@ Route::get('/', function () {
             $storeId = '';
         }
 
-        $storeLinks[$platform] = $storeId !== '' && ! in_array($storeId, $placeholderStoreIds, true)
-            ? AppPlatform::storeUrl($platform, $storeId)
-            : null;
+        if ($storeId === '' || in_array($storeId, $placeholderStoreIds, true)) {
+            $storeId = $defaultStoreIds[$platform] ?? '';
+        }
+
+        $storeLinks[$platform] = $storeId === ($defaultStoreIds[$platform] ?? null)
+            ? ($defaultStoreLinks[$platform] ?? null)
+            : ($storeId !== '' ? AppPlatform::storeUrl($platform, $storeId) : null);
     }
 
     return view('welcome', compact('storeLinks'));

@@ -14,14 +14,14 @@ class AppVersionSeeder extends Seeder
                 'platform' => 'android',
                 'latest_version' => '1.0.0',
                 'minimum_version' => '1.0.0',
-                'store_id' => 'com.example.app',
+                'store_id' => 'maik.cat.android',
                 'release_notes' => 'Initial release.',
             ],
             [
                 'platform' => 'ios',
                 'latest_version' => '1.0.0',
                 'minimum_version' => '1.0.0',
-                'store_id' => '123456789',
+                'store_id' => '6800437659',
                 'release_notes' => 'Initial release.',
             ],
         ];

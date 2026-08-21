@@ -74,13 +74,28 @@
             <div class="hero-visual hero-enter" aria-label="Maik Cat mobile app with precious metal bars">
                 <div class="hero-dots" aria-hidden="true"></div>
                 <div class="orange-swoop" aria-hidden="true"></div>
-                <img class="hero-phone" src="{{ asset('images/portfolio/hero-phone-v2-cutout.png') }}" alt="Maik Cat metal prices mobile app" width="941" height="1672" fetchpriority="high" decoding="async">
-                <img class="metal metal-platinum" src="{{ asset('images/portfolio/platinum-bar.png') }}" alt="Platinum 999.5 one ounce bar" width="1536" height="1024" fetchpriority="high">
-                <img class="metal metal-palladium" src="{{ asset('images/portfolio/palladium-bar.png') }}" alt="Palladium 999.5 one ounce bar" width="1254" height="1254" fetchpriority="high">
-                <img class="metal metal-rhodium" src="{{ asset('images/portfolio/rhodium-bar.png') }}" alt="Rhodium 999.0 one ounce bar" width="1254" height="1254" fetchpriority="high">
+                <picture>
+                    <source srcset="{{ asset('images/portfolio/hero-phone-v2-cutout.webp') }}" type="image/webp">
+                    <img class="hero-phone" src="{{ asset('images/portfolio/hero-phone-v2-cutout.png') }}" alt="Maik Cat metal prices mobile app" width="941" height="1672" fetchpriority="high" decoding="async">
+                </picture>
+                <picture>
+                    <source srcset="{{ asset('images/portfolio/platinum-bar.webp') }}" type="image/webp">
+                    <img class="metal metal-platinum" src="{{ asset('images/portfolio/platinum-bar.png') }}" alt="Platinum 999.5 one ounce bar" width="1536" height="1024" loading="eager" decoding="async">
+                </picture>
+                <picture>
+                    <source srcset="{{ asset('images/portfolio/palladium-bar.webp') }}" type="image/webp">
+                    <img class="metal metal-palladium" src="{{ asset('images/portfolio/palladium-bar.png') }}" alt="Palladium 999.5 one ounce bar" width="1254" height="1254" loading="eager" decoding="async">
+                </picture>
+                <picture>
+                    <source srcset="{{ asset('images/portfolio/rhodium-bar.webp') }}" type="image/webp">
+                    <img class="metal metal-rhodium" src="{{ asset('images/portfolio/rhodium-bar.png') }}" alt="Rhodium 999.0 one ounce bar" width="1254" height="1254" loading="eager" decoding="async">
+                </picture>
             </div>
         </div>
-        <img class="hero-converter" src="{{ asset('images/portfolio/catalytic-converter.png') }}" alt="" width="1536" height="1024" aria-hidden="true">
+        <picture>
+            <source srcset="{{ asset('images/portfolio/catalytic-converter.webp') }}" type="image/webp">
+            <img class="hero-converter" src="{{ asset('images/portfolio/catalytic-converter.png') }}" alt="" width="1536" height="1024" aria-hidden="true" loading="lazy" decoding="async">
+        </picture>
     </section>
 
     <section class="stats reveal" id="pricing" aria-label="Maik Cat product highlights">
@@ -100,16 +115,19 @@
         </div>
         <div class="calculator-stage">
             <div class="calculator-glow" aria-hidden="true"></div>
-            <img class="calculator-phone" src="{{ asset('images/portfolio/calculator-phone.png') }}" alt="Maik Cat catalytic converter calculator screen" width="941" height="1672" loading="lazy" decoding="async">
+            <picture>
+                <source srcset="{{ asset('images/portfolio/calculator-phone.webp') }}" type="image/webp">
+                <img class="calculator-phone" src="{{ asset('images/portfolio/calculator-phone.png') }}" alt="Maik Cat catalytic converter calculator screen" width="941" height="1672" loading="lazy" decoding="async">
+            </picture>
         </div>
         <div class="feature-actions">
             <article class="action-card">
                 <div class="action-head"><span class="action-icon blue"><svg><use href="#icon-search"/></svg></span><div><strong>Search quickly</strong><p>Find parts by code and brand in seconds.</p></div></div>
-                <div class="product-mini"><img src="{{ asset('images/portfolio/catalytic-converter.png') }}" alt="Catalytic converter search result" loading="lazy"><div><b>8670409</b><span>Volvo</span></div></div>
+                <div class="product-mini"><picture><source srcset="{{ asset('images/portfolio/catalytic-converter.webp') }}" type="image/webp"><img src="{{ asset('images/portfolio/catalytic-converter.png') }}" alt="Catalytic converter search result" width="960" height="640" loading="lazy" decoding="async"></picture><div><b>8670409</b><span>Volvo</span></div></div>
             </article>
             <article class="action-card">
                 <div class="action-head"><span class="action-icon orange"><svg><use href="#icon-book"/></svg></span><div><strong>Browse the catalog</strong><p>Explore products and view prices for the most searched parts.</p></div></div>
-                <div class="product-mini"><img class="flipped" src="{{ asset('images/portfolio/catalytic-converter.png') }}" alt="Catalytic converter catalog result" loading="lazy"><div><b>9146685</b><span>Volvo</span></div></div>
+                <div class="product-mini"><picture><source srcset="{{ asset('images/portfolio/catalytic-converter.webp') }}" type="image/webp"><img class="flipped" src="{{ asset('images/portfolio/catalytic-converter.png') }}" alt="Catalytic converter catalog result" width="960" height="640" loading="lazy" decoding="async"></picture><div><b>9146685</b><span>Volvo</span></div></div>
             </article>
         </div>
     </section>
@@ -120,7 +138,10 @@
             <div class="industry-point"><span><svg><use href="#icon-factory"/></svg></span><div><strong>Industrial grade</strong><p>Designed for real-world conditions and daily industrial use.</p></div></div>
             <div class="industry-point"><span><svg><use href="#icon-badge"/></svg></span><div><strong>Data you can trust</strong><p>Reliable sources and consistent updates for confident decisions.</p></div></div>
             <div class="industry-point"><span><svg><use href="#icon-shield"/></svg></span><div><strong>Privacy first</strong><p>Your data stays secure — we never share your information.</p></div></div>
-            <img class="footer-converter" src="{{ asset('images/portfolio/catalytic-converter.png') }}" alt="" width="1536" height="1024" aria-hidden="true" loading="lazy">
+            <picture>
+                <source srcset="{{ asset('images/portfolio/catalytic-converter.webp') }}" type="image/webp">
+                <img class="footer-converter" src="{{ asset('images/portfolio/catalytic-converter.png') }}" alt="" width="1536" height="1024" aria-hidden="true" loading="lazy" decoding="async">
+            </picture>
         </div>
     </section>
 </main>

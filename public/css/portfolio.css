@@ -243,6 +243,12 @@ a { color: inherit; }
     filter: drop-shadow(0 34px 30px rgba(48, 37, 29, 0.22));
 }
 
+.hero-visual picture,
+.calculator-stage picture,
+.industry-grid > picture {
+    display: contents;
+}
+
 .orange-swoop {
     position: absolute;
     z-index: 1;
@@ -504,6 +510,11 @@ a { color: inherit; }
     height: 72px;
     object-fit: contain;
     transform: rotate(-5deg);
+}
+
+.product-mini picture {
+    display: block;
+    flex: 0 0 auto;
 }
 
 .product-mini img.flipped { transform: scaleX(-1) rotate(-5deg); }
