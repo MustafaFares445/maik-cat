@@ -23,6 +23,7 @@
     .fi-section,
     .fi-section-content,
     .fi-fo-field-wrp,
+    .fi-fo-rich-editor,
     .fi-ta,
     .fi-ta-ctn,
     .fi-wi,
@@ -40,7 +41,8 @@
     .fi-badge,
     .fi-dropdown-list-item-label,
     .fi-fo-field-wrp-helper-text,
-    .fi-fo-field-wrp-error-message {
+    .fi-fo-field-wrp-error-message,
+    .fi-fo-rich-editor .tiptap {
         overflow-wrap: anywhere;
         word-break: normal;
     }
@@ -70,6 +72,12 @@
     .fi-pagination-items {
         min-width: 0;
         flex-wrap: wrap;
+    }
+
+    .fi-ta-content {
+        max-width: 100%;
+        overflow-x: auto;
+        overscroll-behavior-inline: contain;
     }
 
     .fi-ta-table {
