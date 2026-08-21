@@ -19,7 +19,10 @@ class AppUserForm
             ->components([
                 Section::make('App user account')
                     ->description('Manage end-user accounts, status, and notification language preference.')
-                    ->columns(2)
+                    ->columns([
+                        'default' => 1,
+                        'md' => 2,
+                    ])
                     ->components([
                         TextInput::make('name')
                             ->required()

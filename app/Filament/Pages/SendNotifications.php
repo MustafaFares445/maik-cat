@@ -64,7 +64,10 @@ class SendNotifications extends Page implements HasActions, HasSchemas
             ->components([
                 Section::make('Audience')
                     ->description('Send to specific users, reusable audience groups, or all active app users.')
-                    ->columns(2)
+                    ->columns([
+                        'default' => 1,
+                        'md' => 2,
+                    ])
                     ->components([
                         Select::make('audience_mode')
                             ->label('Audience mode')
@@ -104,7 +107,10 @@ class SendNotifications extends Page implements HasActions, HasSchemas
                     ]),
                 Section::make('Localized content')
                     ->description('English content is required. Arabic and Hungarian are optional and fallback to English. Rich formatting and emojis are supported.')
-                    ->columns(2)
+                    ->columns([
+                        'default' => 1,
+                        'lg' => 2,
+                    ])
                     ->components([
                         RichEditor::make('title_en')
                             ->label('Title (English)')

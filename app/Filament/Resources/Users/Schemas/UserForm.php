@@ -18,7 +18,10 @@ class UserForm
             ->components([
                 Section::make('Admin account')
                     ->description('Control dashboard staff access, permissions, and active status.')
-                    ->columns(2)
+                    ->columns([
+                        'default' => 1,
+                        'md' => 2,
+                    ])
                     ->components([
                         TextInput::make('name')
                             ->required()

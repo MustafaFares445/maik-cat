@@ -2,13 +2,13 @@
 
 namespace App\Filament\Resources\CarGroups\Schemas;
 
+use App\Models\CarGroup;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Illuminate\Support\HtmlString;
-use App\Models\CarGroup;
 
 class CarGroupForm
 {
@@ -18,7 +18,10 @@ class CarGroupForm
             ->components([
                 Section::make('Car group details')
                     ->description('Organize item categories used across search and browsing.')
-                    ->columns(2)
+                    ->columns([
+                        'default' => 1,
+                        'md' => 2,
+                    ])
                     ->components([
                         TextInput::make('name')
                             ->required()
@@ -33,7 +36,7 @@ class CarGroupForm
 
                                 return new HtmlString(
                                     sprintf(
-                                        '<img src="%s" alt="Current car group image" class="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-2 object-contain" loading="lazy" />',
+                                        '<img src="%s" alt="Current car group image" class="h-auto w-full max-w-full sm:max-w-sm rounded-lg border border-gray-200 bg-white p-2 object-contain" loading="lazy" />',
                                         e($url),
                                     ),
                                 );
