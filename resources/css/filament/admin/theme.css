@@ -1,0 +1,137 @@
+@import '../../../../vendor/filament/filament/resources/css/theme.css';
+
+@source '../../../../app/Filament/**/*';
+@source '../../../../resources/views/filament/**/*';
+
+@layer base {
+    html {
+        text-size-adjust: 100%;
+    }
+
+    body {
+        min-width: 0;
+    }
+}
+
+@layer components {
+    .fi-body,
+    .fi-layout,
+    .fi-main-ctn,
+    .fi-main,
+    .fi-page,
+    .fi-page-content,
+    .fi-section,
+    .fi-section-content,
+    .fi-fo-field-wrp,
+    .fi-ta,
+    .fi-ta-ctn,
+    .fi-wi,
+    .fi-wi-chart,
+    .fi-wi-stats-overview-stat {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .fi-header-heading,
+    .fi-header-subheading,
+    .fi-section-header-heading,
+    .fi-section-header-description,
+    .fi-ta-text,
+    .fi-badge,
+    .fi-dropdown-list-item-label,
+    .fi-fo-field-wrp-helper-text,
+    .fi-fo-field-wrp-error-message {
+        overflow-wrap: anywhere;
+        word-break: normal;
+    }
+
+    .fi-modal-window {
+        max-width: calc(100vw - 2rem);
+        max-height: calc(100dvh - 2rem);
+    }
+
+    .fi-dropdown-panel {
+        max-width: min(22rem, calc(100vw - 1rem));
+        max-height: calc(100dvh - 1rem);
+    }
+
+    .fi-sidebar {
+        max-width: min(20rem, calc(100vw - 2rem));
+    }
+
+    .fi-tabs {
+        max-width: 100%;
+        overflow-x: auto;
+        overscroll-behavior-inline: contain;
+        scrollbar-width: thin;
+    }
+
+    .fi-pagination,
+    .fi-pagination-items {
+        min-width: 0;
+        flex-wrap: wrap;
+    }
+
+    .fi-ta-table {
+        width: 100%;
+    }
+
+    .fi-ta-cell,
+    .fi-ta-header-cell {
+        min-width: 0;
+    }
+
+    .fi-wi-chart canvas,
+    .fi-wi-chart svg,
+    .apexcharts-canvas,
+    .apexcharts-svg {
+        max-width: 100%;
+    }
+}
+
+@media (max-width: 767px) {
+    .fi-header,
+    .fi-header-actions,
+    .fi-ac,
+    .fi-ta-header,
+    .fi-ta-header-toolbar {
+        min-width: 0;
+        max-width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .fi-ta-search-field {
+        width: 100%;
+        max-width: 100%;
+        flex: 1 1 100%;
+    }
+
+    .fi-modal-window {
+        width: calc(100vw - 1.5rem);
+        max-width: calc(100vw - 1.5rem);
+        max-height: calc(100dvh - 1.5rem);
+        margin: 0.75rem;
+    }
+
+    .fi-dropdown-panel {
+        max-width: calc(100vw - 1rem);
+    }
+
+    .fi-wi-stats-overview-stats-ctn {
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+    }
+}
+
+@media (max-width: 479px) {
+    .fi-sidebar {
+        width: calc(100vw - 1rem);
+        max-width: calc(100vw - 1rem);
+    }
+
+    .fi-modal-window {
+        width: calc(100vw - 1rem);
+        max-width: calc(100vw - 1rem);
+        max-height: calc(100dvh - 1rem);
+        margin: 0.5rem;
+    }
+}
