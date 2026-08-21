@@ -74,7 +74,8 @@
         flex-wrap: wrap;
     }
 
-    .fi-ta-content {
+    .fi-ta-content,
+    .fi-ta-content-ctn {
         max-width: 100%;
         overflow-x: auto;
         overscroll-behavior-inline: contain;
