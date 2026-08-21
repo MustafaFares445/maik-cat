@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 90" role="img" aria-labelledby="title">
+  <title id="title">Maik Cat</title>
+  <text x="5" y="53" fill="#171717" font-family="Arial Black, Arial, sans-serif" font-size="56" font-style="italic" font-weight="900" letter-spacing="-5">Maik</text>
+  <text x="76" y="80" fill="#171717" font-family="Arial Black, Arial, sans-serif" font-size="32" font-style="italic" font-weight="900" letter-spacing="-3">Cat</text>
+  <path fill="#f05316" d="M4 67h62v8H4zm130 0h62v8h-62z"/>
+</svg>
