@@ -20,11 +20,15 @@
 
         *, *::before, *::after { box-sizing: border-box; }
 
-        html { text-size-adjust: 100%; }
+        html {
+            text-size-adjust: 100%;
+            overflow-x: clip;
+        }
 
         body {
             margin: 0;
             min-width: 0;
+            overflow-x: clip;
             background: var(--background);
             color: var(--text);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Tahoma, Arial, sans-serif;
@@ -54,7 +58,9 @@
             min-width: 0;
             align-items: center;
             justify-content: space-between;
+            flex-wrap: wrap;
             gap: clamp(10px, 3vw, 20px);
+            padding-block: 10px;
         }
 
         .brand {
@@ -69,7 +75,7 @@
 
         .language-link {
             flex: 0 1 auto;
-            max-width: 50%;
+            max-width: min(100%, 24rem);
             border: 1px solid var(--border);
             border-radius: 999px;
             padding: 7px 14px;
@@ -131,6 +137,10 @@
         }
 
         p { margin: 0 0 14px; }
+        p, li, h1, h2, h3, strong, span {
+            overflow-wrap: anywhere;
+        }
+
         ul, ol { margin: 8px 0 18px; padding-inline-start: clamp(20px, 5vw, 24px); }
         li + li { margin-top: 7px; }
 
@@ -165,10 +175,16 @@
             .topbar-inner {
                 min-height: 60px;
                 align-items: center;
+                justify-content: center;
+                text-align: center;
+            }
+
+            .brand {
+                flex: 1 1 100%;
             }
 
             .language-link {
-                max-width: 55%;
+                max-width: 100%;
                 padding: 6px 10px;
                 font-size: .9rem;
             }

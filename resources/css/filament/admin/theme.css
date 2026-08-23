@@ -22,10 +22,16 @@
     .fi-page-content,
     .fi-section,
     .fi-section-content,
+    .fi-section-content-ctn,
     .fi-fo-field-wrp,
+    .fi-fo-component-ctn,
+    .fi-input-wrp,
     .fi-fo-rich-editor,
     .fi-ta,
     .fi-ta-ctn,
+    .fi-ta-header,
+    .fi-ta-header-toolbar,
+    .fi-ta-filters,
     .fi-wi,
     .fi-wi-chart,
     .fi-wi-stats-overview-stat {
@@ -48,13 +54,21 @@
     }
 
     .fi-modal-window {
+        width: auto;
         max-width: calc(100vw - 2rem);
         max-height: calc(100dvh - 2rem);
+        overflow: hidden;
+    }
+
+    .fi-modal-content {
+        max-width: 100%;
+        overflow-x: auto;
     }
 
     .fi-dropdown-panel {
         max-width: min(22rem, calc(100vw - 1rem));
         max-height: calc(100dvh - 1rem);
+        overflow: auto;
     }
 
     .fi-sidebar {
@@ -69,9 +83,23 @@
     }
 
     .fi-pagination,
-    .fi-pagination-items {
+    .fi-pagination-items,
+    .fi-header,
+    .fi-header-actions,
+    .fi-ac,
+    .fi-ta-actions,
+    .fi-ta-bulk-actions,
+    .fi-ta-record-actions {
         min-width: 0;
         flex-wrap: wrap;
+    }
+
+    .fi-ac,
+    .fi-header-actions,
+    .fi-ta-actions,
+    .fi-ta-bulk-actions,
+    .fi-ta-record-actions {
+        gap: 0.5rem;
     }
 
     .fi-ta-content,
@@ -85,9 +113,24 @@
         width: 100%;
     }
 
+    .fi-ta-header-cell,
+    .fi-ta-cell {
+        overflow-wrap: anywhere;
+    }
+
     .fi-ta-cell,
     .fi-ta-header-cell {
         min-width: 0;
+    }
+
+    .fi-input,
+    .fi-select-input,
+    .fi-textarea,
+    .fi-input-wrp input,
+    .fi-input-wrp select,
+    .fi-input-wrp textarea {
+        min-width: 0;
+        max-width: 100%;
     }
 
     .fi-wi-chart canvas,
@@ -113,6 +156,16 @@
         width: 100%;
         max-width: 100%;
         flex: 1 1 100%;
+    }
+
+    .fi-header-actions,
+    .fi-ac {
+        width: 100%;
+    }
+
+    .fi-header-actions > *,
+    .fi-ac > * {
+        min-width: 0;
     }
 
     .fi-modal-window {

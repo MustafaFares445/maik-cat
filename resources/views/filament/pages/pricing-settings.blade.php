@@ -26,7 +26,7 @@
             </div>
         @else
             <div class="max-w-full overflow-x-auto overscroll-x-contain rounded-xl border border-gray-200 dark:border-white/10" tabindex="0" aria-label="Price change preview table">
-                <table class="w-full min-w-[44rem] table-auto divide-y divide-gray-200 text-xs sm:text-sm dark:divide-white/10">
+                <table class="w-full min-w-[38rem] table-auto divide-y divide-gray-200 text-xs sm:min-w-[44rem] sm:text-sm dark:divide-white/10">
                     <thead class="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-600 dark:bg-white/5 dark:text-gray-300">
                         <tr>
                             <th class="px-3 py-3 sm:px-4">Item code</th>
@@ -43,8 +43,8 @@
                                 <td class="max-w-40 break-all px-3 py-3 font-medium text-gray-950 sm:px-4 dark:text-white">
                                     {{ $row['serial_code'] }}
                                 </td>
-                                <td class="max-w-56 break-words px-3 py-3 text-gray-700 sm:px-4 dark:text-gray-300">{{ $row['model'] }}</td>
-                                <td class="max-w-48 break-words px-3 py-3 text-gray-700 sm:px-4 dark:text-gray-300">{{ $row['group'] }}</td>
+                                <td class="max-w-48 break-words px-3 py-3 text-gray-700 sm:max-w-56 sm:px-4 dark:text-gray-300">{{ $row['model'] }}</td>
+                                <td class="max-w-40 break-words px-3 py-3 text-gray-700 sm:max-w-48 sm:px-4 dark:text-gray-300">{{ $row['group'] }}</td>
                                 <td class="whitespace-nowrap px-3 py-3 text-right text-gray-700 sm:px-4 dark:text-gray-300">
                                     ${{ number_format($row['current_price'], 2) }}
                                 </td>

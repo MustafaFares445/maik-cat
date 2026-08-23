@@ -16,11 +16,13 @@ html {
     scroll-behavior: smooth;
     background: var(--bg);
     text-size-adjust: 100%;
+    overflow-x: clip;
 }
 
 body {
     margin: 0;
     min-width: 0;
+    overflow-x: clip;
     color: var(--ink);
     font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -31,7 +33,10 @@ body {
 
 button, input { font: inherit; }
 img, svg { display: block; }
-img { height: auto; }
+img {
+    max-width: 100%;
+    height: auto;
+}
 a { color: inherit; }
 main, section, article, div, picture { min-width: 0; }
 
@@ -114,7 +119,8 @@ p, h1, h2, h3, strong, b, a, span {
 
 .hero {
     display: grid;
-    grid-template-columns: minmax(0, 1.04fr) minmax(420px, 0.96fr);
+    grid-template-columns: minmax(0, 1.04fr) minmax(min(390px, 38vw), 0.96fr);
+    column-gap: clamp(18px, 3vw, 44px);
     min-height: 1030px;
     padding-top: 30px;
     align-items: start;
@@ -141,7 +147,7 @@ p, h1, h2, h3, strong, b, a, span {
     margin: 0;
     font-size: clamp(48px, 5.32vw, 68px);
     line-height: 0.99;
-    letter-spacing: -0.055em;
+    letter-spacing: 0;
     font-weight: 850;
     text-wrap: balance;
 }
@@ -184,6 +190,7 @@ p, h1, h2, h3, strong, b, a, span {
     line-height: 1.25;
     text-align: center;
     text-decoration: none;
+    overflow-wrap: anywhere;
 }
 
 .store-btn.primary {
@@ -243,7 +250,8 @@ p, h1, h2, h3, strong, b, a, span {
 .hero-visual {
     position: relative;
     z-index: 2;
-    height: 950px;
+    height: min(950px, 88vw);
+    min-height: 720px;
     min-width: 0;
 }
 
@@ -270,7 +278,7 @@ p, h1, h2, h3, strong, b, a, span {
     position: absolute;
     z-index: 1;
     top: 175px;
-    right: clamp(-255px, -18vw, -150px);
+    right: clamp(-210px, -14vw, -120px);
     width: min(620px, 115%);
     height: 455px;
     border-radius: 58% 0 0 56%;
@@ -323,7 +331,7 @@ p, h1, h2, h3, strong, b, a, span {
 .hero-converter {
     position: absolute;
     z-index: 20;
-    left: clamp(-70px, -4vw, -28px);
+    left: clamp(-48px, -3vw, -20px);
     bottom: 0;
     width: clamp(280px, 31vw, 480px);
     max-width: 38vw;
@@ -394,7 +402,7 @@ p, h1, h2, h3, strong, b, a, span {
 }
 
 .stat-icon svg { width: 25px; height: 25px; }
-.stat strong { display: block; font-size: clamp(25px, 2.6vw, 32px); letter-spacing: -0.045em; }
+.stat strong { display: block; font-size: clamp(25px, 2.6vw, 32px); letter-spacing: 0; }
 .stat p { margin: 8px 0 0; color: #534e49; font-size: clamp(12px, 1.1vw, 14px); line-height: 1.48; }
 
 .features {
@@ -437,7 +445,7 @@ p, h1, h2, h3, strong, b, a, span {
     margin: 0;
     font-size: clamp(34px, 3.3vw, 42px);
     line-height: 1.03;
-    letter-spacing: -0.05em;
+    letter-spacing: 0;
     text-wrap: balance;
 }
 
@@ -586,7 +594,7 @@ p, h1, h2, h3, strong, b, a, span {
     position: relative;
     min-height: 190px;
     display: grid;
-    grid-template-columns: minmax(230px, 1.35fr) repeat(3, minmax(0, 1fr));
+    grid-template-columns: minmax(min(100%, 230px), 1.35fr) repeat(3, minmax(0, 1fr));
     gap: clamp(16px, 2.2vw, 30px);
     align-items: center;
 }
@@ -597,7 +605,7 @@ p, h1, h2, h3, strong, b, a, span {
     margin: 0;
     font-size: clamp(24px, 2.3vw, 29px);
     line-height: 1.08;
-    letter-spacing: -0.038em;
+    letter-spacing: 0;
     text-wrap: balance;
 }
 
@@ -692,7 +700,8 @@ p, h1, h2, h3, strong, b, a, span {
 
 @media (max-width: 1120px) {
     .hero {
-        grid-template-columns: minmax(0, 1fr) minmax(390px, 0.88fr);
+        grid-template-columns: minmax(0, 1fr) minmax(min(360px, 36vw), 0.88fr);
+        column-gap: clamp(18px, 2.5vw, 32px);
     }
 
     .hero-copy { padding-top: 58px; }
@@ -705,7 +714,7 @@ p, h1, h2, h3, strong, b, a, span {
 
     .orange-swoop {
         top: 160px;
-        right: -190px;
+        right: clamp(-150px, -11vw, -85px);
         width: 540px;
         height: 390px;
     }
@@ -767,7 +776,8 @@ p, h1, h2, h3, strong, b, a, span {
 
     .hero-visual {
         width: min(100%, 720px);
-        height: 690px;
+        height: clamp(600px, 82vw, 690px);
+        min-height: 0;
         margin: 28px auto 0;
         overflow: clip;
     }
@@ -776,7 +786,7 @@ p, h1, h2, h3, strong, b, a, span {
         top: 0;
         left: clamp(8px, 8vw, 70px);
         width: min(55vw, 390px);
-        max-width: 58%;
+        max-width: min(58%, 390px);
     }
 
     .orange-swoop {
@@ -810,7 +820,7 @@ p, h1, h2, h3, strong, b, a, span {
     }
 
     .hero-converter {
-        left: -45px;
+        left: max(-36px, -4vw);
         width: min(330px, 37vw);
         max-width: none;
     }
@@ -934,7 +944,7 @@ p, h1, h2, h3, strong, b, a, span {
     }
 
     .hero-visual {
-        height: clamp(500px, 145vw, 610px);
+        height: clamp(470px, 138vw, 610px);
         margin-top: 18px;
     }
 
@@ -947,8 +957,8 @@ p, h1, h2, h3, strong, b, a, span {
 
     .orange-swoop {
         top: 105px;
-        right: -115px;
-        width: min(480px, 115vw);
+        right: max(-96px, -24vw);
+        width: min(440px, 108vw);
         height: clamp(280px, 78vw, 340px);
     }
 
@@ -979,7 +989,7 @@ p, h1, h2, h3, strong, b, a, span {
     }
 
     .hero-converter {
-        left: -32px;
+        left: max(-26px, -7vw);
         width: min(240px, 58vw);
     }
 
@@ -991,6 +1001,7 @@ p, h1, h2, h3, strong, b, a, span {
         width: calc(100% - 24px);
         padding: 28px 8px;
         border-radius: 20px;
+        gap: 24px 0;
     }
 
     .stat {
@@ -1017,7 +1028,7 @@ p, h1, h2, h3, strong, b, a, span {
     }
 
     .calculator-stage {
-        min-height: clamp(500px, 150vw, 570px);
+        min-height: clamp(460px, 138vw, 570px);
     }
 
     .calculator-phone {
@@ -1034,6 +1045,7 @@ p, h1, h2, h3, strong, b, a, span {
 
     .product-mini {
         width: 100%;
+        flex-wrap: wrap;
         margin-left: 0;
     }
 
@@ -1062,7 +1074,7 @@ p, h1, h2, h3, strong, b, a, span {
 
     .hero-title {
         font-size: clamp(34px, 10.8vw, 40px);
-        letter-spacing: -0.045em;
+        letter-spacing: 0;
     }
 
     .trust-row > div {
@@ -1081,7 +1093,7 @@ p, h1, h2, h3, strong, b, a, span {
     }
 
     .hero-visual {
-        height: 485px;
+        height: clamp(440px, 136vw, 485px);
     }
 
     .hero-phone {
