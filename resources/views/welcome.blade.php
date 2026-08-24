@@ -92,10 +92,6 @@
                 </picture>
             </div>
         </div>
-        <picture>
-            <source srcset="{{ asset('images/portfolio/catalytic-converter.webp') }}" type="image/webp">
-            <img class="hero-converter" src="{{ asset('images/portfolio/catalytic-converter.png') }}" alt="" width="1536" height="1024" aria-hidden="true" loading="lazy" decoding="async">
-        </picture>
     </section>
 
     <section class="stats reveal" id="pricing" aria-label="Maik Cat product highlights">
@@ -138,10 +134,6 @@
             <div class="industry-point"><span><svg><use href="#icon-factory"/></svg></span><div><strong>Industrial grade</strong><p>Designed for real-world conditions and daily industrial use.</p></div></div>
             <div class="industry-point"><span><svg><use href="#icon-badge"/></svg></span><div><strong>Data you can trust</strong><p>Reliable sources and consistent updates for confident decisions.</p></div></div>
             <div class="industry-point"><span><svg><use href="#icon-shield"/></svg></span><div><strong>Privacy first</strong><p>Your data stays secure — we never share your information.</p></div></div>
-            <picture>
-                <source srcset="{{ asset('images/portfolio/catalytic-converter.webp') }}" type="image/webp">
-                <img class="footer-converter" src="{{ asset('images/portfolio/catalytic-converter.png') }}" alt="" width="1536" height="1024" aria-hidden="true" loading="lazy" decoding="async">
-            </picture>
         </div>
     </section>
 </main>
