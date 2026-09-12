@@ -1,1 +1,0 @@
-For report 20260912-011644, use `media:repair-item-image-links-safe`. It delegates to the existing local-media repair command after excluding suspicious cross-code-reused hashes from donors and appends all affected rows to unresolved review output.
