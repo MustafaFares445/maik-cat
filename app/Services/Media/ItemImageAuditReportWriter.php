@@ -39,7 +39,9 @@ final class ItemImageAuditReportWriter
 
     private const array REVIEW_STATUSES = [
         'confirmed_wrong_source',
+        'group_mapping_conflict',
         'ambiguous_reference',
+        'ambiguous_media_source',
         'missing_media_file',
         'missing_reference',
         'missing_provenance',
