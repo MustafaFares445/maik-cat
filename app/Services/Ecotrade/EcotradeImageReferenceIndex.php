@@ -16,6 +16,12 @@ final class EcotradeImageReferenceIndex
     /** @var array<string,array<string,array<string,mixed>>> */
     private array $referencesByFamily = [];
 
+    /** @var array<string,array<string,array<string,mixed>>> */
+    private array $referencesBySourceHash = [];
+
+    /** @var array<string,array<string,array<string,mixed>>> */
+    private array $referencesBySourceUrl = [];
+
     /** @var array<string,array<string,true>> */
     private array $familiesBySourceHash = [];
 
@@ -55,6 +61,35 @@ final class EcotradeImageReferenceIndex
             (string) $item->car_group_id,
             Item::normalizeSerialValue($item->normalized_serial ?: $item->serial_code),
         );
+
+        $sourceHash = trim((string) ($item->source_hash ?? ''));
+
+        if ($sourceHash !== '') {
+            $sourceReferences = $this->referencesForSourceHash($sourceHash);
+
+            if ($sourceReferences !== []) {
+                return $this->referenceMatch(
+                    $primaryFamilyKey,
+                    $this->referenceFamilyKeys($primaryFamilyKey, $sourceReferences),
+                    $sourceReferences,
+                );
+            }
+        }
+
+        $sourceUrl = trim((string) ($item->source_url ?? ''));
+
+        if ($sourceUrl !== '') {
+            $sourceReferences = $this->referencesForSourceUrl($sourceUrl);
+
+            if ($sourceReferences !== []) {
+                return $this->referenceMatch(
+                    $primaryFamilyKey,
+                    $this->referenceFamilyKeys($primaryFamilyKey, $sourceReferences),
+                    $sourceReferences,
+                );
+            }
+        }
+
         $primaryReferences = array_values($this->referencesByFamily[$primaryFamilyKey] ?? []);
 
         if ($primaryReferences !== []) {
@@ -68,12 +103,24 @@ final class EcotradeImageReferenceIndex
         $references = [];
 
         foreach ($familyKeys as $familyKey) {
-            foreach ($this->referencesByFamily[$familyKey] ?? [] as $sourceHash => $reference) {
-                $references[$sourceHash] = $reference;
+            foreach ($this->referencesByFamily[$familyKey] ?? [] as $sourceHashKey => $reference) {
+                $references[$sourceHashKey] = $reference;
             }
         }
 
         return $this->referenceMatch($primaryFamilyKey, $familyKeys, array_values($references));
+    }
+
+    /** @return list<array<string,mixed>> */
+    public function referencesForSourceHash(string $sourceHash): array
+    {
+        return array_values($this->referencesBySourceHash[trim($sourceHash)] ?? []);
+    }
+
+    /** @return list<array<string,mixed>> */
+    public function referencesForSourceUrl(string $sourceUrl): array
+    {
+        return array_values($this->referencesBySourceUrl[$this->normalizeUrl($sourceUrl)] ?? []);
     }
 
     /** @return list<string> */
@@ -97,6 +144,8 @@ final class EcotradeImageReferenceIndex
     private function reset(): void
     {
         $this->referencesByFamily = [];
+        $this->referencesBySourceHash = [];
+        $this->referencesBySourceUrl = [];
         $this->familiesBySourceHash = [];
         $this->familiesBySourceUrl = [];
         $this->groupIdsByCanonicalName = [];
@@ -149,24 +198,28 @@ final class EcotradeImageReferenceIndex
         }
 
         $groupId = $this->productGroupId($product);
+        $familyKeys = $groupId === null
+            ? []
+            : array_map(
+                fn (string $serial): string => $this->familyKey($groupId, $serial),
+                $this->normalizer->serialFamilies($product),
+            );
+        $reference = [
+            'serial_code' => $product->serialCode,
+            'product_url' => $product->productUrl,
+            'image_urls' => $imageUrls,
+            'source_hash' => $product->sourceHash,
+            'family_keys' => $familyKeys,
+        ];
+        $referenceKey = $this->referenceKey($reference);
+
+        $this->indexSourceReference($product, $referenceKey, $reference);
 
         if ($groupId === null) {
             $this->statistics['records_without_group']++;
 
             return;
         }
-
-        $familyKeys = array_map(
-            fn (string $serial): string => $this->familyKey($groupId, $serial),
-            $this->normalizer->serialFamilies($product),
-        );
-        $reference = [
-            'serial_code' => $product->serialCode,
-            'product_url' => $product->productUrl,
-            'image_urls' => $imageUrls,
-            'source_hash' => $product->sourceHash,
-        ];
-        $referenceKey = $this->normalizeUrl($imageUrls[0]);
 
         foreach ($familyKeys as $familyKey) {
             $this->referencesByFamily[$familyKey][$referenceKey] ??= $reference;
@@ -178,6 +231,22 @@ final class EcotradeImageReferenceIndex
         }
 
         $this->statistics['records_indexed']++;
+    }
+
+    /** @param array<string,mixed> $reference */
+    private function indexSourceReference(EcotradeProductData $product, string $referenceKey, array $reference): void
+    {
+        if ($product->sourceHash !== '') {
+            $this->referencesBySourceHash[$product->sourceHash][$referenceKey] ??= $reference;
+        }
+
+        foreach ([$product->productUrl, ...$reference['image_urls']] as $sourceUrl) {
+            if (! is_string($sourceUrl) || trim($sourceUrl) === '') {
+                continue;
+            }
+
+            $this->referencesBySourceUrl[$this->normalizeUrl($sourceUrl)][$referenceKey] ??= $reference;
+        }
     }
 
     /** @return list<string> */
@@ -253,6 +322,22 @@ final class EcotradeImageReferenceIndex
             ->all();
     }
 
+    /** @param list<array<string,mixed>> $references @return list<string> */
+    private function referenceFamilyKeys(string $primaryFamilyKey, array $references): array
+    {
+        $familyKeys = [$primaryFamilyKey];
+
+        foreach ($references as $reference) {
+            foreach ((array) ($reference['family_keys'] ?? []) as $familyKey) {
+                if (is_string($familyKey) && $familyKey !== '') {
+                    $familyKeys[] = $familyKey;
+                }
+            }
+        }
+
+        return array_values(array_unique($familyKeys));
+    }
+
     /** @param list<string> $familyKeys @param list<array<string,mixed>> $references */
     private function referenceMatch(string $primaryFamilyKey, array $familyKeys, array $references): array
     {
@@ -262,6 +347,18 @@ final class EcotradeImageReferenceIndex
             'references' => $references,
             'ambiguous' => count($references) > 1,
         ];
+    }
+
+    /** @param array<string,mixed> $reference */
+    private function referenceKey(array $reference): string
+    {
+        $sourceHash = trim((string) ($reference['source_hash'] ?? ''));
+
+        if ($sourceHash !== '') {
+            return 'hash:'.$sourceHash;
+        }
+
+        return 'url:'.$this->normalizeUrl((string) ($reference['product_url'] ?? ''));
     }
 
     private function familyKey(string $groupId, string $serial): string

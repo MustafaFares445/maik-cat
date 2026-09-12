@@ -45,8 +45,11 @@ final class ItemImageIdentityInspector
     {
         $media = $item->getFirstMedia('images');
         $referenceMatch = $this->referenceIndex->referencesFor($item);
-        $classification = $this->classification($media, $referenceMatch);
-        $visual = $this->visualComparison($media, $referenceMatch, $options);
+        $exactSourceHashMatch = $this->sourceHashesMatch($item, $media);
+        $classification = $this->classification($media, $referenceMatch, $exactSourceHashMatch);
+        $visual = $exactSourceHashMatch
+            ? $this->emptyVisualComparison()
+            : $this->visualComparison($media, $referenceMatch, $options);
 
         if ($visual['score'] !== null) {
             $classification = $this->classificationWithVisualScore(
@@ -89,7 +92,7 @@ final class ItemImageIdentityInspector
     }
 
     /** @param array<string,mixed> $referenceMatch @return array{status:string,reason:string} */
-    private function classification(?Media $media, array $referenceMatch): array
+    private function classification(?Media $media, array $referenceMatch, bool $exactSourceHashMatch): array
     {
         if (! $media instanceof Media) {
             return $this->classifiedAs('missing_media', 'The item has no image media.');
@@ -99,27 +102,40 @@ final class ItemImageIdentityInspector
             return $this->classifiedAs('missing_media_file', 'The media database row exists, but its original file is missing.');
         }
 
-        if ($referenceMatch['ambiguous']) {
-            return $this->classifiedAs('ambiguous_reference', 'More than one Ecotrade product matches the item family.');
+        if ($exactSourceHashMatch) {
+            return $this->classifiedAs(
+                'provenance_match',
+                'The item and media source hashes match exactly.',
+            );
         }
 
-        $provenance = $this->mediaProvenanceFamilies($media);
+        if ($referenceMatch['ambiguous']) {
+            return $this->classifiedAs('ambiguous_reference', 'More than one Ecotrade product matches the item identity.');
+        }
+
+        $provenance = $this->mediaProvenance($media);
 
         if ($referenceMatch['references'] === []) {
-            if ($provenance['families'] !== [] && array_intersect(
-                $provenance['families'],
-                $referenceMatch['family_keys'],
-            ) === []) {
+            if ($provenance['references'] !== []) {
                 return $this->classifiedAs(
-                    'confirmed_wrong_source',
-                    'The media provenance belongs to a different Ecotrade product family.',
+                    'group_mapping_conflict',
+                    'No Ecotrade reference matches the item group and serial, but the media provenance resolves to an Ecotrade product under a different group mapping.',
                 );
             }
 
-            return $this->classifiedAs('missing_reference', 'No Ecotrade image reference matches the item family.');
+            if ($provenance['recorded']) {
+                return $this->classifiedAs(
+                    'unknown_media_source',
+                    'The media records a source that is not present in this Ecotrade JSON file.',
+                );
+            }
+
+            return $this->classifiedAs('missing_reference', 'No Ecotrade image reference matches the item identity.');
         }
 
-        if ($provenance['families'] === []) {
+        $expectedReference = $referenceMatch['references'][0];
+
+        if ($provenance['references'] === []) {
             $status = $provenance['recorded'] ? 'unknown_media_source' : 'missing_provenance';
             $reason = $provenance['recorded']
                 ? 'The media records a source that is not present in this Ecotrade JSON file.'
@@ -128,35 +144,112 @@ final class ItemImageIdentityInspector
             return $this->classifiedAs($status, $reason);
         }
 
-        if (array_intersect($provenance['families'], $referenceMatch['family_keys']) !== []) {
-            return $this->classifiedAs('provenance_match', 'The media provenance matches the item family.');
+        foreach ($provenance['references'] as $provenanceReference) {
+            if ($this->sameReference($expectedReference, $provenanceReference)) {
+                return $this->classifiedAs('provenance_match', 'The media provenance resolves to the expected Ecotrade product.');
+            }
+        }
+
+        if (count($provenance['references']) > 1) {
+            return $this->classifiedAs(
+                'ambiguous_media_source',
+                'The media provenance resolves to more than one Ecotrade product and cannot confirm a wrong source.',
+            );
         }
 
         return $this->classifiedAs(
             'confirmed_wrong_source',
-            'The media provenance belongs to a different Ecotrade product family.',
+            'The expected Ecotrade product is unambiguous and the media provenance resolves to a different product or serial.',
         );
     }
 
-    /** @return array{families:list<string>,recorded:bool} */
-    private function mediaProvenanceFamilies(Media $media): array
+    /** @return array{references:list<array<string,mixed>>,recorded:bool} */
+    private function mediaProvenance(Media $media): array
     {
         $sourceHash = trim((string) $media->getCustomProperty('source_hash'));
         $sourceUrl = trim((string) $media->getCustomProperty('source_url'));
-        $families = [];
+        $references = [];
 
         if ($sourceHash !== '') {
-            $families = [...$families, ...$this->referenceIndex->familiesForSourceHash($sourceHash)];
+            foreach ($this->referenceIndex->referencesForSourceHash($sourceHash) as $reference) {
+                $references[$this->referenceIdentityKey($reference)] = $reference;
+            }
         }
 
         if ($sourceUrl !== '') {
-            $families = [...$families, ...$this->referenceIndex->familiesForSourceUrl($sourceUrl)];
+            foreach ($this->referenceIndex->referencesForSourceUrl($sourceUrl) as $reference) {
+                $references[$this->referenceIdentityKey($reference)] = $reference;
+            }
         }
 
         return [
-            'families' => array_values(array_unique($families)),
+            'references' => array_values($references),
             'recorded' => $sourceHash !== '' || $sourceUrl !== '',
         ];
+    }
+
+    private function sourceHashesMatch(Item $item, ?Media $media): bool
+    {
+        if (! $media instanceof Media) {
+            return false;
+        }
+
+        $itemSourceHash = trim((string) ($item->source_hash ?? ''));
+        $mediaSourceHash = trim((string) $media->getCustomProperty('source_hash'));
+
+        return $itemSourceHash !== ''
+            && $mediaSourceHash !== ''
+            && hash_equals($itemSourceHash, $mediaSourceHash);
+    }
+
+    /** @param array<string,mixed> $expected @param array<string,mixed> $actual */
+    private function sameReference(array $expected, array $actual): bool
+    {
+        $expectedSourceHash = trim((string) ($expected['source_hash'] ?? ''));
+        $actualSourceHash = trim((string) ($actual['source_hash'] ?? ''));
+
+        if ($expectedSourceHash !== '' && $actualSourceHash !== '' && hash_equals($expectedSourceHash, $actualSourceHash)) {
+            return true;
+        }
+
+        $expectedProductUrl = $this->normalizeUrl((string) ($expected['product_url'] ?? ''));
+        $actualProductUrl = $this->normalizeUrl((string) ($actual['product_url'] ?? ''));
+
+        if ($expectedProductUrl !== '' && $actualProductUrl !== '' && $expectedProductUrl === $actualProductUrl) {
+            return true;
+        }
+
+        if ($expectedSourceHash !== '' || $actualSourceHash !== '' || $expectedProductUrl !== '' || $actualProductUrl !== '') {
+            return false;
+        }
+
+        $expectedSerial = Item::normalizeSerialValue($expected['serial_code'] ?? null);
+        $actualSerial = Item::normalizeSerialValue($actual['serial_code'] ?? null);
+
+        return $expectedSerial !== '' && $expectedSerial === $actualSerial;
+    }
+
+    /** @param array<string,mixed> $reference */
+    private function referenceIdentityKey(array $reference): string
+    {
+        $sourceHash = trim((string) ($reference['source_hash'] ?? ''));
+
+        if ($sourceHash !== '') {
+            return 'hash:'.$sourceHash;
+        }
+
+        $productUrl = $this->normalizeUrl((string) ($reference['product_url'] ?? ''));
+
+        if ($productUrl !== '') {
+            return 'url:'.$productUrl;
+        }
+
+        return 'serial:'.Item::normalizeSerialValue($reference['serial_code'] ?? null);
+    }
+
+    private function normalizeUrl(string $url): string
+    {
+        return mb_strtolower(trim($url));
     }
 
     /** @param array<string,mixed> $referenceMatch @return array{score:float|null,image_url:string|null,error:string|null} */
