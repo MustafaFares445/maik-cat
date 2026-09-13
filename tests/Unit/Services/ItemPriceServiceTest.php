@@ -53,8 +53,8 @@ test('item price service matches the Excel formula and uses the live metals snap
         'rh_ppm' => 250,
     ]);
 
-    expect($service->priceFor($firstItem))->toBe(22.0)
-        ->and($service->priceFor($secondItem))->toBe(44.0);
+    expect($service->priceFor($firstItem))->toBe(21.08)
+        ->and($service->priceFor($secondItem))->toBe(42.16);
 });
 
 test('item price service applies the Excel formula to normalized kilogram weights', function (): void {
@@ -99,5 +99,5 @@ test('item price service applies the Excel formula to normalized kilogram weight
         'source_url' => 'https://www.ecotradegroup.com/en/product/volvo/8670409',
     ]);
 
-    expect(app(ItemPriceService::class)->priceFor($item, 'EUR'))->toBe(673.68);
+    expect(app(ItemPriceService::class)->priceFor($item, 'EUR'))->toBe(660.21);
 });

@@ -35,6 +35,7 @@ return [
         'ds' => 'PSA',
         'opel' => 'OPEL',
         'vauxhall' => 'OPEL',
+        'gm' => 'OPEL',
         'fiat' => 'FIAT',
         'alfa-romeo' => 'FIAT',
         'lancia' => 'FIAT',

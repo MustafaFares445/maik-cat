@@ -57,7 +57,7 @@ class ApiSettings extends Page implements HasSchemas
                     ->components([
                         Toggle::make('unique_serial_items')
                             ->label('Return one item per unique serial code')
-                            ->helperText('When enabled, duplicate serial codes are collapsed in item API responses. Weight, Pt, Pd, and Rh values are returned as the arithmetic average of all database items with the same normalized serial code.')
+                            ->helperText('When enabled, duplicate serial codes are collapsed to one representative item. Its stored weight and metal values stay unchanged, while price is the arithmetic average of the individually calculated prices for all calculable items with the same normalized serial code.')
                             ->default(ItemApiSettingsService::DEFAULT_UNIQUE_SERIAL_ITEMS),
                     ]),
             ])
@@ -78,7 +78,7 @@ class ApiSettings extends Page implements HasSchemas
         Notification::make()
             ->title('API settings updated')
             ->body($enabled
-                ? 'Item API responses now return one averaged item per unique serial code.'
+                ? 'Item API responses now return one representative item per unique serial code with the average of its individual item prices.'
                 : 'Item API responses now return the original item rows.')
             ->success()
             ->send();
