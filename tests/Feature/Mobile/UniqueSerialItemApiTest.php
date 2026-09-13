@@ -47,21 +47,9 @@ function mockUniqueSerialMetalsSpotService(): void
         'fx_rate' => 1.0,
         'updated_at' => now()->toIso8601String(),
         'data' => [
-            [
-                'key' => 'platinum',
-                'price_oz' => 10.0 * 31.1043,
-                'price_gram' => 10.0,
-            ],
-            [
-                'key' => 'palladium',
-                'price_oz' => 20.0 * 31.1043,
-                'price_gram' => 20.0,
-            ],
-            [
-                'key' => 'rhodium',
-                'price_oz' => 30.0 * 31.1043,
-                'price_gram' => 30.0,
-            ],
+            ['key' => 'platinum', 'price_oz' => 10.0 * 31.1043, 'price_gram' => 10.0],
+            ['key' => 'palladium', 'price_oz' => 20.0 * 31.1043, 'price_gram' => 20.0],
+            ['key' => 'rhodium', 'price_oz' => 30.0 * 31.1043, 'price_gram' => 30.0],
         ],
     ]);
 
@@ -109,7 +97,7 @@ test('unique serial response mode is disabled by default', function (): void {
     }
 });
 
-test('unique serial response mode returns averaged unique items without changing item rows', function (): void {
+test('unique serial mode returns the arithmetic mean of individual prices without averaging assay fields', function (): void {
     app(ItemApiSettingsService::class)->updateUniqueSerialItems(true);
 
     $first = Item::factory()->create([
@@ -126,9 +114,9 @@ test('unique serial response mode returns averaged unique items without changing
         'pd_ppm' => 20,
         'rh_ppm' => 2,
     ]);
-    $third = Item::factory()->create([
+    $hiddenThird = Item::factory()->create([
         'serial_code' => 'GM.10',
-        'weight_kg' => 3.0,
+        'weight_kg' => 9.0,
         'pt_ppm' => 300,
         'pd_ppm' => 30,
         'rh_ppm' => 3,
@@ -144,7 +132,6 @@ test('unique serial response mode returns averaged unique items without changing
     $paths = [
         uniqueSerialApiAttachImage($first),
         uniqueSerialApiAttachImage($second),
-        uniqueSerialApiAttachImage($third),
         uniqueSerialApiAttachImage($other),
     ];
 
@@ -156,11 +143,10 @@ test('unique serial response mode returns averaged unique items without changing
         $pageOne->assertJsonPath('meta.total', 2);
         $pageOne->assertJsonPath('meta.lastPage', 2);
         $pageOne->assertJsonPath('data.0.serialCode', 'GM10');
-        $pageOne->assertJsonPath('data.0.weightKg', 2);
-        $pageOne->assertJsonPath('data.0.ptPpm', 200);
-        $pageOne->assertJsonPath('data.0.pdPpm', 20);
-        $pageOne->assertJsonPath('data.0.rhPpm', 2);
-        $pageOne->assertJsonPath('data.0.price', 3.94);
+        $pageOne->assertJsonPath('data.0.price', 10.26);
+
+        expect((float) $pageOne->json('data.0.weightKg'))->toBeIn([1.0, 2.0])
+            ->and((float) $pageOne->json('data.0.weightKg'))->not->toBe(4.0);
 
         $pageTwo = getJson('/api/items?sort=serial_code&per_page=1&page=2');
 
@@ -172,15 +158,13 @@ test('unique serial response mode returns averaged unique items without changing
 
         $detail->assertOk();
         $detail->assertJsonPath('data.serialCode', 'GM10');
-        $detail->assertJsonPath('data.weightKg', 2);
-        $detail->assertJsonPath('data.ptPpm', 200);
-        $detail->assertJsonPath('data.pdPpm', 20);
-        $detail->assertJsonPath('data.rhPpm', 2);
+        $detail->assertJsonPath('data.price', 10.26);
+        $detail->assertJsonPath('data.weightKg', 1);
 
         expect((float) $first->fresh()->weight_kg)->toBe(1.0)
             ->and((float) $first->fresh()->pt_ppm)->toBe(100.0)
             ->and((float) $second->fresh()->weight_kg)->toBe(2.0)
-            ->and((float) $third->fresh()->weight_kg)->toBe(3.0);
+            ->and((float) $hiddenThird->fresh()->weight_kg)->toBe(9.0);
     } finally {
         foreach ($paths as $path) {
             @unlink($path);

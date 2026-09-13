@@ -9,6 +9,7 @@ class ItemApiResponseService
 {
     public function __construct(
         private readonly ItemApiSettingsService $settings,
+        private readonly ItemPriceService $itemPriceService,
     ) {}
 
     public function uniqueModeEnabled(): bool
@@ -26,7 +27,7 @@ class ItemApiResponseService
             return $items;
         }
 
-        return $this->applyAverages($this->deduplicate($items));
+        return $this->applyAveragePrices($this->deduplicate($items));
     }
 
     /**
@@ -53,10 +54,25 @@ class ItemApiResponseService
     }
 
     /**
+     * Compatibility entry point used by the paginated controller path.
+     *
      * @param  Collection<int, Item>  $items
      * @return Collection<int, Item>
      */
     public function applyAverages(Collection $items): Collection
+    {
+        return $this->applyAveragePrices($items);
+    }
+
+    /**
+     * Keep the representative item's stored assay fields unchanged and override
+     * only its response price with the arithmetic mean of all calculable items
+     * sharing the same normalized serial code.
+     *
+     * @param  Collection<int, Item>  $items
+     * @return Collection<int, Item>
+     */
+    public function applyAveragePrices(Collection $items, ?string $currency = null): Collection
     {
         if ($items->isEmpty()) {
             return $items;
@@ -72,15 +88,15 @@ class ItemApiResponseService
             return $items;
         }
 
-        $averages = Item::query()
-            ->selectRaw(
-                'normalized_serial, AVG(weight_kg) as average_weight_kg, AVG(pt_ppm) as average_pt_ppm, AVG(pd_ppm) as average_pd_ppm, AVG(rh_ppm) as average_rh_ppm'
-            )
+        $currency ??= app()->bound('request')
+            ? (string) request()->query('currency', 'USD')
+            : 'USD';
+
+        $siblings = Item::query()
+            ->calculablePrice()
             ->whereIn('normalized_serial', $serials->all())
-            ->groupBy('normalized_serial')
-            ->toBase()
             ->get()
-            ->keyBy(fn (object $row): string => (string) $row->normalized_serial);
+            ->groupBy(fn (Item $item): string => $this->normalizedSerial($item));
 
         foreach ($items as $item) {
             $serial = $this->normalizedSerial($item);
@@ -89,16 +105,22 @@ class ItemApiResponseService
                 continue;
             }
 
-            $average = $averages->get($serial);
+            /** @var Collection<int, Item>|null $serialItems */
+            $serialItems = $siblings->get($serial);
 
-            if (! is_object($average)) {
+            if (! $serialItems instanceof Collection || $serialItems->isEmpty()) {
                 continue;
             }
 
-            $item->setAttribute('weight_kg', $this->nullableFloat($average->average_weight_kg ?? null));
-            $item->setAttribute('pt_ppm', $this->nullableFloat($average->average_pt_ppm ?? null));
-            $item->setAttribute('pd_ppm', $this->nullableFloat($average->average_pd_ppm ?? null));
-            $item->setAttribute('rh_ppm', $this->nullableFloat($average->average_rh_ppm ?? null));
+            $prices = $serialItems
+                ->map(fn (Item $serialItem): float => $this->itemPriceService->priceFor($serialItem, $currency))
+                ->filter(fn (float $price): bool => $price >= 0.0);
+
+            if ($prices->isEmpty()) {
+                continue;
+            }
+
+            $item->setAttribute('api_average_price', round((float) $prices->avg(), 2));
         }
 
         return $items;
@@ -141,10 +163,5 @@ class ItemApiResponseService
         return $serial !== ''
             ? $serial
             : Item::normalizeSerialValue($item->serial_code);
-    }
-
-    private function nullableFloat(mixed $value): ?float
-    {
-        return $value === null ? null : (float) $value;
     }
 }

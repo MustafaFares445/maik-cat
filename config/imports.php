@@ -14,6 +14,7 @@ return [
         'ROVER' => 'ROVER&LAND ROVER',
         'SEVEL' => 'FIAT',
         'РАЗНИ' => 'RAZNI',
+        'GM' => 'OPEL',
     ],
 
     'ecotrade_brand_groups' => [

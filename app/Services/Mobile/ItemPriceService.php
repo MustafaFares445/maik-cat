@@ -23,15 +23,40 @@ class ItemPriceService
 
     public function priceFor(Item $item, ?string $currency = null): float
     {
-        return $this->priceForRate(
+        $settings = $this->itemPriceSettingsService->pricingConfiguration();
+
+        return $this->priceForConfiguration(
             $item,
-            $this->itemPriceSettingsService->ratePercent(),
+            $settings['rate_percent'],
+            $settings['platinum_deduction_percent'],
+            $settings['palladium_deduction_percent'],
+            $settings['rhodium_deduction_percent'],
             $currency,
         );
     }
 
     public function priceForRate(Item $item, float $ratePercent, ?string $currency = null): float
     {
+        $settings = $this->itemPriceSettingsService->pricingConfiguration();
+
+        return $this->priceForConfiguration(
+            $item,
+            $ratePercent,
+            $settings['platinum_deduction_percent'],
+            $settings['palladium_deduction_percent'],
+            $settings['rhodium_deduction_percent'],
+            $currency,
+        );
+    }
+
+    public function priceForConfiguration(
+        Item $item,
+        float $ratePercent,
+        float $platinumDeductionPercent,
+        float $palladiumDeductionPercent,
+        float $rhodiumDeductionPercent,
+        ?string $currency = null,
+    ): float {
         $currency = $this->normalizeCurrency($currency);
         $prices = $this->metalPrices($currency);
 
@@ -44,16 +69,13 @@ class ItemPriceService
             return 0.0;
         }
 
-        // Excel formula:
-        // (((Pt ppm * Pt price/g * kg) + (Pd ppm * Pd price/g * kg) +
-        //   (Rh ppm * Rh price/g * kg)) * configured rate / 100) * 0.001
         $metalValue = ($weightKg / self::GRAMS_PER_KILOGRAM) * (
-            ($ptPpm * $prices['platinum']) +
-            ($pdPpm * $prices['palladium']) +
-            ($rhPpm * $prices['rhodium'])
+            ($ptPpm * $prices['platinum'] * $this->remainingFactor($platinumDeductionPercent)) +
+            ($pdPpm * $prices['palladium'] * $this->remainingFactor($palladiumDeductionPercent)) +
+            ($rhPpm * $prices['rhodium'] * $this->remainingFactor($rhodiumDeductionPercent))
         );
 
-        $price = $metalValue * $this->normalizeRatePercent($ratePercent);
+        $price = $metalValue * $this->normalizePercent($ratePercent);
 
         return round(max($price, 0.0), 2);
     }
@@ -109,7 +131,6 @@ class ItemPriceService
      */
     private function extractPriceGram(array $row): ?float
     {
-        // The workbook derives every gram price from the ounce price with 31.1043.
         if (is_numeric($row['price_oz'] ?? null)) {
             return max((float) $row['price_oz'] / self::EXCEL_TROY_OUNCE_GRAMS, 0.0);
         }
@@ -121,9 +142,14 @@ class ItemPriceService
         return null;
     }
 
-    private function normalizeRatePercent(float $ratePercent): float
+    private function remainingFactor(float $deductionPercent): float
     {
-        return min(max($ratePercent, 0.0), 100.0) / 100;
+        return 1 - $this->normalizePercent($deductionPercent);
+    }
+
+    private function normalizePercent(float $percent): float
+    {
+        return min(max($percent, 0.0), 100.0) / 100;
     }
 
     private function normalizeCurrency(?string $currency): string

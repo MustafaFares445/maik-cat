@@ -13,7 +13,10 @@ class ItemResource extends JsonResource
     public function toArray(Request $request): array
     {
         $currency = strtoupper((string) $request->query('currency', 'USD'));
-        $price = app(ItemPriceService::class)->priceFor($this->resource, $currency);
+        $averagePrice = $this->resource->getAttribute('api_average_price');
+        $price = is_numeric($averagePrice)
+            ? (float) $averagePrice
+            : app(ItemPriceService::class)->priceFor($this->resource, $currency);
 
         return [
             'id' => $this->id,
