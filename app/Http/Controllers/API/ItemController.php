@@ -7,41 +7,68 @@ use App\Http\Requests\API\ItemFilterRequest;
 use App\Http\Resources\API\ItemResource;
 use App\Models\ExtraCode;
 use App\Models\Item;
+use App\Services\Mobile\ItemApiResponseService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Str;
 
 class ItemController extends Controller
 {
+    public function __construct(
+        private readonly ItemApiResponseService $itemApiResponseService,
+    ) {}
+
     public function index(ItemFilterRequest $request): JsonResponse
     {
         $userId = $request->user('sanctum')?->getKey();
+        $perPage = $request->integer('per_page', 20);
 
-        $itemsQuery = Item::getQuery($request);
+        if (! $this->itemApiResponseService->uniqueModeEnabled()) {
+            $itemsQuery = Item::getQuery($request);
 
-        $this->applySavedItemFlag($itemsQuery, $userId);
+            $this->applySavedItemFlag($itemsQuery, $userId);
 
-        $items = $itemsQuery->paginate($request->integer('per_page', 20));
+            return $this->paginatedResponse($itemsQuery->paginate($perPage));
+        }
 
-        return response()->json([
-            'data' => ItemResource::collection($items->getCollection())->resolve(),
-            'links' => [
-                'first' => $items->url(1),
-                'last' => $items->url($items->lastPage()),
-                'prev' => $items->previousPageUrl(),
-                'next' => $items->nextPageUrl(),
+        $orderedRows = Item::getQuery($request, withRelations: false)
+            ->get(['items.id', 'items.normalized_serial', 'items.serial_code']);
+        $representativeIds = $this->itemApiResponseService->representativeIds($orderedRows);
+
+        $page = max(1, $request->integer('page', 1));
+        $pageIds = $representativeIds->forPage($page, $perPage)->values();
+
+        $pageQuery = Item::query()
+            ->with(['carGroup', 'media'])
+            ->whereKey($pageIds->all());
+
+        $this->applySavedItemFlag($pageQuery, $userId);
+
+        $itemsById = $pageQuery
+            ->get()
+            ->keyBy(fn (Item $item): string => (string) $item->getKey());
+
+        $pageItems = $pageIds
+            ->map(fn (mixed $id): ?Item => $itemsById->get((string) $id))
+            ->filter(fn (mixed $item): bool => $item instanceof Item)
+            ->values();
+
+        $pageItems = $this->itemApiResponseService->applyAverages($pageItems);
+
+        $items = new LengthAwarePaginator(
+            $pageItems,
+            $representativeIds->count(),
+            $perPage,
+            $page,
+            [
+                'path' => $request->url(),
+                'query' => $request->query(),
             ],
-            'meta' => [
-                'current_page' => $items->currentPage(),
-                'from' => $items->firstItem(),
-                'last_page' => $items->lastPage(),
-                'path' => $items->path(),
-                'per_page' => $items->perPage(),
-                'to' => $items->lastItem(),
-                'total' => $items->total(),
-            ],
-        ]);
+        );
+
+        return $this->paginatedResponse($items);
     }
 
     public function codes(Request $request): JsonResponse
@@ -118,19 +145,33 @@ class ItemController extends Controller
         abort_unless($item->isApiVisible(), 404);
         $this->applySavedItemFlagToModel($item, $userId);
 
+        $uniqueMode = $this->itemApiResponseService->uniqueModeEnabled();
+        $serial = Item::normalizeSerialValue($item->normalized_serial ?: $item->serial_code);
+
         $relatedQuery = Item::query()
             ->apiVisible()
             ->with(['carGroup', 'extraCodes', 'media'])
             ->where('car_group_id', $item->car_group_id)
-            ->whereKeyNot($item->id)
-            ->limit(5);
+            ->whereKeyNot($item->id);
+
+        if ($uniqueMode && $serial !== '') {
+            $relatedQuery->where('normalized_serial', '!=', $serial);
+        }
+
+        $relatedQuery->limit($uniqueMode ? 25 : 5);
 
         $this->applySavedItemFlag($relatedQuery, $userId);
 
-        $related = $relatedQuery->get();
+        $responseItem = $this->itemApiResponseService
+            ->transform(collect([$item]))
+            ->first() ?? $item;
+        $related = $this->itemApiResponseService
+            ->transform($relatedQuery->get())
+            ->take(5)
+            ->values();
 
         return response()->json([
-            'data' => ItemResource::make($item)->resolve(),
+            'data' => ItemResource::make($responseItem)->resolve(),
             'related' => ItemResource::collection($related)->resolve(),
         ]);
     }
@@ -143,20 +184,53 @@ class ItemController extends Controller
 
         abort_unless($item->isApiVisible(), 404);
 
+        $uniqueMode = $this->itemApiResponseService->uniqueModeEnabled();
+        $serial = Item::normalizeSerialValue($item->normalized_serial ?: $item->serial_code);
+
         $similarQuery = Item::query()
             ->apiVisible()
             ->with(['carGroup', 'extraCodes', 'media'])
             ->where('car_group_id', $item->car_group_id)
             ->whereKeyNot($item->id)
-            ->orderByDesc('pt_ppm')
-            ->limit($limit);
+            ->orderByDesc('pt_ppm');
+
+        if ($uniqueMode && $serial !== '') {
+            $similarQuery->where('normalized_serial', '!=', $serial);
+        }
+
+        $similarQuery->limit($uniqueMode ? min($limit * 5, 100) : $limit);
 
         $this->applySavedItemFlag($similarQuery, $userId);
 
-        $similar = $similarQuery->get();
+        $similar = $this->itemApiResponseService
+            ->transform($similarQuery->get())
+            ->take($limit)
+            ->values();
 
         return response()->json([
             'data' => ItemResource::collection($similar)->resolve(),
+        ]);
+    }
+
+    private function paginatedResponse(LengthAwarePaginator $items): JsonResponse
+    {
+        return response()->json([
+            'data' => ItemResource::collection($items->getCollection())->resolve(),
+            'links' => [
+                'first' => $items->url(1),
+                'last' => $items->url($items->lastPage()),
+                'prev' => $items->previousPageUrl(),
+                'next' => $items->nextPageUrl(),
+            ],
+            'meta' => [
+                'current_page' => $items->currentPage(),
+                'from' => $items->firstItem(),
+                'last_page' => $items->lastPage(),
+                'path' => $items->path(),
+                'per_page' => $items->perPage(),
+                'to' => $items->lastItem(),
+                'total' => $items->total(),
+            ],
         ]);
     }
 
