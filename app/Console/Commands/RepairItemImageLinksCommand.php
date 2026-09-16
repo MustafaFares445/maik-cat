@@ -24,6 +24,7 @@ final class RepairItemImageLinksCommand extends Command
     private const array AUTO_REPAIR_STATUSES = [
         'confirmed_wrong_source',
         'missing_media_file',
+        'provenance_match_visual_review',
     ];
 
     private const array BASE_TRUSTED_DONOR_STATUSES = [
@@ -329,9 +330,9 @@ final class RepairItemImageLinksCommand extends Command
     }
 
     /**
-     * @param list<array<string,string>> $rows
-     * @param array<int,Media> $donorMedia
-     * @param list<string> $trustedStatuses
+     * @param  list<array<string,string>>  $rows
+     * @param  array<int,Media>  $donorMedia
+     * @param  list<string>  $trustedStatuses
      * @return array{0:array<string,list<Media>>,1:array<string,list<Media>>}
      */
     private function donorIndexes(array $rows, array $donorMedia, array $trustedStatuses): array
@@ -414,6 +415,11 @@ final class RepairItemImageLinksCommand extends Command
         $media = $item->getFirstMedia('images');
 
         if (! $media instanceof Media || ! is_file($media->getPath())) {
+            return false;
+        }
+
+        if ((string) ($row['status'] ?? '') === 'provenance_match_visual_review'
+            && (string) $media->getKey() === trim((string) ($row['media_id'] ?? ''))) {
             return false;
         }
 

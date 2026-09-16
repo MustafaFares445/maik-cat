@@ -197,6 +197,69 @@ test('it performs visual comparison with PHP GD and keeps missing provenance exp
     @unlink($jsonPath);
 });
 
+test('it visually reviews GM image output even when its recorded source hash matches', function (): void {
+    $group = CarGroup::factory()->create(['name' => 'OPEL', 'excel_sheet_name' => 'OPEL']);
+    $record = imageLinkAuditRecord('GM 18');
+    $sourceHash = imageLinkAuditSourceHash($record);
+    $item = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'GM 18',
+        'source_hash' => $sourceHash,
+    ]);
+    imageLinkAuditAttach($item, imageLinkAuditPng(0, 0, 0), [
+        'source' => 'ecotrade',
+        'source_url' => $record['main_image_url'],
+        'source_hash' => $sourceHash,
+    ]);
+    $jsonPath = imageLinkAuditJson([$record]);
+    $outputPath = imageLinkAuditOutputPath();
+    Http::fake([
+        $record['main_image_url'] => Http::response(imageLinkAuditPng(255, 255, 255), 200, ['Content-Type' => 'image/png']),
+    ]);
+
+    $this->artisan('media:audit-item-image-links', [
+        'path' => $jsonPath,
+        '--output' => $outputPath,
+        '--visual' => true,
+    ])
+        ->expectsOutputToContain('provenance match visual review: 1')
+        ->assertExitCode(0);
+
+    $auditRow = imageLinkAuditCsvRows($outputPath.'/visual_review.csv')[0];
+    expect($auditRow['status'])->toBe('provenance_match_visual_review')
+        ->and((float) $auditRow['visual_score'])->toBeLessThan(0.75);
+
+    @unlink($jsonPath);
+});
+
+test('it keeps a GM extra-code filter scoped to the owning item', function (): void {
+    $group = CarGroup::factory()->create(['name' => 'OPEL', 'excel_sheet_name' => 'OPEL']);
+    $target = Item::factory()->create(['car_group_id' => $group->id, 'serial_code' => 'TARGET-100']);
+    $target->extraCodes()->create(['code' => 'GM 16', 'source' => 'test']);
+    $unrelated = Item::factory()->create(['car_group_id' => $group->id, 'serial_code' => 'OTHER-200']);
+    imageLinkAuditAttach($target, imageLinkAuditPng(90, 70, 50));
+    imageLinkAuditAttach($unrelated, imageLinkAuditPng(70, 50, 30));
+    $jsonPath = imageLinkAuditJson([
+        imageLinkAuditRecord('GM 16'),
+        imageLinkAuditRecord('OTHER-200'),
+    ]);
+    $outputPath = imageLinkAuditOutputPath();
+
+    $this->artisan('media:audit-item-image-links', [
+        'path' => $jsonPath,
+        '--output' => $outputPath,
+        '--code' => ['GM 16'],
+    ])
+        ->expectsOutputToContain('Items scanned: 1')
+        ->assertExitCode(0);
+
+    $rows = imageLinkAuditCsvRows($outputPath.'/image_link_audit.csv');
+    expect($rows)->toHaveCount(1)
+        ->and($rows[0]['item_id'])->toBe((string) $target->id);
+
+    @unlink($jsonPath);
+});
+
 test('it flags a low PHP visual score for untraceable media', function (): void {
     $group = CarGroup::factory()->create(['name' => 'OPEL', 'excel_sheet_name' => 'OPEL']);
     $record = imageLinkAuditRecord('GM 18');

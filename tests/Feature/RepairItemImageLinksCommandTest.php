@@ -224,6 +224,76 @@ test('it treats the old 50527957 Alfa Romeo exact source hash false positive as 
     @unlink($report);
 });
 
+test('it repairs a provenance visual mismatch from a trusted same-product donor', function (): void {
+    $group = CarGroup::factory()->create(['name' => 'OPEL', 'excel_sheet_name' => 'OPEL']);
+    $sourceHash = sha1('opel|GM 18|https://www.ecotradegroup.com/en/product/opel-vauxhall/gm-18');
+    $productUrl = 'https://www.ecotradegroup.com/en/product/opel-vauxhall/gm-18';
+    $donor = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'GM 18',
+        'source_url' => $productUrl,
+        'source_hash' => $sourceHash,
+    ]);
+    $donorMedia = existingImageRepairAttach($donor, [
+        'source' => 'ecotrade',
+        'source_hash' => $sourceHash,
+    ], 'gm-18-correct-maikcat.png');
+    $target = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'GM 18',
+        'source_url' => $productUrl,
+        'source_hash' => $sourceHash,
+    ]);
+    $targetMedia = existingImageRepairAttach($target, [
+        'source' => 'ecotrade',
+        'source_hash' => $sourceHash,
+    ], 'gm-18-wrong-maikcat.png');
+    $report = existingImageRepairReport([
+        [
+            'status' => 'provenance_match',
+            'item_id' => $donor->id,
+            'serial_code' => 'GM 18',
+            'normalized_serial' => 'GM18',
+            'reference_count' => '1',
+            'item_source_url' => $productUrl,
+            'item_source_hash' => $sourceHash,
+            'media_id' => $donorMedia->id,
+            'media_source_hash' => $sourceHash,
+            'expected_product_url' => $productUrl,
+            'expected_source_hash' => $sourceHash,
+        ],
+        [
+            'status' => 'provenance_match_visual_review',
+            'item_id' => $target->id,
+            'serial_code' => 'GM 18',
+            'normalized_serial' => 'GM18',
+            'reference_count' => '1',
+            'item_source_url' => $productUrl,
+            'item_source_hash' => $sourceHash,
+            'media_id' => $targetMedia->id,
+            'media_source_hash' => $sourceHash,
+            'expected_product_url' => $productUrl,
+            'expected_source_hash' => $sourceHash,
+        ],
+    ]);
+    $output = existingImageRepairOutput();
+
+    $this->artisan('media:repair-item-image-links', [
+        'report' => $report,
+        '--output' => $output,
+        '--apply' => true,
+    ])
+        ->expectsOutputToContain('Already correct: 1')
+        ->expectsOutputToContain('Images repaired: 1')
+        ->assertExitCode(0);
+
+    $newMedia = $target->refresh()->getFirstMedia('images');
+    expect($newMedia->getKey())->not->toBe($targetMedia->getKey())
+        ->and($newMedia->getCustomProperty('repair_source_media_id'))->toBe($donorMedia->id);
+
+    @unlink($report);
+});
+
 test('it never uses raw Ecotrade direct imports as repair donors', function (): void {
     $group = CarGroup::factory()->create(['name' => 'FIAT', 'excel_sheet_name' => 'FIAT']);
     $sourceHash = sha1('fiat|TEST100|https://www.ecotradegroup.com/en/product/fiat/test100');

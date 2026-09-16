@@ -47,9 +47,7 @@ final class ItemImageIdentityInspector
         $referenceMatch = $this->referenceIndex->referencesFor($item);
         $exactSourceHashMatch = $this->sourceHashesMatch($item, $media);
         $classification = $this->classification($media, $referenceMatch, $exactSourceHashMatch);
-        $visual = $exactSourceHashMatch
-            ? $this->emptyVisualComparison()
-            : $this->visualComparison($media, $referenceMatch, $options);
+        $visual = $this->visualComparison($media, $referenceMatch, $options);
 
         if ($visual['score'] !== null) {
             $classification = $this->classificationWithVisualScore(

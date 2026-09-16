@@ -14,11 +14,20 @@ use Throwable;
 
 class LinkEcotradeProductImagesCommand extends Command
 {
+    private const array AUDIT_REPAIR_STATUSES = [
+        'confirmed_wrong_source',
+        'likely_visual_mismatch',
+        'missing_media',
+        'missing_media_file',
+        'provenance_match_visual_review',
+    ];
+
     protected $signature = 'ecotrade:link-product-images
         {path=ecotrade_products_all.json : Path to Ecotrade JSON file}
         {--dry-run : Report candidates without downloading images or writing media}
         {--limit= : Maximum number of Ecotrade product candidates to process}
         {--item-ids-file= : JSON file containing the item IDs allowed for linking}
+        {--audit-report= : Audit CSV containing the item IDs allowed for linking}
         {--allow-cross-group : Permit unique cross-group matches for allowlisted items}
         {--sleep-ms=0 : Milliseconds to sleep after each processed candidate}
         {--replace-existing : Replace item images that already exist}';
@@ -36,11 +45,15 @@ class LinkEcotradeProductImagesCommand extends Command
             $replaceExisting = (bool) $this->option('replace-existing');
             $limit = $this->limit();
             $sleepMs = max(0, (int) $this->option('sleep-ms'));
-            $allowedItemIds = $this->allowedItemIds();
+            $auditReportPath = $this->auditReportPath();
+            $allowedItemIds = $this->combinedAllowedItemIds(
+                $this->allowedItemIds(),
+                $auditReportPath === null ? null : $this->readAuditReportItemIds($auditReportPath),
+            );
             $allowCrossGroup = (bool) $this->option('allow-cross-group');
 
             if ($allowCrossGroup && $allowedItemIds === null) {
-                throw new RuntimeException('--allow-cross-group requires --item-ids-file.');
+                throw new RuntimeException('--allow-cross-group requires --item-ids-file or --audit-report.');
             }
 
             $options = [
@@ -62,6 +75,7 @@ class LinkEcotradeProductImagesCommand extends Command
             $this->line('Dry run: '.($dryRun ? 'yes' : 'no'));
             $this->line('Replace existing: '.($replaceExisting ? 'yes' : 'no'));
             $this->line('Allowed item IDs: '.($allowedItemIds === null ? 'all' : count($allowedItemIds)));
+            $this->line('Audit report: '.($auditReportPath ?? 'none'));
             $this->line('Allow cross-group matches: '.($allowCrossGroup ? 'yes' : 'no'));
 
             foreach ($summary as $key => $value) {
@@ -154,5 +168,71 @@ class LinkEcotradeProductImagesCommand extends Command
             static fn (mixed $itemId): string => trim((string) $itemId),
             $itemIds,
         ))));
+    }
+
+    private function auditReportPath(): ?string
+    {
+        $path = trim((string) $this->option('audit-report'));
+
+        if ($path === '') {
+            return null;
+        }
+
+        foreach ([$path, base_path($path), storage_path($path)] as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        throw new RuntimeException('Audit report file not found: '.$path);
+    }
+
+    /** @return list<string> */
+    private function readAuditReportItemIds(string $path): array
+    {
+        $handle = fopen($path, 'rb');
+
+        if ($handle === false) {
+            throw new RuntimeException('Unable to open audit report: '.$path);
+        }
+
+        try {
+            $headers = fgetcsv($handle);
+            $itemIdIndex = is_array($headers) ? array_search('item_id', $headers, true) : false;
+            $statusIndex = is_array($headers) ? array_search('status', $headers, true) : false;
+
+            if ($itemIdIndex === false || $statusIndex === false) {
+                throw new RuntimeException('Audit report requires item_id and status columns.');
+            }
+
+            $itemIds = [];
+
+            while (($row = fgetcsv($handle)) !== false) {
+                $itemId = trim((string) ($row[$itemIdIndex] ?? ''));
+                $status = trim((string) ($row[$statusIndex] ?? ''));
+
+                if ($itemId !== '' && in_array($status, self::AUDIT_REPAIR_STATUSES, true)) {
+                    $itemIds[] = $itemId;
+                }
+            }
+
+            return array_values(array_unique($itemIds));
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    /** @param list<string>|null $fileItemIds @param list<string>|null $reportItemIds @return list<string>|null */
+    private function combinedAllowedItemIds(?array $fileItemIds, ?array $reportItemIds): ?array
+    {
+        if ($fileItemIds === null) {
+            return $reportItemIds;
+        }
+
+        if ($reportItemIds === null) {
+            return $fileItemIds;
+        }
+
+        return array_values(array_intersect($fileItemIds, $reportItemIds));
     }
 }

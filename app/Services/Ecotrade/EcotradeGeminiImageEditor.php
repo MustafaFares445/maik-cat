@@ -2,11 +2,16 @@
 
 namespace App\Services\Ecotrade;
 
+use App\Services\Media\PhpImageSimilarity;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 class EcotradeGeminiImageEditor
 {
+    private const float MINIMUM_SOURCE_SIMILARITY = 0.75;
+
+    public function __construct(private readonly PhpImageSimilarity $imageSimilarity) {}
+
     /**
      * @return array{bytes: string, mime_type: string}
      */
@@ -19,7 +24,24 @@ class EcotradeGeminiImageEditor
             throw new EcotradeGeminiImageUnavailableException($this->extractText($payload));
         }
 
+        $this->assertSourceFidelity($imageBytes, $image['bytes']);
+
         return $image;
+    }
+
+    private function assertSourceFidelity(string $sourceBytes, string $editedBytes): void
+    {
+        $sourceFingerprint = $this->imageSimilarity->fingerprintFromBytes($sourceBytes);
+        $editedFingerprint = $this->imageSimilarity->fingerprintFromBytes($editedBytes);
+        $score = $this->imageSimilarity->compare($sourceFingerprint, $editedFingerprint);
+
+        if ($score < self::MINIMUM_SOURCE_SIMILARITY) {
+            throw new RuntimeException(sprintf(
+                'Gemini output failed source-fidelity validation (score %.4f; minimum %.2f).',
+                $score,
+                self::MINIMUM_SOURCE_SIMILARITY,
+            ));
+        }
     }
 
     public function inspect(string $imageBytes, string $mimeType, string $prompt): string

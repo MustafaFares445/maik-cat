@@ -45,6 +45,19 @@ function ecotradeImageImportPngBytes(int $width = 320, int $height = 220): strin
     return $bytes;
 }
 
+function ecotradeImageImportUnrelatedPngBytes(): string
+{
+    $image = imagecreatetruecolor(320, 220);
+    $black = imagecolorallocate($image, 0, 0, 0);
+    imagefill($image, 0, 0, $black);
+    ob_start();
+    imagepng($image);
+    $bytes = (string) ob_get_clean();
+    imagedestroy($image);
+
+    return $bytes;
+}
+
 function ecotradeImageImportRecord(array $overrides = []): array
 {
     return array_merge([
@@ -237,6 +250,40 @@ test('Gemini text-only response does not attach the original supplier image', fu
 
     expect($item->refresh()->getFirstMedia('images'))->toBeNull();
     Http::assertSentCount(2);
+
+    @unlink($jsonPath);
+});
+
+test('GM source-fidelity failure preserves the existing image during replacement', function () {
+    $record = ecotradeImageImportRecord(['serial_code' => 'GM 18', 'product_name' => 'GM 18']);
+    $item = ecotradeImageImportItem($record);
+    attachExistingImage($item);
+    $existingMedia = $item->getFirstMedia('images');
+    $jsonPath = ecotradeImageImportTempFile(json_encode([$record], JSON_THROW_ON_ERROR), '.json');
+
+    Http::fake([
+        'https://images.test/source/acura.png' => Http::response(
+            ecotradeImageImportPngBytes(),
+            200,
+            ['Content-Type' => 'image/png'],
+        ),
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent*' => Http::response(
+            ecotradeGeminiResponse(ecotradeImageImportUnrelatedPngBytes()),
+            200,
+        ),
+    ]);
+
+    $this->artisan('ecotrade:import-product-images', [
+        'path' => $jsonPath,
+        '--test' => true,
+        '--replace-existing' => true,
+    ])
+        ->expectsOutputToContain('Gemini output failed source-fidelity validation')
+        ->expectsOutputToContain('Imported: 0')
+        ->expectsOutputToContain('Failed: 1')
+        ->assertExitCode(1);
+
+    expect($item->refresh()->getFirstMedia('images')->getKey())->toBe($existingMedia->getKey());
 
     @unlink($jsonPath);
 });
@@ -591,6 +638,48 @@ test('direct image linking can be restricted to an item ID allowlist', function 
     @unlink($itemIdsPath);
 });
 
+test('direct image recovery can be restricted to rows from the visual audit report', function () {
+    $allowedRecord = ecotradeImageImportRecord([
+        'serial_code' => 'GM 16',
+        'product_name' => 'GM 16',
+        'product_url' => 'https://www.ecotradegroup.com/en/product/opel-vauxhall/gm-16',
+        'main_image_url' => 'https://images.test/source/gm-16.png',
+        'image_urls' => ['https://images.test/source/gm-16.png'],
+    ]);
+    $excludedRecord = ecotradeImageImportRecord([
+        'serial_code' => 'GM 18',
+        'product_name' => 'GM 18',
+        'product_url' => 'https://www.ecotradegroup.com/en/product/opel-vauxhall/gm-18',
+        'main_image_url' => 'https://images.test/source/gm-18.png',
+        'image_urls' => ['https://images.test/source/gm-18.png'],
+    ]);
+    $group = ecotradeImageImportGroup();
+    $allowedItem = ecotradeImageImportItem($allowedRecord, group: $group);
+    $excludedItem = ecotradeImageImportItem($excludedRecord, group: $group);
+    $jsonPath = ecotradeImageImportTempFile(json_encode([$allowedRecord, $excludedRecord], JSON_THROW_ON_ERROR), '.json');
+    $auditPath = ecotradeImageImportTempFile(
+        "item_id,status\n{$allowedItem->id},provenance_match_visual_review\n{$excludedItem->id},provenance_match\n",
+        '.csv',
+    );
+
+    Http::fake();
+
+    $this->artisan('ecotrade:link-product-images', [
+        'path' => $jsonPath,
+        '--dry-run' => true,
+        '--audit-report' => $auditPath,
+    ])
+        ->expectsOutputToContain('Allowed item IDs: 1')
+        ->expectsOutputToContain('candidates selected: 1')
+        ->assertExitCode(0);
+
+    expect($allowedItem->refresh()->getFirstMedia('images'))->toBeNull()
+        ->and($excludedItem->refresh()->getFirstMedia('images'))->toBeNull();
+
+    @unlink($jsonPath);
+    @unlink($auditPath);
+});
+
 test('cross-group direct linking requires an item ID allowlist', function () {
     $jsonPath = ecotradeImageImportTempFile('[]', '.json');
 
@@ -599,7 +688,7 @@ test('cross-group direct linking requires an item ID allowlist', function () {
         '--dry-run' => true,
         '--allow-cross-group' => true,
     ])
-        ->expectsOutputToContain('--allow-cross-group requires --item-ids-file.')
+        ->expectsOutputToContain('--allow-cross-group requires --item-ids-file or --audit-report.')
         ->assertExitCode(1);
 
     @unlink($jsonPath);

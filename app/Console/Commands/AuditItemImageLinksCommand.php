@@ -23,7 +23,7 @@ final class AuditItemImageLinksCommand extends Command
         {--output= : Output directory; defaults to a timestamped directory under storage/app/reports}
         {--code=* : Restrict the audit to one or more serial or extra codes}
         {--visual : Compare current and reference images using PHP GD}
-        {--visual-threshold=0.68 : Scores below this value require visual review}
+        {--visual-threshold=0.75 : Scores below this value require visual review}
         {--chunk=250 : Database rows loaded per chunk}
         {--limit= : Maximum number of item images to inspect}';
 
@@ -117,12 +117,14 @@ final class AuditItemImageLinksCommand extends Command
                     }
                 })
                 ->orWhereHas('extraCodes', static function (Builder $extraCodes) use ($normalizedCodes): void {
-                    foreach ($normalizedCodes as $normalizedCode) {
-                        $extraCodes->orWhereRaw(
-                            "REPLACE(REPLACE(REPLACE(REPLACE(UPPER(code), ' ', ''), '-', ''), '.', ''), '/', '') = ?",
-                            [$normalizedCode],
-                        );
-                    }
+                    $extraCodes->where(static function (Builder $matchingCodes) use ($normalizedCodes): void {
+                        foreach ($normalizedCodes as $normalizedCode) {
+                            $matchingCodes->orWhereRaw(
+                                "REPLACE(REPLACE(REPLACE(REPLACE(UPPER(code), ' ', ''), '-', ''), '.', ''), '/', '') = ?",
+                                [$normalizedCode],
+                            );
+                        }
+                    });
                 });
         });
     }
