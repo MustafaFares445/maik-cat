@@ -38,6 +38,8 @@ class AuthController extends Controller
             $user->forceFill(['fcm_token' => $fcmToken])->save();
         }
 
+        // The mobile API is single-device: a new login revokes every prior API token.
+        $user->tokens()->delete();
         $token = $user->createToken('mobile-api-token')->plainTextToken;
 
         return response()->json([
