@@ -35,13 +35,22 @@ class PricingSettings extends Page implements HasSchemas
 
     public float $savedRatePercent = ItemPriceSettingsService::DEFAULT_RATE_PERCENT;
 
+    public float $savedPlatinumDeductionPercent = ItemPriceSettingsService::DEFAULT_PLATINUM_DEDUCTION_PERCENT;
+
+    public float $savedPalladiumDeductionPercent = ItemPriceSettingsService::DEFAULT_PALLADIUM_DEDUCTION_PERCENT;
+
+    public float $savedRhodiumDeductionPercent = ItemPriceSettingsService::DEFAULT_RHODIUM_DEDUCTION_PERCENT;
+
     public function mount(): void
     {
-        $this->savedRatePercent = app(ItemPriceSettingsService::class)->ratePercent();
+        $settings = app(ItemPriceSettingsService::class)->pricingConfiguration();
 
-        $this->form->fill([
-            'rate_percent' => $this->savedRatePercent,
-        ]);
+        $this->savedRatePercent = $settings['rate_percent'];
+        $this->savedPlatinumDeductionPercent = $settings['platinum_deduction_percent'];
+        $this->savedPalladiumDeductionPercent = $settings['palladium_deduction_percent'];
+        $this->savedRhodiumDeductionPercent = $settings['rhodium_deduction_percent'];
+
+        $this->form->fill($settings);
     }
 
     public static function canAccess(): bool
@@ -51,26 +60,37 @@ class PricingSettings extends Page implements HasSchemas
 
     public function getSubheading(): ?string
     {
-        return 'Control the percentage applied to every calculated item price and preview the result before saving.';
+        return 'Control the general item price rate and the factory deduction applied to each metal contribution.';
     }
 
     public function form(Schema $schema): Schema
     {
         return $schema
             ->components([
-                Section::make('Item price rate')
-                    ->description('The Excel-compatible default is 80%. The saved percentage is applied immediately to all item prices returned by the API.')
+                Section::make('General item price rate')
+                    ->description('The default is 80%. This rate is applied after all metal-specific deductions.')
                     ->components([
-                        TextInput::make('rate_percent')
-                            ->label('Price rate')
-                            ->numeric()
-                            ->minValue(0)
-                            ->maxValue(100)
-                            ->step(0.01)
-                            ->suffix('%')
-                            ->required()
-                            ->live()
-                            ->helperText('Enter a value from 0 to 100. The preview below updates before the setting is saved.'),
+                        $this->percentInput('rate_percent', 'Price rate', 'Default: 80%.'),
+                    ]),
+                Section::make('Metal deductions')
+                    ->description('Each deduction is applied only to that metal contribution before the three metal values are combined.')
+                    ->columns(3)
+                    ->components([
+                        $this->percentInput(
+                            'platinum_deduction_percent',
+                            'Platinum deduction',
+                            'Default: 2%.',
+                        ),
+                        $this->percentInput(
+                            'palladium_deduction_percent',
+                            'Palladium deduction',
+                            'Default: 2%.',
+                        ),
+                        $this->percentInput(
+                            'rhodium_deduction_percent',
+                            'Rhodium deduction',
+                            'Default: 10%.',
+                        ),
                     ]),
             ])
             ->statePath('data');
@@ -80,30 +100,52 @@ class PricingSettings extends Page implements HasSchemas
     {
         $state = $this->form->getState();
 
-        $this->savedRatePercent = app(ItemPriceSettingsService::class)->updateRatePercent(
+        $settings = app(ItemPriceSettingsService::class)->updatePricingConfiguration(
             (float) $state['rate_percent'],
+            (float) $state['platinum_deduction_percent'],
+            (float) $state['palladium_deduction_percent'],
+            (float) $state['rhodium_deduction_percent'],
         );
 
-        $this->form->fill([
-            'rate_percent' => $this->savedRatePercent,
-        ]);
+        $this->savedRatePercent = $settings['rate_percent'];
+        $this->savedPlatinumDeductionPercent = $settings['platinum_deduction_percent'];
+        $this->savedPalladiumDeductionPercent = $settings['palladium_deduction_percent'];
+        $this->savedRhodiumDeductionPercent = $settings['rhodium_deduction_percent'];
+
+        $this->form->fill($settings);
 
         Notification::make()
             ->title('Pricing settings updated')
-            ->body('New item prices now use the saved rate percentage.')
+            ->body('The general price rate and metal deductions are now applied to API item prices.')
             ->success()
             ->send();
     }
 
-    public function getPreviewRatePercent(): float
+    /**
+     * @return array{
+     *     rate_percent: float,
+     *     platinum_deduction_percent: float,
+     *     palladium_deduction_percent: float,
+     *     rhodium_deduction_percent: float
+     * }
+     */
+    public function getPreviewConfiguration(): array
     {
-        $ratePercent = $this->data['rate_percent'] ?? $this->savedRatePercent;
-
-        if (! is_numeric($ratePercent)) {
-            return $this->savedRatePercent;
-        }
-
-        return min(max((float) $ratePercent, 0.0), 100.0);
+        return [
+            'rate_percent' => $this->previewPercent('rate_percent', $this->savedRatePercent),
+            'platinum_deduction_percent' => $this->previewPercent(
+                'platinum_deduction_percent',
+                $this->savedPlatinumDeductionPercent,
+            ),
+            'palladium_deduction_percent' => $this->previewPercent(
+                'palladium_deduction_percent',
+                $this->savedPalladiumDeductionPercent,
+            ),
+            'rhodium_deduction_percent' => $this->previewPercent(
+                'rhodium_deduction_percent',
+                $this->savedRhodiumDeductionPercent,
+            ),
+        ];
     }
 
     /**
@@ -119,7 +161,7 @@ class PricingSettings extends Page implements HasSchemas
      */
     public function getPricePreviewRows(): array
     {
-        $previewRatePercent = $this->getPreviewRatePercent();
+        $preview = $this->getPreviewConfiguration();
         $priceService = app(ItemPriceService::class);
 
         return Item::query()
@@ -128,9 +170,23 @@ class PricingSettings extends Page implements HasSchemas
             ->orderBy('serial_code')
             ->limit(5)
             ->get()
-            ->map(function (Item $item) use ($previewRatePercent, $priceService): array {
-                $currentPrice = $priceService->priceForRate($item, $this->savedRatePercent, 'USD');
-                $previewPrice = $priceService->priceForRate($item, $previewRatePercent, 'USD');
+            ->map(function (Item $item) use ($preview, $priceService): array {
+                $currentPrice = $priceService->priceForConfiguration(
+                    $item,
+                    $this->savedRatePercent,
+                    $this->savedPlatinumDeductionPercent,
+                    $this->savedPalladiumDeductionPercent,
+                    $this->savedRhodiumDeductionPercent,
+                    'USD',
+                );
+                $previewPrice = $priceService->priceForConfiguration(
+                    $item,
+                    $preview['rate_percent'],
+                    $preview['platinum_deduction_percent'],
+                    $preview['palladium_deduction_percent'],
+                    $preview['rhodium_deduction_percent'],
+                    'USD',
+                );
                 $difference = round($previewPrice - $currentPrice, 2);
 
                 return [
@@ -146,5 +202,30 @@ class PricingSettings extends Page implements HasSchemas
                 ];
             })
             ->all();
+    }
+
+    private function percentInput(string $name, string $label, string $helperText): TextInput
+    {
+        return TextInput::make($name)
+            ->label($label)
+            ->numeric()
+            ->minValue(0)
+            ->maxValue(100)
+            ->step(0.01)
+            ->suffix('%')
+            ->required()
+            ->live()
+            ->helperText($helperText);
+    }
+
+    private function previewPercent(string $key, float $fallback): float
+    {
+        $value = $this->data[$key] ?? $fallback;
+
+        if (! is_numeric($value)) {
+            return $fallback;
+        }
+
+        return min(max((float) $value, 0.0), 100.0);
     }
 }

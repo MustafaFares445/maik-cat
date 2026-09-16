@@ -6,12 +6,17 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\API\StoreSavedItemRequest;
 use App\Http\Resources\API\ItemResource;
 use App\Models\Item;
+use App\Services\Mobile\ItemApiResponseService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class SavedItemController extends Controller
 {
+    public function __construct(
+        private readonly ItemApiResponseService $itemApiResponseService,
+    ) {}
+
     public function index(Request $request): JsonResponse
     {
         /** @var \App\Models\User $user */
@@ -21,10 +26,12 @@ class SavedItemController extends Controller
             ->apiVisible()
             ->with(['carGroup', 'extraCodes', 'media'])
             ->withExists([
-                'savedByUsers as saved_item' => fn(Builder $builder) => $builder->where('users.id', $user->getKey()),
+                'savedByUsers as saved_item' => fn (Builder $builder) => $builder->where('users.id', $user->getKey()),
             ])
             ->latest('saved_items.created_at')
             ->get();
+
+        $items = $this->itemApiResponseService->transform($items);
 
         return response()->json([
             'data' => ItemResource::collection($items)->resolve(),

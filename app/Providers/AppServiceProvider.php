@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use App\Models\User;
 use App\Notifications\Channels\FcmChannel;
+use App\Services\Mobile\ItemApiResponseService;
+use App\Services\Mobile\ItemApiSettingsService;
 use App\Services\Mobile\ItemPriceService;
 use App\Services\Mobile\ItemPriceSettingsService;
 use App\Services\Mobile\MetalsSpotService;
@@ -23,6 +25,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(MetalsSpotService::class);
         $this->app->scoped(ItemPriceSettingsService::class);
         $this->app->scoped(ItemPriceService::class);
+        $this->app->scoped(ItemApiSettingsService::class);
+        $this->app->scoped(ItemApiResponseService::class);
 
         $this->app->singleton(Messaging::class, function (): Messaging {
             $factory = new Factory;
