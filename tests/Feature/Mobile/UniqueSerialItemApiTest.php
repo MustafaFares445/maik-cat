@@ -143,7 +143,7 @@ test('unique serial mode returns the arithmetic mean of individual prices withou
         $pageOne->assertJsonPath('meta.total', 2);
         $pageOne->assertJsonPath('meta.lastPage', 2);
         $pageOne->assertJsonPath('data.0.serialCode', 'GM10');
-        $pageOne->assertJsonPath('data.0.price', 10.26);
+        $pageOne->assertJsonPath('data.0.price', 10.5);
 
         expect((float) $pageOne->json('data.0.weightKg'))->toBeIn([1.0, 2.0])
             ->and((float) $pageOne->json('data.0.weightKg'))->not->toBe(4.0);
@@ -158,7 +158,7 @@ test('unique serial mode returns the arithmetic mean of individual prices withou
 
         $detail->assertOk();
         $detail->assertJsonPath('data.serialCode', 'GM10');
-        $detail->assertJsonPath('data.price', 10.26);
+        $detail->assertJsonPath('data.price', 10.5);
         $detail->assertJsonPath('data.weightKg', 1);
 
         expect((float) $first->fresh()->weight_kg)->toBe(1.0)
