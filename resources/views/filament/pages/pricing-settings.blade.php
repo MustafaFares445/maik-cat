@@ -17,16 +17,15 @@
     <x-filament::section>
         <x-slot name="heading">Price change preview</x-slot>
         <x-slot name="description">
-            Preview uses the unsaved values above. Saved settings:
-            rate {{ number_format($this->savedRatePercent, 2) }}%,
-            Pt deduction {{ number_format($this->savedPlatinumDeductionPercent, 2) }}%,
-            Pd deduction {{ number_format($this->savedPalladiumDeductionPercent, 2) }}%,
-            Rh deduction {{ number_format($this->savedRhodiumDeductionPercent, 2) }}%.
-            Preview:
-            rate {{ number_format($preview['rate_percent'], 2) }}%,
-            Pt {{ number_format($preview['platinum_deduction_percent'], 2) }}%,
-            Pd {{ number_format($preview['palladium_deduction_percent'], 2) }}%,
-            Rh {{ number_format($preview['rhodium_deduction_percent'], 2) }}%.
+            Preview uses the unsaved values above. Saved: rate {{ number_format($this->savedRatePercent, 2) }}%,
+            metal deductions {{ $this->savedMetalDeductionsEnabled ? 'ON' : 'OFF' }},
+            filter correction {{ str_replace('_', ' ', $this->savedFilterCorrectionMode) }}.
+            Preview: rate {{ number_format($preview['rate_percent'], 2) }}%,
+            metal deductions {{ $preview['metal_deductions_enabled'] ? 'ON' : 'OFF' }},
+            filter correction {{ str_replace('_', ' ', $preview['filter_correction_mode']) }}.
+            Pt/Pd/Rh values are {{ number_format($preview['platinum_deduction_percent'], 2) }}% /
+            {{ number_format($preview['palladium_deduction_percent'], 2) }}% /
+            {{ number_format($preview['rhodium_deduction_percent'], 2) }}%.
         </x-slot>
 
         @if ($previewRows === [])
