@@ -22,7 +22,6 @@ test('login stores fcm token when provided', function () {
 
     $response->assertOk();
     expect($response->json('token'))->not->toBeNull();
-
     expect($user->fresh()->fcm_token)->toBe('test-fcm-token-123');
 });
 
@@ -40,6 +39,25 @@ test('login works without fcm token and keeps existing token untouched', functio
 
     $response->assertOk();
     expect($user->fresh()->fcm_token)->toBe('existing-token');
+});
+
+test('a new mobile login revokes every previous api token for the account', function () {
+    $user = User::factory()->create([
+        'email' => 'single-device@example.com',
+        'password' => 'secret123',
+    ]);
+    $oldToken = $user->createToken('old-mobile-device');
+    $oldTokenId = $oldToken->accessToken->getKey();
+
+    $response = postJson('/api/auth/login', [
+        'email' => 'single-device@example.com',
+        'password' => 'secret123',
+    ]);
+
+    $response->assertOk();
+    expect($user->tokens()->count())->toBe(1)
+        ->and($user->tokens()->whereKey($oldTokenId)->exists())->toBeFalse()
+        ->and($user->tokens()->first()?->name)->toBe('mobile-api-token');
 });
 
 test('inactive users cannot login', function () {
