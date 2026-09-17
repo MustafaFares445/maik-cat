@@ -2,7 +2,6 @@
 
 namespace App\Filament\Resources\ItemFilterMappings\Schemas;
 
-use App\Models\ItemFilterMapping;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -40,15 +39,6 @@ class ItemFilterMappingForm
                         ->suffix('kg')
                         ->nullable()
                         ->helperText('Optional manual override. Leave empty to use the median filter weight.'),
-                    Select::make('status')
-                        ->options([
-                            ItemFilterMapping::STATUS_DETECTED => 'Detected',
-                            ItemFilterMapping::STATUS_APPROVED => 'Approved',
-                            ItemFilterMapping::STATUS_IGNORED => 'Ignored',
-                            ItemFilterMapping::STATUS_NEEDS_REVIEW => 'Needs review',
-                        ])
-                        ->default(ItemFilterMapping::STATUS_NEEDS_REVIEW)
-                        ->required(),
                     Select::make('confidence')
                         ->options([
                             'high' => 'High',

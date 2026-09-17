@@ -34,7 +34,7 @@ class ExportEcotradePricingComparisonCommand extends Command
             throw new RuntimeException('Unable to create report directory: '.$directory);
         }
 
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Pricing Comparison');
 
@@ -70,77 +70,73 @@ class ExportEcotradePricingComparisonCommand extends Command
             ->whereHas('carGroup', fn (Builder $query) => $query->whereIn('name', self::TARGET_GROUPS))
             ->orderBy('car_group_id')
             ->orderBy('serial_code')
-            ->chunkById(250, function ($items) use (
+            ->orderBy('id')
+            ->get()
+            ->each(function (Item $item) use (
                 &$row,
                 &$count,
                 $sheet,
                 $priceService,
                 $correctionService,
             ): void {
-                foreach ($items as $item) {
-                    if (! $item instanceof Item) {
-                        continue;
-                    }
+                $mapping = $item->filterMapping;
+                $currentPrice = $priceService->priceForFilterMode(
+                    $item,
+                    FilterPriceCorrectionService::MODE_DISABLED,
+                    'USD',
+                );
+                $weightOnlyPrice = $currentPrice;
+                $weightMetalsPrice = $currentPrice;
+                $filterWeight = null;
+                $netWeight = null;
 
-                    $mapping = $item->filterMapping;
-                    $currentPrice = $priceService->priceForFilterMode(
+                if ($mapping instanceof ItemFilterMapping) {
+                    $weightOnlyPrice = $priceService->priceForMappingPreview(
                         $item,
-                        FilterPriceCorrectionService::MODE_DISABLED,
+                        $mapping,
+                        FilterPriceCorrectionService::MODE_WEIGHT_ONLY,
                         'USD',
                     );
-                    $weightOnlyPrice = $currentPrice;
-                    $weightMetalsPrice = $currentPrice;
-                    $filterWeight = null;
-                    $netWeight = null;
-
-                    if ($mapping instanceof ItemFilterMapping) {
-                        $weightOnlyPrice = $priceService->priceForMappingPreview(
-                            $item,
-                            $mapping,
-                            FilterPriceCorrectionService::MODE_WEIGHT_ONLY,
-                            'USD',
-                        );
-                        $weightMetalsPrice = $priceService->priceForMappingPreview(
-                            $item,
-                            $mapping,
-                            FilterPriceCorrectionService::MODE_WEIGHT_AND_METALS,
-                            'USD',
-                        );
-                        $weightAssay = $correctionService->effectiveAssayForMapping(
-                            $item,
-                            $mapping,
-                            FilterPriceCorrectionService::MODE_WEIGHT_ONLY,
-                        );
-                        $filterWeight = $weightAssay['filter_weight_kg'];
-                        $netWeight = $weightAssay['applied'] ? $weightAssay['weight_kg'] : null;
-                    }
-
-                    $sheet->fromArray([
-                        (string) ($item->carGroup?->name ?? ''),
-                        (string) $item->serial_code,
-                        $mapping?->status ?? '',
-                        (float) $item->weight_kg,
-                        $mapping?->filter_serial ?? '',
-                        $filterWeight,
-                        $netWeight,
-                        $currentPrice,
-                        $weightOnlyPrice,
-                        $weightMetalsPrice,
-                        $priceService->priceFor($item, 'USD'),
-                        null,
-                    ], null, 'A'.$row);
-
-                    $sheet->setCellValue("M{$row}", "=IF(L{$row}=\"\",\"\",K{$row}-L{$row})");
-                    $sheet->setCellValue("N{$row}", "=IF(OR(L{$row}=\"\",L{$row}=0),\"\",M{$row}/L{$row})");
-                    $sheet->setCellValue(
-                        "O{$row}",
-                        "=IF(N{$row}=\"\",\"\",IF(ABS(N{$row})<=0.05,\"Within ±5%\",IF(ABS(N{$row})<=0.1,\"Within ±10%\",\">10% difference\")))",
+                    $weightMetalsPrice = $priceService->priceForMappingPreview(
+                        $item,
+                        $mapping,
+                        FilterPriceCorrectionService::MODE_WEIGHT_AND_METALS,
+                        'USD',
                     );
-                    $sheet->setCellValue("P{$row}", (string) ($item->source_url ?? ''));
-
-                    $row++;
-                    $count++;
+                    $weightAssay = $correctionService->effectiveAssayForMapping(
+                        $item,
+                        $mapping,
+                        FilterPriceCorrectionService::MODE_WEIGHT_ONLY,
+                    );
+                    $filterWeight = $weightAssay['filter_weight_kg'];
+                    $netWeight = $weightAssay['applied'] ? $weightAssay['weight_kg'] : null;
                 }
+
+                $sheet->fromArray([
+                    (string) ($item->carGroup?->name ?? ''),
+                    (string) $item->serial_code,
+                    $mapping?->status ?? '',
+                    (float) $item->weight_kg,
+                    $mapping?->filter_serial ?? '',
+                    $filterWeight,
+                    $netWeight,
+                    $currentPrice,
+                    $weightOnlyPrice,
+                    $weightMetalsPrice,
+                    $priceService->priceFor($item, 'USD'),
+                    null,
+                ], null, 'A'.$row);
+
+                $sheet->setCellValue("M{$row}", "=IF(L{$row}=\"\",\"\",K{$row}-L{$row})");
+                $sheet->setCellValue("N{$row}", "=IF(OR(L{$row}=\"\",L{$row}=0),\"\",M{$row}/L{$row})");
+                $sheet->setCellValue(
+                    "O{$row}",
+                    "=IF(N{$row}=\"\",\"\",IF(ABS(N{$row})<=0.05,\"Within ±5%\",IF(ABS(N{$row})<=0.1,\"Within ±10%\",\">10% difference\")))",
+                );
+                $sheet->setCellValue("P{$row}", (string) ($item->source_url ?? ''));
+
+                $row++;
+                $count++;
             });
 
         if ($count > 0) {

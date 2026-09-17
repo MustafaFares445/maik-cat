@@ -40,6 +40,10 @@ class ItemFilterMappingsTable
                 TextColumn::make('net_weight')
                     ->label('Net W')
                     ->getStateUsing(fn (ItemFilterMapping $record): ?string => self::formattedWeight(self::netWeight($record))),
+                TextColumn::make('correction_status')
+                    ->label('Correction')
+                    ->getStateUsing(fn (ItemFilterMapping $record): string => self::correctionStatus($record))
+                    ->badge(),
                 TextColumn::make('current_price')
                     ->label('Current')
                     ->getStateUsing(fn (ItemFilterMapping $record): float => self::price($record, FilterPriceCorrectionService::MODE_DISABLED))
@@ -80,8 +84,14 @@ class ItemFilterMappingsTable
                     ->icon('heroicon-o-check-circle')
                     ->color('success')
                     ->requiresConfirmation()
-                    ->visible(fn (ItemFilterMapping $record): bool => $record->status !== ItemFilterMapping::STATUS_APPROVED)
+                    ->visible(fn (ItemFilterMapping $record): bool => $record->status !== ItemFilterMapping::STATUS_APPROVED && self::canApprove($record))
                     ->action(function (ItemFilterMapping $record): void {
+                        if (! self::canApprove($record)) {
+                            Notification::make()->title('Filter mapping is not safe to approve')->danger()->send();
+
+                            return;
+                        }
+
                         $record->update([
                             'status' => ItemFilterMapping::STATUS_APPROVED,
                             'approved_by' => auth()->id(),
@@ -103,6 +113,29 @@ class ItemFilterMappingsTable
                 EditAction::make(),
             ])
             ->defaultSort('updated_at', 'desc');
+    }
+
+    private static function canApprove(ItemFilterMapping $record): bool
+    {
+        return self::weightOnlyAssay($record)['applied'] ?? false;
+    }
+
+    private static function correctionStatus(ItemFilterMapping $record): string
+    {
+        $assay = self::weightOnlyAssay($record);
+
+        return ($assay['applied'] ?? false) ? 'Ready' : (string) ($assay['reason'] ?? 'Needs review');
+    }
+
+    /** @return array<string, mixed> */
+    private static function weightOnlyAssay(ItemFilterMapping $record): array
+    {
+        if ($record->item === null) {
+            return ['applied' => false, 'reason' => 'missing_item'];
+        }
+
+        return app(FilterPriceCorrectionService::class)
+            ->effectiveAssayForMapping($record->item, $record, FilterPriceCorrectionService::MODE_WEIGHT_ONLY);
     }
 
     private static function filterWeight(ItemFilterMapping $record): ?float

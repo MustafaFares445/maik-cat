@@ -117,3 +117,30 @@ test('same serial filter sibling alone does not mark a clean catalyst below thre
 
     expect(ItemFilterMapping::query()->where('item_id', $clean->id)->exists())->toBeFalse();
 });
+
+test('detector downgrades matched filters with implausible net weight to needs review', function (): void {
+    $group = CarGroup::factory()->create(['name' => 'MERCEDES', 'excel_sheet_name' => 'MERCEDES']);
+    $product = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'KT 9999',
+        'weight_kg' => 2.0,
+        'pt_ppm' => 1000,
+        'pd_ppm' => 500,
+        'rh_ppm' => 100,
+        'details' => 'FILTER + KAT',
+    ]);
+    Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'KT 9999',
+        'weight_kg' => 1.95,
+        'pt_ppm' => 100,
+        'details' => 'FILTER',
+    ]);
+
+    $summary = app(FilterCandidateDetectionService::class)->scan();
+    $mapping = ItemFilterMapping::query()->where('item_id', $product->id)->firstOrFail();
+
+    expect($summary['matched'])->toBe(0)
+        ->and($summary['needs_review'])->toBe(1)
+        ->and($mapping->status)->toBe(ItemFilterMapping::STATUS_NEEDS_REVIEW);
+});

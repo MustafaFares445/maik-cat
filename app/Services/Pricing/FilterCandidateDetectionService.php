@@ -16,6 +16,7 @@ class FilterCandidateDetectionService
     public function __construct(
         private readonly ItemPriceService $itemPriceService,
         private readonly ItemPriceSettingsService $settingsService,
+        private readonly FilterPriceCorrectionService $filterPriceCorrectionService,
     ) {}
 
     /** @return array{scanned:int,candidates:int,matched:int,needs_review:int,skipped:int} */
@@ -51,7 +52,7 @@ class FilterCandidateDetectionService
                     $matched = $filter instanceof Item;
                     $status = $matched ? ItemFilterMapping::STATUS_DETECTED : ItemFilterMapping::STATUS_NEEDS_REVIEW;
 
-                    ItemFilterMapping::query()->updateOrCreate(
+                    $mapping = ItemFilterMapping::query()->updateOrCreate(
                         ['item_id' => $item->getKey()],
                         [
                             'filter_item_id' => $filter?->getKey(),
@@ -62,6 +63,21 @@ class FilterCandidateDetectionService
                             'evidence' => $evidence,
                         ],
                     );
+
+                    if ($matched) {
+                        $assay = $this->filterPriceCorrectionService->effectiveAssayForMapping(
+                            $item,
+                            $mapping,
+                            FilterPriceCorrectionService::MODE_WEIGHT_ONLY,
+                        );
+
+                        if (! $assay['applied']) {
+                            $mapping->update(['status' => ItemFilterMapping::STATUS_NEEDS_REVIEW]);
+                            $summary['needs_review']++;
+
+                            continue;
+                        }
+                    }
 
                     $matched ? $summary['matched']++ : $summary['needs_review']++;
                 }
