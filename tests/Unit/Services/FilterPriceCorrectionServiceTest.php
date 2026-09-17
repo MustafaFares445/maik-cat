@@ -161,3 +161,29 @@ test('weight and metals mode safely falls back to weight only when filter metals
         ->and($assay['reason'])->toBe('metal_profile_unavailable_fell_back_to_weight_only')
         ->and($assay['weight_kg'])->toBe(1.5);
 });
+
+test('correction rejects implausible net weights instead of near zero prices', function (): void {
+    $group = CarGroup::factory()->create(['name' => 'MERCEDES']);
+    $product = Item::factory()->create(['car_group_id' => $group->id, 'weight_kg' => 2.115, 'pt_ppm' => 1000]);
+    $filter = Item::factory()->create(['car_group_id' => $group->id, 'weight_kg' => 2.1125, 'pt_ppm' => 100, 'details' => 'FILTER']);
+    $mapping = ItemFilterMapping::query()->create(['item_id' => $product->id, 'filter_item_id' => $filter->id, 'filter_serial' => $filter->serial_code, 'status' => ItemFilterMapping::STATUS_APPROVED, 'confidence' => 'manual', 'detection_method' => 'manual']);
+
+    $assay = app(FilterPriceCorrectionService::class)->effectiveAssayForMapping($product, $mapping, FilterPriceCorrectionService::MODE_WEIGHT_ONLY);
+
+    expect($assay['applied'])->toBeFalse()->and($assay['reason'])->toBe('implausible_net_weight')->and($assay['weight_kg'])->toBe(2.115);
+});
+
+test('weight and metals mode falls back when filter metal mass exceeds the combined assay', function (): void {
+    $group = CarGroup::factory()->create(['name' => 'MERCEDES']);
+    $product = Item::factory()->create(['car_group_id' => $group->id, 'weight_kg' => 3.0, 'pt_ppm' => 100, 'pd_ppm' => 50, 'rh_ppm' => 10]);
+    $filter = Item::factory()->create(['car_group_id' => $group->id, 'weight_kg' => 2.0, 'pt_ppm' => 1000, 'pd_ppm' => 500, 'rh_ppm' => 100, 'details' => 'FILTER']);
+    $mapping = ItemFilterMapping::query()->create(['item_id' => $product->id, 'filter_item_id' => $filter->id, 'filter_serial' => $filter->serial_code, 'status' => ItemFilterMapping::STATUS_APPROVED, 'confidence' => 'manual', 'detection_method' => 'manual']);
+
+    $assay = app(FilterPriceCorrectionService::class)->effectiveAssayForMapping($product, $mapping, FilterPriceCorrectionService::MODE_WEIGHT_AND_METALS);
+
+    expect($assay['applied'])->toBeTrue()
+        ->and($assay['applied_mode'])->toBe(FilterPriceCorrectionService::MODE_WEIGHT_ONLY)
+        ->and($assay['reason'])->toBe('metal_profile_incompatible_fell_back_to_weight_only')
+        ->and($assay['weight_kg'])->toBe(1.0)
+        ->and($assay['pt_ppm'])->toBe(100.0);
+});

@@ -36,7 +36,8 @@ test('detector finds combined catalyst filter families without auto approving th
         ->and($summary['matched'])->toBe(1)
         ->and($mapping->filter_item_id)->toBe($filter->id)
         ->and($mapping->status)->toBe(ItemFilterMapping::STATUS_DETECTED)
-        ->and($mapping->confidence)->toBe('high')
+        ->and($mapping->detection_method)->toBe('combined_filter_description')
+        ->and($mapping->confidence)->toBe('medium')
         ->and(ItemFilterMapping::query()->where('item_id', $filter->id)->exists())->toBeFalse()
         ->and((float) $product->fresh()->weight_kg)->toBe(3.0);
 });
@@ -90,4 +91,29 @@ test('detector never recreates decisions already approved or ignored', function 
 
     expect(ItemFilterMapping::query()->where('item_id', $product->id)->firstOrFail()->status)
         ->toBe(ItemFilterMapping::STATUS_IGNORED);
+});
+
+test('detector skips standalone PF filter items', function (): void {
+    $group = CarGroup::factory()->create(['name' => 'MERCEDES', 'excel_sheet_name' => 'MERCEDES']);
+    $filter = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'PF0013',
+        'weight_kg' => 2.1,
+        'pt_ppm' => 100,
+        'details' => null,
+    ]);
+
+    app(FilterCandidateDetectionService::class)->scan();
+
+    expect(ItemFilterMapping::query()->where('item_id', $filter->id)->exists())->toBeFalse();
+});
+
+test('same serial filter sibling alone does not mark a clean catalyst below thresholds', function (): void {
+    $group = CarGroup::factory()->create(['name' => 'MERCEDES', 'excel_sheet_name' => 'MERCEDES']);
+    $clean = Item::factory()->create(['car_group_id' => $group->id, 'serial_code' => 'KT 1243', 'weight_kg' => 0.56, 'pt_ppm' => 1000, 'details' => 'KATALIST']);
+    Item::factory()->create(['car_group_id' => $group->id, 'serial_code' => 'KT 1243', 'weight_kg' => 2.3, 'pt_ppm' => 50, 'details' => 'FILTER']);
+
+    app(FilterCandidateDetectionService::class)->scan();
+
+    expect(ItemFilterMapping::query()->where('item_id', $clean->id)->exists())->toBeFalse();
 });

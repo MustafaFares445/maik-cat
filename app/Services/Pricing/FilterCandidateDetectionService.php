@@ -35,12 +35,14 @@ class FilterCandidateDetectionService
 
                     if (! $item instanceof Item || $this->isAlreadyReviewed($item) || $this->looksLikeFilterOnly($item)) {
                         $summary['skipped']++;
+
                         continue;
                     }
 
                     $evidence = $this->evidence($item, $settings);
                     if (! $evidence['candidate']) {
                         $summary['skipped']++;
+
                         continue;
                     }
 
@@ -96,7 +98,7 @@ class FilterCandidateDetectionService
         $filterSerial = $this->extractFilterSerial($text);
         $combined = preg_match('/FILTER\s*\+\s*KAT|KAT\s*\+\s*FILTER|FILTRAS\s*\+\s*(KERAMIKA|METALAS)|CERAMIC\s*\+\s*DPF|SU\s+FILTRU/u', $text) === 1;
         $sameSerialFilter = $this->sameSerialFilterSibling($item);
-        $explicit = $filterSerial !== null || $combined || $sameSerialFilter instanceof Item;
+        $explicit = $filterSerial !== null || $combined;
 
         $currentPrice = $this->itemPriceService->priceForFilterMode(
             $item,
@@ -113,12 +115,11 @@ class FilterCandidateDetectionService
         if ($filterSerial !== null) {
             $method = 'explicit_filter_serial';
             $confidence = 'high';
-        } elseif ($sameSerialFilter instanceof Item) {
-            $method = 'same_serial_filter_sibling';
-            $confidence = 'high';
-            $filterSerial = (string) $sameSerialFilter->serial_code;
         } elseif ($combined) {
             $method = 'combined_filter_description';
+            $confidence = 'medium';
+        } elseif ($thresholdMatch && $sameSerialFilter instanceof Item) {
+            $method = 'threshold_with_same_serial_filter';
             $confidence = 'medium';
         }
 
@@ -179,7 +180,7 @@ class FilterCandidateDetectionService
 
     private function looksLikeFilterOnly(Item $item): bool
     {
-        $text = mb_strtoupper(implode(' ', [(string) $item->details, (string) $item->model, (string) $item->shape_code]));
+        $text = mb_strtoupper(implode(' ', [(string) $item->serial_code, (string) $item->details, (string) $item->model, (string) $item->shape_code]));
         $hasFilter = preg_match('/FILTER|FILTRAS|DPF|\bPF\s*\d+/u', $text) === 1;
         $combined = preg_match('/FILTER\s*\+\s*KAT|KAT\s*\+\s*FILTER|FILTRAS\s*\+\s*(KERAMIKA|METALAS)|CERAMIC\s*\+\s*DPF|SU\s+FILTRU/u', $text) === 1;
         $catalyst = preg_match('/KATALIST|CATALYST/u', $text) === 1;
