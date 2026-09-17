@@ -9,8 +9,12 @@ use Illuminate\Support\Collection;
 class FilterPriceCorrectionService
 {
     public const string MODE_DISABLED = 'disabled';
+
     public const string MODE_WEIGHT_ONLY = 'weight_only';
+
     public const string MODE_WEIGHT_AND_METALS = 'weight_and_metals';
+
+    private const float MIN_NET_WEIGHT_RATIO = 0.10;
 
     /** @return array{weight_kg:float,pt_ppm:float,pd_ppm:float,rh_ppm:float,applied:bool,applied_mode:string,filter_weight_kg:?float,mapping_id:?string,reason:?string} */
     public function effectiveAssay(Item $item, string $mode): array
@@ -53,6 +57,10 @@ class FilterPriceCorrectionService
             return $this->unchanged($item, 'invalid_net_weight', $mapping, $filterWeight);
         }
 
+        if ($original['weight_kg'] <= 0.0 || ($netWeight / $original['weight_kg']) < self::MIN_NET_WEIGHT_RATIO) {
+            return $this->unchanged($item, 'implausible_net_weight', $mapping, $filterWeight);
+        }
+
         if ($mode === self::MODE_WEIGHT_ONLY) {
             return $this->corrected(
                 $mapping,
@@ -75,6 +83,19 @@ class FilterPriceCorrectionService
                 $original['rh_ppm'],
                 $filterWeight,
                 'metal_profile_unavailable_fell_back_to_weight_only',
+            );
+        }
+
+        if (! $this->metalProfileCompatible($original, $profile)) {
+            return $this->corrected(
+                $mapping,
+                self::MODE_WEIGHT_ONLY,
+                $netWeight,
+                $original['pt_ppm'],
+                $original['pd_ppm'],
+                $original['rh_ppm'],
+                $filterWeight,
+                'metal_profile_incompatible_fell_back_to_weight_only',
             );
         }
 
@@ -149,7 +170,7 @@ class FilterPriceCorrectionService
 
     private function looksLikeFilterOnly(Item $item): bool
     {
-        $text = mb_strtoupper(implode(' ', [(string) $item->details, (string) $item->model, (string) $item->shape_code]));
+        $text = mb_strtoupper(implode(' ', [(string) $item->serial_code, (string) $item->details, (string) $item->model, (string) $item->shape_code]));
         $hasFilter = preg_match('/FILTER|FILTRAS|DPF|\bPF\s*\d+/u', $text) === 1;
         $isCombined = preg_match('/FILTER\s*\+\s*KAT|KAT\s*\+\s*FILTER|FILTRAS\s*\+\s*(KERAMIKA|METALAS)|CERAMIC\s*\+\s*DPF|SU\s+FILTRU/u', $text) === 1;
         $isCatalyst = preg_match('/KATALIST|CATALYST/u', $text) === 1;
@@ -195,6 +216,24 @@ class FilterPriceCorrectionService
             'mapping_id' => (string) $mapping->getKey(),
             'reason' => $reason,
         ];
+    }
+
+    /** @param array{weight_kg:float,pt_ppm:float,pd_ppm:float,rh_ppm:float} $original @param array{pt_grams:float,pd_grams:float,rh_grams:float} $profile */
+    private function metalProfileCompatible(array $original, array $profile): bool
+    {
+        $gross = [
+            'pt_grams' => $original['weight_kg'] * $original['pt_ppm'] / 1000,
+            'pd_grams' => $original['weight_kg'] * $original['pd_ppm'] / 1000,
+            'rh_grams' => $original['weight_kg'] * $original['rh_ppm'] / 1000,
+        ];
+
+        foreach ($gross as $key => $grossGrams) {
+            if ((float) $profile[$key] > $grossGrams + 1e-9) {
+                return false;
+            }
+        }
+
+        return array_sum($profile) < array_sum($gross);
     }
 
     private function metalGrams(Item $item, string $ppmField): float
