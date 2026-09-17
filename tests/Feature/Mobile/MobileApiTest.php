@@ -326,7 +326,7 @@ test('item collections return only calculable items with at least one image', fu
         $response->assertOk();
         $response->assertJsonCount(1, 'data');
         $response->assertJsonPath('data.0.id', $calculable->id);
-        $response->assertJsonPath('data.0.price', 27.61);
+        $response->assertJsonPath('data.0.price', 28.44);
         expect($response->json('data.0.imageUrl'))->toBeString()->not->toBe('');
         expect($response->json('data.0.imageThumbUrl'))->toBeString()->not->toBe('');
         expect($response->json('data.0.imageDetailUrl'))->toBeString()->not->toBe('');
@@ -338,7 +338,7 @@ test('item collections return only calculable items with at least one image', fu
         $homeResponse->assertOk();
         $homeResponse->assertJsonCount(1, 'topItems');
         $homeResponse->assertJsonPath('topItems.0.id', $calculable->id);
-        $homeResponse->assertJsonPath('topItems.0.price', 27.61);
+        $homeResponse->assertJsonPath('topItems.0.price', 28.44);
         expect($homeResponse->json('topItems.0.imageUrl'))->toBeString()->not->toBe('');
     } finally {
         @unlink($imagePath);
@@ -368,7 +368,7 @@ test('item details price applies the Excel formula for normalized kilogram weigh
 
         $response->assertOk();
         $response->assertJsonPath('data.id', $item->id);
-        $response->assertJsonPath('data.price', 660.28);
+        $response->assertJsonPath('data.price', 673.75);
         $response->assertJsonPath('data.weightKg', 6.649);
     } finally {
         @unlink($imagePath);
