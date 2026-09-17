@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Spatie\Image\Enums\Fit;
@@ -94,6 +95,16 @@ class Item extends Model implements HasMedia
     public function priceCalculations(): HasMany
     {
         return $this->hasMany(PriceCalculation::class, 'item_id');
+    }
+
+    public function filterMapping(): HasOne
+    {
+        return $this->hasOne(ItemFilterMapping::class, 'item_id');
+    }
+
+    public function usedAsFilterMappings(): HasMany
+    {
+        return $this->hasMany(ItemFilterMapping::class, 'filter_item_id');
     }
 
     public function scopeCalculablePrice(Builder $query): Builder

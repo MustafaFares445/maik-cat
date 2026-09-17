@@ -12,12 +12,15 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 trait ItemFilterQuery
 {
-    public static function getQuery(?Request $request = null): QueryBuilder
+    public static function getQuery(?Request $request = null, bool $withRelations = true): QueryBuilder
     {
-        return QueryBuilder::for(
-            static::query()->apiVisible()->with(['carGroup', 'media']),
-            $request
-        )
+        $query = static::query()->apiVisible();
+
+        if ($withRelations) {
+            $query->with(['carGroup', 'media']);
+        }
+
+        return QueryBuilder::for($query, $request)
             ->allowedFilters(
                 AllowedFilter::exact('category_id', 'car_group_id'),
                 AllowedFilter::callback('text', static function (Builder $query, string $value): void {

@@ -5,6 +5,7 @@ namespace App\Imports;
 use App\Models\CarGroup;
 use App\Models\ImportBatch;
 use App\Models\Item;
+use App\Services\ImportSheetGroupResolver;
 use App\Services\ItemSiblingMediaCopier;
 use App\Support\Items\CatalystSerialValidator;
 use Illuminate\Support\Collection;
@@ -15,6 +16,7 @@ use Maatwebsite\Excel\Concerns\WithStartRow;
 use Maatwebsite\Excel\Row;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
+use RuntimeException;
 use Throwable;
 
 class PetraSheetImport implements OnEachRow, WithChunkReading, WithStartRow
@@ -171,18 +173,11 @@ class PetraSheetImport implements OnEachRow, WithChunkReading, WithStartRow
             return $this->groupCache[$normalized];
         }
 
-        $group = CarGroup::query()
-            ->whereRaw('UPPER(name) = ?', [$normalized])
-            ->orWhereRaw('UPPER(excel_sheet_name) = ?', [$normalized])
-            ->first();
+        $group = app(ImportSheetGroupResolver::class)->resolve($normalized);
 
-        $group ??= CarGroup::query()->firstOrCreate(
-            ['excel_sheet_name' => $normalized],
-            [
-                'name' => $normalized,
-                'region' => null,
-            ],
-        );
+        if (! $group instanceof CarGroup) {
+            throw new RuntimeException("Unable to resolve import group for [{$manufacturer}].");
+        }
 
         return $this->groupCache[$normalized] = $group;
     }

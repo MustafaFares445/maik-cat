@@ -10,14 +10,22 @@
     </form>
 
     @php
-        $previewRatePercent = $this->getPreviewRatePercent();
+        $preview = $this->getPreviewConfiguration();
         $previewRows = $this->getPricePreviewRows();
     @endphp
 
     <x-filament::section>
         <x-slot name="heading">Price change preview</x-slot>
         <x-slot name="description">
-            Compare a sample of API-visible items using the saved {{ number_format($this->savedRatePercent, 2) }}% rate and the unsaved {{ number_format($previewRatePercent, 2) }}% rate.
+            Preview uses the unsaved values above. Saved: rate {{ number_format($this->savedRatePercent, 2) }}%,
+            metal deductions {{ $this->savedMetalDeductionsEnabled ? 'ON' : 'OFF' }},
+            filter correction {{ str_replace('_', ' ', $this->savedFilterCorrectionMode) }}.
+            Preview: rate {{ number_format($preview['rate_percent'], 2) }}%,
+            metal deductions {{ $preview['metal_deductions_enabled'] ? 'ON' : 'OFF' }},
+            filter correction {{ str_replace('_', ' ', $preview['filter_correction_mode']) }}.
+            Pt/Pd/Rh values are {{ number_format($preview['platinum_deduction_percent'], 2) }}% /
+            {{ number_format($preview['palladium_deduction_percent'], 2) }}% /
+            {{ number_format($preview['rhodium_deduction_percent'], 2) }}%.
         </x-slot>
 
         @if ($previewRows === [])

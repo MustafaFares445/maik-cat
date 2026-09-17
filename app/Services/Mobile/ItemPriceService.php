@@ -3,14 +3,14 @@
 namespace App\Services\Mobile;
 
 use App\Models\Item;
+use App\Models\ItemFilterMapping;
+use App\Services\Pricing\FilterPriceCorrectionService;
 use Throwable;
 
 class ItemPriceService
 {
     private const string DEFAULT_CURRENCY = 'USD';
-
     private const float EXCEL_TROY_OUNCE_GRAMS = 31.1043;
-
     private const float GRAMS_PER_KILOGRAM = 1000.0;
 
     /** @var array<string, array{platinum: float, palladium: float, rhodium: float}> */
@@ -19,48 +19,135 @@ class ItemPriceService
     public function __construct(
         private readonly MetalsSpotService $metalsSpotService,
         private readonly ItemPriceSettingsService $itemPriceSettingsService,
+        private readonly FilterPriceCorrectionService $filterPriceCorrectionService,
     ) {}
 
     public function priceFor(Item $item, ?string $currency = null): float
     {
-        return $this->priceForRate(
+        $settings = $this->itemPriceSettingsService->pricingConfiguration();
+
+        return $this->priceForConfiguration(
             $item,
-            $this->itemPriceSettingsService->ratePercent(),
+            $settings['rate_percent'],
+            $settings['platinum_deduction_percent'],
+            $settings['palladium_deduction_percent'],
+            $settings['rhodium_deduction_percent'],
             $currency,
+            $settings['metal_deductions_enabled'],
+            $settings['filter_correction_mode'],
         );
     }
 
     public function priceForRate(Item $item, float $ratePercent, ?string $currency = null): float
     {
+        $settings = $this->itemPriceSettingsService->pricingConfiguration();
+
+        return $this->priceForConfiguration(
+            $item,
+            $ratePercent,
+            $settings['platinum_deduction_percent'],
+            $settings['palladium_deduction_percent'],
+            $settings['rhodium_deduction_percent'],
+            $currency,
+            $settings['metal_deductions_enabled'],
+            $settings['filter_correction_mode'],
+        );
+    }
+
+    public function priceForFilterMode(Item $item, string $filterCorrectionMode, ?string $currency = null): float
+    {
+        $settings = $this->itemPriceSettingsService->pricingConfiguration();
+
+        return $this->priceForConfiguration(
+            $item,
+            $settings['rate_percent'],
+            $settings['platinum_deduction_percent'],
+            $settings['palladium_deduction_percent'],
+            $settings['rhodium_deduction_percent'],
+            $currency,
+            $settings['metal_deductions_enabled'],
+            $filterCorrectionMode,
+        );
+    }
+
+    public function priceForConfiguration(
+        Item $item,
+        float $ratePercent,
+        float $platinumDeductionPercent,
+        float $palladiumDeductionPercent,
+        float $rhodiumDeductionPercent,
+        ?string $currency = null,
+        bool $metalDeductionsEnabled = false,
+        string $filterCorrectionMode = FilterPriceCorrectionService::MODE_DISABLED,
+    ): float {
+        $assay = $this->filterPriceCorrectionService->effectiveAssay($item, $filterCorrectionMode);
+
+        return $this->priceForAssay(
+            $assay,
+            $ratePercent,
+            $platinumDeductionPercent,
+            $palladiumDeductionPercent,
+            $rhodiumDeductionPercent,
+            $currency,
+            $metalDeductionsEnabled,
+        );
+    }
+
+    public function priceForMappingPreview(
+        Item $item,
+        ItemFilterMapping $mapping,
+        string $filterCorrectionMode,
+        ?string $currency = null,
+    ): float {
+        $settings = $this->itemPriceSettingsService->pricingConfiguration();
+        $assay = $this->filterPriceCorrectionService->effectiveAssayForMapping($item, $mapping, $filterCorrectionMode);
+
+        return $this->priceForAssay(
+            $assay,
+            $settings['rate_percent'],
+            $settings['platinum_deduction_percent'],
+            $settings['palladium_deduction_percent'],
+            $settings['rhodium_deduction_percent'],
+            $currency,
+            $settings['metal_deductions_enabled'],
+        );
+    }
+
+    /** @param array{weight_kg:float,pt_ppm:float,pd_ppm:float,rh_ppm:float} $assay */
+    private function priceForAssay(
+        array $assay,
+        float $ratePercent,
+        float $platinumDeductionPercent,
+        float $palladiumDeductionPercent,
+        float $rhodiumDeductionPercent,
+        ?string $currency,
+        bool $metalDeductionsEnabled,
+    ): float {
         $currency = $this->normalizeCurrency($currency);
         $prices = $this->metalPrices($currency);
-
-        $weightKg = max((float) ($item->weight_kg ?? 0), 0.0);
-        $ptPpm = max((float) ($item->pt_ppm ?? 0), 0.0);
-        $pdPpm = max((float) ($item->pd_ppm ?? 0), 0.0);
-        $rhPpm = max((float) ($item->rh_ppm ?? 0), 0.0);
+        $weightKg = max((float) $assay['weight_kg'], 0.0);
+        $ptPpm = max((float) $assay['pt_ppm'], 0.0);
+        $pdPpm = max((float) $assay['pd_ppm'], 0.0);
+        $rhPpm = max((float) $assay['rh_ppm'], 0.0);
 
         if ($weightKg <= 0.0 || ($ptPpm <= 0.0 && $pdPpm <= 0.0 && $rhPpm <= 0.0)) {
             return 0.0;
         }
 
-        // Excel formula:
-        // (((Pt ppm * Pt price/g * kg) + (Pd ppm * Pd price/g * kg) +
-        //   (Rh ppm * Rh price/g * kg)) * configured rate / 100) * 0.001
+        $ptFactor = $metalDeductionsEnabled ? $this->remainingFactor($platinumDeductionPercent) : 1.0;
+        $pdFactor = $metalDeductionsEnabled ? $this->remainingFactor($palladiumDeductionPercent) : 1.0;
+        $rhFactor = $metalDeductionsEnabled ? $this->remainingFactor($rhodiumDeductionPercent) : 1.0;
+
         $metalValue = ($weightKg / self::GRAMS_PER_KILOGRAM) * (
-            ($ptPpm * $prices['platinum']) +
-            ($pdPpm * $prices['palladium']) +
-            ($rhPpm * $prices['rhodium'])
+            ($ptPpm * $prices['platinum'] * $ptFactor) +
+            ($pdPpm * $prices['palladium'] * $pdFactor) +
+            ($rhPpm * $prices['rhodium'] * $rhFactor)
         );
 
-        $price = $metalValue * $this->normalizeRatePercent($ratePercent);
-
-        return round(max($price, 0.0), 2);
+        return round(max($metalValue * $this->normalizePercent($ratePercent), 0.0), 2);
     }
 
-    /**
-     * @return array{platinum: float, palladium: float, rhodium: float}
-     */
+    /** @return array{platinum: float, palladium: float, rhodium: float} */
     private function metalPrices(string $currency): array
     {
         if (array_key_exists($currency, $this->priceCache)) {
@@ -69,7 +156,7 @@ class ItemPriceService
 
         try {
             $spot = $this->metalsSpotService->all($currency);
-        } catch (Throwable $e) {
+        } catch (Throwable) {
             return $this->priceCache[$currency] = [
                 'platinum' => 0.0,
                 'palladium' => 0.0,
@@ -89,13 +176,11 @@ class ItemPriceService
             }
 
             $key = (string) ($row['key'] ?? '');
-
             if (! array_key_exists($key, $prices)) {
                 continue;
             }
 
             $priceGram = $this->extractPriceGram($row);
-
             if ($priceGram !== null) {
                 $prices[$key] = $priceGram;
             }
@@ -104,12 +189,9 @@ class ItemPriceService
         return $this->priceCache[$currency] = $prices;
     }
 
-    /**
-     * @param  array<string, mixed>  $row
-     */
+    /** @param array<string,mixed> $row */
     private function extractPriceGram(array $row): ?float
     {
-        // The workbook derives every gram price from the ounce price with 31.1043.
         if (is_numeric($row['price_oz'] ?? null)) {
             return max((float) $row['price_oz'] / self::EXCEL_TROY_OUNCE_GRAMS, 0.0);
         }
@@ -121,9 +203,14 @@ class ItemPriceService
         return null;
     }
 
-    private function normalizeRatePercent(float $ratePercent): float
+    private function remainingFactor(float $deductionPercent): float
     {
-        return min(max($ratePercent, 0.0), 100.0) / 100;
+        return 1 - $this->normalizePercent($deductionPercent);
+    }
+
+    private function normalizePercent(float $percent): float
+    {
+        return min(max($percent, 0.0), 100.0) / 100;
     }
 
     private function normalizeCurrency(?string $currency): string

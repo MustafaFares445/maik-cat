@@ -12,40 +12,23 @@ test('item price service matches the Excel formula and uses the live metals snap
         'fx_rate' => 1.0,
         'updated_at' => now()->toIso8601String(),
         'data' => [
-            [
-                'key' => 'platinum',
-                'price_gram' => 10.0,
-                'price_oz' => 311.04,
-            ],
-            [
-                'key' => 'palladium',
-                'price_gram' => 20.0,
-                'price_oz' => 622.07,
-            ],
-            [
-                'key' => 'rhodium',
-                'price_gram' => 30.0,
-                'price_oz' => 933.11,
-            ],
+            ['key' => 'platinum', 'price_gram' => 10.0, 'price_oz' => 311.04],
+            ['key' => 'palladium', 'price_gram' => 20.0, 'price_oz' => 622.07],
+            ['key' => 'rhodium', 'price_gram' => 30.0, 'price_oz' => 933.11],
         ],
     ];
 
     $mock = Mockery::mock(MetalsSpotService::class);
-    $mock->shouldReceive('all')
-        ->with('USD')
-        ->once()
-        ->andReturn($spotPayload);
+    $mock->shouldReceive('all')->with('USD')->once()->andReturn($spotPayload);
     app()->instance(MetalsSpotService::class, $mock);
 
     $service = app(ItemPriceService::class);
-
     $firstItem = new Item([
         'weight_kg' => 1.0,
         'pt_ppm' => 1000,
         'pd_ppm' => 500,
         'rh_ppm' => 250,
     ]);
-
     $secondItem = new Item([
         'weight_kg' => 2.0,
         'pt_ppm' => 1000,
@@ -65,29 +48,14 @@ test('item price service applies the Excel formula to normalized kilogram weight
         'fx_rate' => 1.0,
         'updated_at' => now()->toIso8601String(),
         'data' => [
-            [
-                'key' => 'platinum',
-                'price_gram' => 46.06,
-                'price_oz' => 1432.51,
-            ],
-            [
-                'key' => 'palladium',
-                'price_gram' => 35.17,
-                'price_oz' => 1094.06,
-            ],
-            [
-                'key' => 'rhodium',
-                'price_gram' => 216.5,
-                'price_oz' => 6734.04,
-            ],
+            ['key' => 'platinum', 'price_gram' => 46.06, 'price_oz' => 1432.51],
+            ['key' => 'palladium', 'price_gram' => 35.17, 'price_oz' => 1094.06],
+            ['key' => 'rhodium', 'price_gram' => 216.5, 'price_oz' => 6734.04],
         ],
     ];
 
     $mock = Mockery::mock(MetalsSpotService::class);
-    $mock->shouldReceive('all')
-        ->with('EUR')
-        ->once()
-        ->andReturn($spotPayload);
+    $mock->shouldReceive('all')->with('EUR')->once()->andReturn($spotPayload);
     app()->instance(MetalsSpotService::class, $mock);
 
     $item = new Item([
