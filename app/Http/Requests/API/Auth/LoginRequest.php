@@ -13,6 +13,12 @@ class LoginRequest extends FormRequest
                 'fcm_token' => $this->input('fcmToken'),
             ]);
         }
+
+        if ($this->has('fcm_token')) {
+            $this->merge([
+                'fcm_token' => trim((string) $this->input('fcm_token')),
+            ]);
+        }
     }
 
     public function authorize(): bool
@@ -25,7 +31,7 @@ class LoginRequest extends FormRequest
         return [
             'email' => ['required', 'email'],
             'password' => ['required', 'string'],
-            'fcm_token' => ['nullable', 'string', 'max:4096'],
+            'fcm_token' => ['required', 'string', 'max:4096'],
         ];
     }
 }

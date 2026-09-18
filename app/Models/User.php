@@ -20,7 +20,7 @@ use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
 #[Fillable(['name', 'email', 'password', 'fcm_token', 'is_active', 'preferred_language'])]
-#[Hidden(['password', 'remember_token'])]
+#[Hidden(['password', 'remember_token', 'authorized_device_token'])]
 class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<UserFactory> */
@@ -43,6 +43,7 @@ class User extends Authenticatable implements FilamentUser
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
+            'device_bound_at' => 'datetime',
         ];
     }
 
@@ -84,6 +85,40 @@ class User extends Authenticatable implements FilamentUser
     public function notificationCampaignRecipients(): HasMany
     {
         return $this->hasMany(AdminNotificationCampaignRecipient::class, 'user_id');
+    }
+
+    public function hasAuthorizedDevice(): bool
+    {
+        return filled($this->authorized_device_token);
+    }
+
+    public function isAuthorizedDeviceToken(string $deviceToken): bool
+    {
+        $authorizedToken = (string) $this->authorized_device_token;
+
+        return $authorizedToken !== ''
+            && $deviceToken !== ''
+            && hash_equals($authorizedToken, $deviceToken);
+    }
+
+    public function bindAuthorizedDevice(string $deviceToken): void
+    {
+        $this->forceFill([
+            'authorized_device_token' => $deviceToken,
+            'device_bound_at' => now(),
+            'fcm_token' => $deviceToken,
+        ])->save();
+    }
+
+    public function resetAuthorizedDevice(): void
+    {
+        $this->tokens()->delete();
+
+        $this->forceFill([
+            'authorized_device_token' => null,
+            'device_bound_at' => null,
+            'fcm_token' => null,
+        ])->save();
     }
 
     public function canAccessPanel(Panel $panel): bool
