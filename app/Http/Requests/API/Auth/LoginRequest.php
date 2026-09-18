@@ -43,8 +43,8 @@ class LoginRequest extends FormRequest
         return [
             'email' => ['required', 'email'],
             'password' => ['required', 'string'],
-            'device_id' => ['nullable', 'string', 'max:255', 'required_without:fcm_token'],
-            'fcm_token' => ['nullable', 'string', 'max:4096', 'required_without:device_id'],
+            'device_id' => ['nullable', 'string', 'max:255'],
+            'fcm_token' => ['nullable', 'string', 'max:4096'],
         ];
     }
 }

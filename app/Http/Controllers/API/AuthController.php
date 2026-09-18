@@ -35,38 +35,51 @@ class AuthController extends Controller
         $deviceId = trim((string) ($validated['device_id'] ?? ''));
         $fcmToken = trim((string) ($validated['fcm_token'] ?? ''));
 
-        if ($deviceId !== '') {
-            if ($user->hasAuthorizedDeviceId()) {
-                if (! $user->isAuthorizedDeviceId($deviceId)) {
-                    return $this->deviceNotAuthorizedResponse();
-                }
-            } elseif ($user->hasAuthorizedDevice()) {
-                // Seamless migration from the temporary FCM binding: the first app version
-                // that sends a Device ID must also prove it is the currently authorized installation.
-                if ($fcmToken === '' || ! $user->isAuthorizedDeviceToken($fcmToken)) {
-                    return $this->deviceNotAuthorizedResponse();
-                }
-
-                $user->upgradeAuthorizedDeviceId($deviceId);
-            } else {
-                $user->bindAuthorizedDevice($deviceId, $fcmToken !== '' ? $fcmToken : null);
-            }
-
-            // Once Device ID is authoritative, FCM may rotate without affecting device authorization.
+        if ($user->unlimited_devices) {
+            // Unlimited-device accounts bypass device authorization entirely.
+            // FCM remains notification metadata only and may rotate on every login.
             if ($fcmToken !== '' && $user->fcm_token !== $fcmToken) {
                 $user->forceFill(['fcm_token' => $fcmToken])->save();
             }
         } else {
-            // Temporary compatibility path for the current app version.
-            if (! $user->hasAuthorizedDevice()) {
-                $user->bindAuthorizedDevice(null, $fcmToken);
-            } elseif (! $user->isAuthorizedDeviceToken($fcmToken)) {
-                return $this->deviceNotAuthorizedResponse();
+            if ($deviceId === '' && $fcmToken === '') {
+                return $this->missingDeviceIdentifierResponse();
             }
+
+            if ($deviceId !== '') {
+                if ($user->hasAuthorizedDeviceId()) {
+                    if (! $user->isAuthorizedDeviceId($deviceId)) {
+                        return $this->deviceNotAuthorizedResponse();
+                    }
+                } elseif ($user->hasAuthorizedDevice()) {
+                    // Seamless migration from the temporary FCM binding: the first app version
+                    // that sends a Device ID must also prove it is the currently authorized installation.
+                    if ($fcmToken === '' || ! $user->isAuthorizedDeviceToken($fcmToken)) {
+                        return $this->deviceNotAuthorizedResponse();
+                    }
+
+                    $user->upgradeAuthorizedDeviceId($deviceId);
+                } else {
+                    $user->bindAuthorizedDevice($deviceId, $fcmToken !== '' ? $fcmToken : null);
+                }
+
+                // Once Device ID is authoritative, FCM may rotate without affecting device authorization.
+                if ($fcmToken !== '' && $user->fcm_token !== $fcmToken) {
+                    $user->forceFill(['fcm_token' => $fcmToken])->save();
+                }
+            } else {
+                // Temporary compatibility path for the current app version.
+                if (! $user->hasAuthorizedDevice()) {
+                    $user->bindAuthorizedDevice(null, $fcmToken);
+                } elseif (! $user->isAuthorizedDeviceToken($fcmToken)) {
+                    return $this->deviceNotAuthorizedResponse();
+                }
+            }
+
+            // Standard accounts keep only one live mobile session.
+            $user->tokens()->delete();
         }
 
-        // Keep only one live mobile session for the authorized installation.
-        $user->tokens()->delete();
         $token = $user->createToken('mobile-api-token')->plainTextToken;
 
         return response()->json([
@@ -78,6 +91,17 @@ class AuthController extends Controller
                 'preferred_language' => $user->preferredLanguageOrDefault(),
             ],
         ]);
+    }
+
+    private function missingDeviceIdentifierResponse(): JsonResponse
+    {
+        return response()->json([
+            'message' => 'A device identifier is required for this account.',
+            'errors' => [
+                'deviceId' => ['Device ID or FCM token is required.'],
+                'fcmToken' => ['Device ID or FCM token is required.'],
+            ],
+        ], 422);
     }
 
     private function deviceNotAuthorizedResponse(): JsonResponse

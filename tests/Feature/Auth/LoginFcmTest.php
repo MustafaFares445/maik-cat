@@ -303,3 +303,50 @@ test('a different device id is rejected even when it presents the old matching f
     expect($user->authorized_device_id)->toBe('device-id-001')
         ->and($user->tokens()->whereKey($existingTokenId)->exists())->toBeTrue();
 });
+
+test('unlimited device account can login without device identifiers and keeps multiple sessions', function (): void {
+    $user = User::factory()->create([
+        'email' => 'unlimited@example.com',
+        'password' => 'secret123',
+        'unlimited_devices' => true,
+        'authorized_device_id' => 'old-device-id',
+        'authorized_device_token' => 'old-fcm',
+        'fcm_token' => 'old-fcm',
+    ]);
+
+    postJson('/api/auth/login', [
+        'email' => 'unlimited@example.com',
+        'password' => 'secret123',
+    ])->assertOk();
+
+    postJson('/api/auth/login', [
+        'email' => 'unlimited@example.com',
+        'password' => 'secret123',
+        'deviceId' => 'another-device',
+        'fcmToken' => 'new-fcm',
+    ])->assertOk();
+
+    $user->refresh();
+
+    expect($user->tokens()->count())->toBe(2)
+        ->and($user->authorized_device_id)->toBe('old-device-id')
+        ->and($user->authorized_device_token)->toBe('old-fcm')
+        ->and($user->fcm_token)->toBe('new-fcm');
+});
+
+test('disabling unlimited devices revokes all current sessions immediately', function (): void {
+    $user = User::factory()->create([
+        'email' => 'disable-unlimited@example.com',
+        'password' => 'secret123',
+        'unlimited_devices' => true,
+    ]);
+
+    $user->createToken('phone-a');
+    $user->createToken('phone-b');
+
+    expect($user->tokens()->count())->toBe(2);
+
+    $user->update(['unlimited_devices' => false]);
+
+    expect($user->tokens()->count())->toBe(0);
+});

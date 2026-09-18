@@ -34,16 +34,20 @@ class AppUsersTable
                 TextColumn::make('preferred_language')
                     ->label('Language')
                     ->badge(),
+                IconColumn::make('unlimited_devices')
+                    ->label('Unlimited devices')
+                    ->boolean(),
                 TextColumn::make('device_status')
                     ->label('Authorized device')
                     ->getStateUsing(fn (User $record): string => match (true) {
+                        $record->unlimited_devices => 'Unlimited',
                         $record->hasAuthorizedDeviceId() => 'Device ID',
                         $record->hasAuthorizedDevice() => 'FCM fallback',
                         default => 'Not bound',
                     })
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
-                        'Device ID' => 'success',
+                        'Unlimited', 'Device ID' => 'success',
                         'FCM fallback' => 'warning',
                         default => 'gray',
                     }),
@@ -68,6 +72,9 @@ class AppUsersTable
                         'ar' => 'Arabic',
                         'hu' => 'Hungarian',
                     ]),
+                TernaryFilter::make('unlimited_devices')
+                    ->label('Unlimited devices')
+                    ->boolean(),
                 TernaryFilter::make('authorized_device')
                     ->label('Authorized device')
                     ->queries(

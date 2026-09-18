@@ -45,6 +45,10 @@ class AppUserForm
                         Toggle::make('is_active')
                             ->label('Active')
                             ->default(true),
+                        Toggle::make('unlimited_devices')
+                            ->label('Unlimited devices')
+                            ->default(false)
+                            ->helperText('Allow this account to sign in from any number of devices. Device ID / FCM restrictions are ignored while enabled.'),
                         Select::make('preferred_language')
                             ->label('Preferred language')
                             ->options([
@@ -63,12 +67,13 @@ class AppUserForm
                             ->helperText('Read-only. Use Reset authorized device when moving the account to another phone or app installation.'),
                     ]),
                 Section::make('Authorized mobile device')
-                    ->description('Device ID is the permanent device identity when available. FCM remains a temporary fallback for the current app version and continues to be used for notifications.')
+                    ->description('Standard accounts use Device ID as the permanent identity, with FCM as a temporary fallback. Unlimited-device accounts bypass the device restriction.')
                     ->columns(2)
                     ->components([
                         Placeholder::make('device_binding_status')
                             ->label('Device status')
                             ->content(fn (?User $record): HtmlString => new HtmlString(match (true) {
+                                $record?->unlimited_devices === true => '<strong style="color:#15803d">Unlimited devices</strong>',
                                 $record?->hasAuthorizedDeviceId() === true => '<strong style="color:#15803d">Bound by Device ID</strong>',
                                 $record?->hasAuthorizedDevice() === true => '<strong style="color:#b45309">Temporarily bound by FCM</strong>',
                                 default => '<strong style="color:#b45309">Not bound yet</strong>',

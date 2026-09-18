@@ -19,7 +19,7 @@ use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
-#[Fillable(['name', 'email', 'password', 'fcm_token', 'is_active', 'preferred_language'])]
+#[Fillable(['name', 'email', 'password', 'fcm_token', 'is_active', 'preferred_language', 'unlimited_devices'])]
 #[Hidden(['password', 'remember_token', 'authorized_device_token', 'authorized_device_id'])]
 class User extends Authenticatable implements FilamentUser
 {
@@ -31,6 +31,16 @@ class User extends Authenticatable implements FilamentUser
     use Notifiable;
 
     protected string $guard_name = 'web';
+
+    protected static function booted(): void
+    {
+        static::updated(function (User $user): void {
+            if ($user->wasChanged('unlimited_devices') && ! $user->unlimited_devices) {
+                // When unlimited access is disabled, revoke all existing multi-device sessions immediately.
+                $user->tokens()->delete();
+            }
+        });
+    }
 
     /**
      * Get the attributes that should be cast.
@@ -44,6 +54,7 @@ class User extends Authenticatable implements FilamentUser
             'password' => 'hashed',
             'is_active' => 'boolean',
             'device_bound_at' => 'datetime',
+            'unlimited_devices' => 'boolean',
         ];
     }
 

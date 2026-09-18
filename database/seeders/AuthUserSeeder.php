@@ -19,6 +19,7 @@ class AuthUserSeeder extends Seeder
                 'password' => bcrypt('password'),
                 'is_active' => true,
                 'preferred_language' => 'en',
+                'unlimited_devices' => false,
             ]
         );
 
@@ -33,6 +34,7 @@ class AuthUserSeeder extends Seeder
                 'password' => bcrypt('password'),
                 'is_active' => true,
                 'preferred_language' => 'en',
+                'unlimited_devices' => true,
             ]
         );
     }
