@@ -149,7 +149,8 @@ test('resetting the authorized device revokes sessions and lets the next install
     $user->resetAuthorizedDevice();
     $user->refresh();
 
-    expect($user->authorized_device_token)->toBeNull()
+    expect($user->authorized_device_id)->toBeNull()
+        ->and($user->authorized_device_token)->toBeNull()
         ->and($user->device_bound_at)->toBeNull()
         ->and($user->fcm_token)->toBeNull()
         ->and($user->tokens()->count())->toBe(0);
@@ -179,4 +180,126 @@ test('inactive users cannot login', function (): void {
 
     $response->assertForbidden();
     $response->assertJsonPath('message', 'Your account is currently inactive. Please contact support.');
+});
+
+test('deviceId is accepted as the primary device identifier even without an fcm token', function (): void {
+    $user = User::factory()->create([
+        'email' => 'device-id-only@example.com',
+        'password' => 'secret123',
+        'authorized_device_id' => null,
+        'authorized_device_token' => null,
+        'fcm_token' => null,
+    ]);
+
+    postJson('/api/auth/login', [
+        'email' => 'device-id-only@example.com',
+        'password' => 'secret123',
+        'deviceId' => 'device-id-001',
+    ])->assertOk();
+
+    $user->refresh();
+
+    expect($user->authorized_device_id)->toBe('device-id-001')
+        ->and($user->authorized_device_token)->toBeNull()
+        ->and($user->hasAuthorizedDeviceId())->toBeTrue();
+});
+
+test('an existing temporary fcm binding upgrades to device id only from the currently authorized installation', function (): void {
+    $user = User::factory()->create([
+        'email' => 'upgrade-device@example.com',
+        'password' => 'secret123',
+        'authorized_device_id' => null,
+        'authorized_device_token' => 'legacy-fcm-a',
+        'fcm_token' => 'legacy-fcm-a',
+        'device_bound_at' => now()->subDays(2),
+    ]);
+
+    $originalBoundAt = $user->device_bound_at?->toISOString();
+
+    postJson('/api/auth/login', [
+        'email' => 'upgrade-device@example.com',
+        'password' => 'secret123',
+        'deviceId' => 'device-id-001',
+        'fcmToken' => 'legacy-fcm-a',
+    ])->assertOk();
+
+    $user->refresh();
+
+    expect($user->authorized_device_id)->toBe('device-id-001')
+        ->and($user->authorized_device_token)->toBe('legacy-fcm-a')
+        ->and($user->device_bound_at?->toISOString())->toBe($originalBoundAt);
+});
+
+test('a different installation cannot claim device id during the legacy fcm transition', function (): void {
+    $user = User::factory()->create([
+        'email' => 'blocked-upgrade@example.com',
+        'password' => 'secret123',
+        'authorized_device_id' => null,
+        'authorized_device_token' => 'legacy-fcm-a',
+        'fcm_token' => 'legacy-fcm-a',
+        'device_bound_at' => now()->subDay(),
+    ]);
+
+    postJson('/api/auth/login', [
+        'email' => 'blocked-upgrade@example.com',
+        'password' => 'secret123',
+        'device_id' => 'attacker-device',
+        'fcm_token' => 'different-fcm',
+    ])
+        ->assertForbidden()
+        ->assertJsonPath('code', 'DEVICE_NOT_AUTHORIZED');
+
+    expect($user->fresh()->authorized_device_id)->toBeNull()
+        ->and($user->fresh()->authorized_device_token)->toBe('legacy-fcm-a');
+});
+
+test('once device id is bound the fcm token may rotate without changing device authorization', function (): void {
+    $user = User::factory()->create([
+        'email' => 'rotating-fcm@example.com',
+        'password' => 'secret123',
+        'authorized_device_id' => 'device-id-001',
+        'authorized_device_token' => 'legacy-fcm-a',
+        'fcm_token' => 'legacy-fcm-a',
+        'device_bound_at' => now()->subDay(),
+    ]);
+
+    postJson('/api/auth/login', [
+        'email' => 'rotating-fcm@example.com',
+        'password' => 'secret123',
+        'device_id' => 'device-id-001',
+        'fcm_token' => 'rotated-fcm-b',
+    ])->assertOk();
+
+    $user->refresh();
+
+    expect($user->authorized_device_id)->toBe('device-id-001')
+        ->and($user->fcm_token)->toBe('rotated-fcm-b')
+        ->and($user->authorized_device_token)->toBe('legacy-fcm-a');
+});
+
+test('a different device id is rejected even when it presents the old matching fcm token', function (): void {
+    $user = User::factory()->create([
+        'email' => 'device-id-protected@example.com',
+        'password' => 'secret123',
+        'authorized_device_id' => 'device-id-001',
+        'authorized_device_token' => 'legacy-fcm-a',
+        'fcm_token' => 'legacy-fcm-a',
+        'device_bound_at' => now()->subDay(),
+    ]);
+    $user->createToken('existing-session');
+    $existingTokenId = $user->tokens()->firstOrFail()->getKey();
+
+    postJson('/api/auth/login', [
+        'email' => 'device-id-protected@example.com',
+        'password' => 'secret123',
+        'deviceId' => 'device-id-999',
+        'fcmToken' => 'legacy-fcm-a',
+    ])
+        ->assertForbidden()
+        ->assertJsonPath('code', 'DEVICE_NOT_AUTHORIZED');
+
+    $user->refresh();
+
+    expect($user->authorized_device_id)->toBe('device-id-001')
+        ->and($user->tokens()->whereKey($existingTokenId)->exists())->toBeTrue();
 });

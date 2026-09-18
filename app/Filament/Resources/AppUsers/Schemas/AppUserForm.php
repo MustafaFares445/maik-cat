@@ -63,16 +63,16 @@ class AppUserForm
                             ->helperText('Read-only. Use Reset authorized device when moving the account to another phone or app installation.'),
                     ]),
                 Section::make('Authorized mobile device')
-                    ->description('The first successful mobile login binds this account to one app installation. Signing out does not remove this binding.')
+                    ->description('Device ID is the permanent device identity when available. FCM remains a temporary fallback for the current app version and continues to be used for notifications.')
                     ->columns(2)
                     ->components([
                         Placeholder::make('device_binding_status')
                             ->label('Device status')
-                            ->content(fn (?User $record): HtmlString => new HtmlString(
-                                $record?->hasAuthorizedDevice()
-                                    ? '<strong style="color:#15803d">Bound to one device</strong>'
-                                    : '<strong style="color:#b45309">Not bound yet</strong>',
-                            )),
+                            ->content(fn (?User $record): HtmlString => new HtmlString(match (true) {
+                                $record?->hasAuthorizedDeviceId() === true => '<strong style="color:#15803d">Bound by Device ID</strong>',
+                                $record?->hasAuthorizedDevice() === true => '<strong style="color:#b45309">Temporarily bound by FCM</strong>',
+                                default => '<strong style="color:#b45309">Not bound yet</strong>',
+                            })),
                         Placeholder::make('device_bound_at_display')
                             ->label('Bound since')
                             ->content(fn (?User $record): string => $record?->device_bound_at?->format('Y-m-d H:i:s') ?? '—'),

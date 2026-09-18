@@ -32,19 +32,37 @@ class AuthController extends Controller
             ], 403);
         }
 
-        $fcmToken = trim((string) $validated['fcm_token']);
+        $deviceId = trim((string) ($validated['device_id'] ?? ''));
+        $fcmToken = trim((string) ($validated['fcm_token'] ?? ''));
 
-        if (! $user->hasAuthorizedDevice()) {
-            // First successful mobile login permanently claims this account for this app installation.
-            $user->bindAuthorizedDevice($fcmToken);
-        } elseif (! $user->isAuthorizedDeviceToken($fcmToken)) {
-            // Reject before revoking tokens so an unauthorized attempt cannot kick out the valid device.
-            return response()->json([
-                'message' => 'This account is already linked to another device. Please contact support to reset the authorized device.',
-                'code' => 'DEVICE_NOT_AUTHORIZED',
-            ], 403);
-        } elseif ($user->fcm_token !== $fcmToken) {
-            $user->forceFill(['fcm_token' => $fcmToken])->save();
+        if ($deviceId !== '') {
+            if ($user->hasAuthorizedDeviceId()) {
+                if (! $user->isAuthorizedDeviceId($deviceId)) {
+                    return $this->deviceNotAuthorizedResponse();
+                }
+            } elseif ($user->hasAuthorizedDevice()) {
+                // Seamless migration from the temporary FCM binding: the first app version
+                // that sends a Device ID must also prove it is the currently authorized installation.
+                if ($fcmToken === '' || ! $user->isAuthorizedDeviceToken($fcmToken)) {
+                    return $this->deviceNotAuthorizedResponse();
+                }
+
+                $user->upgradeAuthorizedDeviceId($deviceId);
+            } else {
+                $user->bindAuthorizedDevice($deviceId, $fcmToken !== '' ? $fcmToken : null);
+            }
+
+            // Once Device ID is authoritative, FCM may rotate without affecting device authorization.
+            if ($fcmToken !== '' && $user->fcm_token !== $fcmToken) {
+                $user->forceFill(['fcm_token' => $fcmToken])->save();
+            }
+        } else {
+            // Temporary compatibility path for the current app version.
+            if (! $user->hasAuthorizedDevice()) {
+                $user->bindAuthorizedDevice(null, $fcmToken);
+            } elseif (! $user->isAuthorizedDeviceToken($fcmToken)) {
+                return $this->deviceNotAuthorizedResponse();
+            }
         }
 
         // Keep only one live mobile session for the authorized installation.
@@ -60,6 +78,14 @@ class AuthController extends Controller
                 'preferred_language' => $user->preferredLanguageOrDefault(),
             ],
         ]);
+    }
+
+    private function deviceNotAuthorizedResponse(): JsonResponse
+    {
+        return response()->json([
+            'message' => 'This account is already linked to another device. Please contact support to reset the authorized device.',
+            'code' => 'DEVICE_NOT_AUTHORIZED',
+        ], 403);
     }
 
     public function logout(Request $request): JsonResponse

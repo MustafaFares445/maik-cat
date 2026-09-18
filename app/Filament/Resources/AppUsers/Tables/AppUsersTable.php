@@ -36,9 +36,17 @@ class AppUsersTable
                     ->badge(),
                 TextColumn::make('device_status')
                     ->label('Authorized device')
-                    ->getStateUsing(fn (User $record): string => $record->hasAuthorizedDevice() ? 'Bound' : 'Not bound')
+                    ->getStateUsing(fn (User $record): string => match (true) {
+                        $record->hasAuthorizedDeviceId() => 'Device ID',
+                        $record->hasAuthorizedDevice() => 'FCM fallback',
+                        default => 'Not bound',
+                    })
                     ->badge()
-                    ->color(fn (string $state): string => $state === 'Bound' ? 'success' : 'warning'),
+                    ->color(fn (string $state): string => match ($state) {
+                        'Device ID' => 'success',
+                        'FCM fallback' => 'warning',
+                        default => 'gray',
+                    }),
                 TextColumn::make('device_bound_at')
                     ->label('Bound since')
                     ->dateTime('Y-m-d H:i')
@@ -63,8 +71,13 @@ class AppUsersTable
                 TernaryFilter::make('authorized_device')
                     ->label('Authorized device')
                     ->queries(
-                        true: fn ($query) => $query->whereNotNull('authorized_device_token'),
-                        false: fn ($query) => $query->whereNull('authorized_device_token'),
+                        true: fn ($query) => $query->where(function ($query): void {
+                            $query->whereNotNull('authorized_device_id')
+                                ->orWhereNotNull('authorized_device_token');
+                        }),
+                        false: fn ($query) => $query
+                            ->whereNull('authorized_device_id')
+                            ->whereNull('authorized_device_token'),
                         blank: fn ($query) => $query,
                     ),
             ])

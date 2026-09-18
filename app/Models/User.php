@@ -20,7 +20,7 @@ use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
 #[Fillable(['name', 'email', 'password', 'fcm_token', 'is_active', 'preferred_language'])]
-#[Hidden(['password', 'remember_token', 'authorized_device_token'])]
+#[Hidden(['password', 'remember_token', 'authorized_device_token', 'authorized_device_id'])]
 class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<UserFactory> */
@@ -89,7 +89,21 @@ class User extends Authenticatable implements FilamentUser
 
     public function hasAuthorizedDevice(): bool
     {
-        return filled($this->authorized_device_token);
+        return filled($this->authorized_device_id) || filled($this->authorized_device_token);
+    }
+
+    public function hasAuthorizedDeviceId(): bool
+    {
+        return filled($this->authorized_device_id);
+    }
+
+    public function isAuthorizedDeviceId(string $deviceId): bool
+    {
+        $authorizedDeviceId = (string) $this->authorized_device_id;
+
+        return $authorizedDeviceId !== ''
+            && $deviceId !== ''
+            && hash_equals($authorizedDeviceId, $deviceId);
     }
 
     public function isAuthorizedDeviceToken(string $deviceToken): bool
@@ -101,12 +115,24 @@ class User extends Authenticatable implements FilamentUser
             && hash_equals($authorizedToken, $deviceToken);
     }
 
-    public function bindAuthorizedDevice(string $deviceToken): void
+    public function bindAuthorizedDevice(?string $deviceId, ?string $fcmToken): void
+    {
+        $deviceId = trim((string) $deviceId);
+        $fcmToken = trim((string) $fcmToken);
+
+        $this->forceFill([
+            'authorized_device_id' => $deviceId !== '' ? $deviceId : null,
+            'authorized_device_token' => $fcmToken !== '' ? $fcmToken : null,
+            'device_bound_at' => $this->device_bound_at ?? now(),
+            'fcm_token' => $fcmToken !== '' ? $fcmToken : $this->fcm_token,
+        ])->save();
+    }
+
+    public function upgradeAuthorizedDeviceId(string $deviceId): void
     {
         $this->forceFill([
-            'authorized_device_token' => $deviceToken,
-            'device_bound_at' => now(),
-            'fcm_token' => $deviceToken,
+            'authorized_device_id' => trim($deviceId),
+            'device_bound_at' => $this->device_bound_at ?? now(),
         ])->save();
     }
 
@@ -115,6 +141,7 @@ class User extends Authenticatable implements FilamentUser
         $this->tokens()->delete();
 
         $this->forceFill([
+            'authorized_device_id' => null,
             'authorized_device_token' => null,
             'device_bound_at' => null,
             'fcm_token' => null,
