@@ -149,3 +149,78 @@ test('resolver refuses non target family even when an exact local filter sample 
     expect($resolution['resolved'])->toBeFalse()
         ->and($resolution['reason'])->toBe('not_combined_target_family');
 });
+
+test('resolver rejects a same serial row that only references a PF code', function (): void {
+    $group = CarGroup::factory()->create(['name' => 'Mercedes']);
+    $item = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'KT 6044',
+        'weight_kg' => 3.0,
+        'details' => 'FILTER + KAT',
+    ]);
+    $referencedRow = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'KT6044',
+        'weight_kg' => 1.91,
+        'details' => 's PF0021',
+        'model' => 'Mercedes',
+    ]);
+    $mapping = ItemFilterMapping::factory()->create([
+        'item_id' => $item->id,
+        'filter_item_id' => $referencedRow->id,
+        'filter_serial' => 'KT 6044',
+    ]);
+
+    $resolution = app(ComponentWeightResolverService::class)->resolve($item, $mapping);
+
+    expect($resolution['resolved'])->toBeFalse()
+        ->and($resolution['reason'])->toBe('local_sample_not_verified_filter_component');
+});
+
+test('resolver rejects non unique OEM references as component weight evidence', function (): void {
+    $group = CarGroup::factory()->create(['name' => 'BMW']);
+    $item = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => '7800704',
+    ]);
+
+    $resolution = app(ComponentWeightResolverService::class)->resolveEvidenceRecord($item, [
+        'family_key' => '7800704',
+        'component_type' => 'DPF',
+        'weight_kg' => 0.44,
+        'confidence' => 'HIGH',
+        'oem_refs' => ['14097610'],
+    ]);
+
+    expect($resolution['resolved'])->toBeFalse()
+        ->and($resolution['reason'])->toBe('non_unique_weight_reference');
+});
+
+test('KT 1200 is not eligible for automatic component weight resolution', function (): void {
+    $group = CarGroup::factory()->create(['name' => 'Mercedes']);
+    $item = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'KT 1200',
+    ]);
+
+    expect(app(ComponentWeightResolverService::class)->isTargetFamily($item))->toBeFalse();
+});
+
+test('resolver rejects a non unique OEM code embedded inside a composite variant key', function (): void {
+    $group = CarGroup::factory()->create(['name' => 'BMW']);
+    $item = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => '7800704',
+    ]);
+
+    $resolution = app(ComponentWeightResolverService::class)->resolveEvidenceRecord($item, [
+        'family_key' => '7800704',
+        'variant_key' => '7800704 / 14097610 / DHGE / AC',
+        'component_type' => 'DPF',
+        'weight_kg' => 0.44,
+        'confidence' => 'HIGH',
+    ]);
+
+    expect($resolution['resolved'])->toBeFalse()
+        ->and($resolution['reason'])->toBe('non_unique_weight_reference');
+});

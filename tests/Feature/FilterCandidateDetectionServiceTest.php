@@ -144,3 +144,61 @@ test('detector downgrades matched filters with implausible net weight to needs r
         ->and($summary['needs_review'])->toBe(1)
         ->and($mapping->status)->toBe(ItemFilterMapping::STATUS_NEEDS_REVIEW);
 });
+
+test('detector does not treat a same serial PF reference row as a standalone filter', function (): void {
+    $group = CarGroup::factory()->create(['name' => 'MERCEDES', 'excel_sheet_name' => 'MERCEDES']);
+    $product = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'KT 6044',
+        'weight_kg' => 3.0,
+        'pt_ppm' => 2500,
+        'pd_ppm' => 1300,
+        'details' => 'FILTER + KAT',
+    ]);
+    Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'KT6044',
+        'weight_kg' => 1.91,
+        'pt_ppm' => 100,
+        'details' => 's PF0021',
+        'model' => 'Mercedes',
+    ]);
+
+    app(FilterCandidateDetectionService::class)->scan();
+    $mapping = ItemFilterMapping::query()->where('item_id', $product->id)->firstOrFail();
+
+    expect($mapping->filter_item_id)->toBeNull()
+        ->and($mapping->status)->toBe(ItemFilterMapping::STATUS_NEEDS_REVIEW);
+});
+
+test('detector classifies every KT 1200 family row as assay source review from Excel evidence', function (): void {
+    $group = CarGroup::factory()->create(['name' => 'MERCEDES', 'excel_sheet_name' => 'MERCEDES']);
+
+    $referenceRow = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'KT 1200',
+        'weight_kg' => 1.91,
+        'details' => 's PF0021',
+    ]);
+    $catalystRow = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'KT1200',
+        'weight_kg' => 2.0,
+        'model' => 'KATALIST',
+        'details' => 'A 211 490 68 36',
+    ]);
+
+    $summary = app(FilterCandidateDetectionService::class)->scan();
+
+    $mappings = ItemFilterMapping::query()
+        ->whereIn('item_id', [$referenceRow->id, $catalystRow->id])
+        ->get();
+
+    expect($summary['candidates'])->toBe(2)
+        ->and($summary['needs_review'])->toBe(2)
+        ->and($mappings)->toHaveCount(2)
+        ->and($mappings->every(fn (ItemFilterMapping $mapping): bool => $mapping->status === ItemFilterMapping::STATUS_NEEDS_REVIEW))->toBeTrue()
+        ->and($mappings->every(fn (ItemFilterMapping $mapping): bool => $mapping->filter_item_id === null))->toBeTrue()
+        ->and($mappings->every(fn (ItemFilterMapping $mapping): bool => data_get($mapping->evidence, 'pricing_review.type') === 'assay_source'))->toBeTrue()
+        ->and($mappings->every(fn (ItemFilterMapping $mapping): bool => data_get($mapping->evidence, 'pricing_review.source') === 'excel_workbook_review_2026_09_18'))->toBeTrue();
+});

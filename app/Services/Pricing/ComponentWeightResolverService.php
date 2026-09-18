@@ -19,8 +19,11 @@ final class ComponentWeightResolverService
     /** @var array<string, list<string>> */
     private const array COMBINED_TARGET_FAMILIES = [
         'BMW' => ['7800704', '7800705', '7805077', '7805091', '7805092', '7805093', '7810141', '7810169'],
-        'MERCEDES' => ['KT1200', 'KT6044'],
+        'MERCEDES' => ['KT6044'],
     ];
+
+    /** @var list<string> */
+    private const array NON_UNIQUE_WEIGHT_REFERENCES = ['14097610'];
 
     /** @return array<string, list<string>> */
     public function targetFamilies(): array
@@ -99,6 +102,10 @@ final class ComponentWeightResolverService
         $componentType = Str::upper((string) ($record['component_type'] ?? ''));
         $weight = $record['weight_kg'] ?? null;
 
+        if ($this->usesNonUniqueWeightReference($record)) {
+            return $this->unresolved('non_unique_weight_reference', Str::lower($componentType ?: 'unknown'), $record);
+        }
+
         if ($family === '' || $family !== $serial) {
             return $this->unresolved('evidence_family_mismatch', 'unknown', $record);
         }
@@ -137,6 +144,10 @@ final class ComponentWeightResolverService
         $componentType = Str::upper((string) ($evidence['component_type'] ?? ''));
         $sourceWeight = $evidence['source_weight_kg'] ?? null;
 
+        if ($this->usesNonUniqueWeightReference($evidence)) {
+            return null;
+        }
+
         if ($family !== '' && $family === $itemSerial
             && in_array($confidence, [self::CONFIDENCE_HIGH, 'manual'], true)
             && in_array($componentType, ['DPF', 'FILTER'], true)
@@ -157,20 +168,50 @@ final class ComponentWeightResolverService
         return null;
     }
 
+    /** @param array<string,mixed> $evidence */
+    private function usesNonUniqueWeightReference(array $evidence): bool
+    {
+        foreach (['weight_reference', 'source_reference', 'oem', 'oem_ref', 'oem_refs', 'variant_key'] as $key) {
+            $value = $evidence[$key] ?? null;
+            $values = is_array($value) ? $value : [$value];
+
+            foreach ($values as $candidate) {
+                if (! is_scalar($candidate)) {
+                    continue;
+                }
+
+                $normalized = Item::normalizeSerialValue((string) $candidate);
+
+                foreach (self::NON_UNIQUE_WEIGHT_REFERENCES as $reference) {
+                    if ($normalized !== '' && str_contains($normalized, $reference)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
     private function looksLikeStandaloneFilter(Item $item): bool
     {
-        $text = Str::upper(implode(' ', [
-            (string) $item->serial_code,
+        $serial = Str::upper(trim((string) $item->serial_code));
+        $body = Str::upper(implode(' ', [
             (string) $item->details,
             (string) $item->model,
             (string) $item->shape_code,
         ]));
 
-        $hasFilter = preg_match('/FILTER|FILTRAS|DPF|\\bPF\\s*\\d+/u', $text) === 1;
-        $isCombined = preg_match('/FILTER\\s*\\+\\s*KAT|KAT\\s*\\+\\s*FILTER|FILTRAS\\s*\\+\\s*(KERAMIKA|METALAS)|CERAMIC\\s*\\+\\s*DPF|SU\\s+FILTRU/u', $text) === 1;
-        $isCatalyst = preg_match('/KATALIST|CATALYST|CERAMIC/u', $text) === 1;
+        $serialIsFilter = preg_match('/^(?:PF|DPF)[\s\-.]*\d+/u', $serial) === 1;
+        $hasExplicitFilterLabel = preg_match('/(?:^|[\s\/|;,:()_-])(?:FILTER|FILTRAS|DPF)(?:$|[\s\/|;,:()_-])/u', $body) === 1;
+        $isCombined = preg_match('/FILTER\s*\+\s*KAT|KAT\s*\+\s*FILTER|FILTRAS\s*\+\s*(KERAMIKA|METALAS)|CERAMIC\s*\+\s*DPF|SU\s+FILTRU/u', $body) === 1;
+        $isCatalyst = preg_match('/KATALIST|CATALYST/u', $body) === 1;
+        $isMetallic = preg_match('/METAL|METALLIC|METALAS/u', $body) === 1;
 
-        return $hasFilter && ! $isCombined && ! $isCatalyst;
+        return ($serialIsFilter || $hasExplicitFilterLabel)
+            && ! $isCombined
+            && ! $isCatalyst
+            && ! $isMetallic;
     }
 
     private function isMetallicOrAmbiguous(string $text): bool

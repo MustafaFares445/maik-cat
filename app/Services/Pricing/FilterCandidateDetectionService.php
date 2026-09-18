@@ -17,6 +17,7 @@ class FilterCandidateDetectionService
         private readonly ItemPriceService $itemPriceService,
         private readonly ItemPriceSettingsService $settingsService,
         private readonly FilterPriceCorrectionService $filterPriceCorrectionService,
+        private readonly ExcelPricingReviewEvidenceService $excelReviewEvidenceService,
     ) {}
 
     /** @return array{scanned:int,candidates:int,matched:int,needs_review:int,skipped:int} */
@@ -34,7 +35,24 @@ class FilterCandidateDetectionService
                 foreach ($items as $item) {
                     $summary['scanned']++;
 
-                    if (! $item instanceof Item || $this->isAlreadyReviewed($item) || $this->looksLikeFilterOnly($item)) {
+                    if (! $item instanceof Item || $this->isAlreadyReviewed($item)) {
+                        $summary['skipped']++;
+
+                        continue;
+                    }
+
+                    $sourceReview = $this->excelReviewEvidenceService->reviewFor($item);
+                    if ($sourceReview !== null) {
+                        $summary['candidates']++;
+
+                        $mapping = ItemFilterMapping::query()->firstOrNew(['item_id' => $item->getKey()]);
+                        $this->excelReviewEvidenceService->applyToMapping($mapping, $sourceReview);
+                        $summary['needs_review']++;
+
+                        continue;
+                    }
+
+                    if ($this->looksLikeFilterOnly($item)) {
                         $summary['skipped']++;
 
                         continue;
@@ -196,11 +214,18 @@ class FilterCandidateDetectionService
 
     private function looksLikeFilterOnly(Item $item): bool
     {
-        $text = mb_strtoupper(implode(' ', [(string) $item->serial_code, (string) $item->details, (string) $item->model, (string) $item->shape_code]));
-        $hasFilter = preg_match('/FILTER|FILTRAS|DPF|\bPF\s*\d+/u', $text) === 1;
-        $combined = preg_match('/FILTER\s*\+\s*KAT|KAT\s*\+\s*FILTER|FILTRAS\s*\+\s*(KERAMIKA|METALAS)|CERAMIC\s*\+\s*DPF|SU\s+FILTRU/u', $text) === 1;
-        $catalyst = preg_match('/KATALIST|CATALYST/u', $text) === 1;
+        $serial = mb_strtoupper(trim((string) $item->serial_code));
+        $body = mb_strtoupper(implode(' ', [(string) $item->details, (string) $item->model, (string) $item->shape_code]));
 
-        return $hasFilter && ! $combined && ! $catalyst;
+        $serialIsFilter = preg_match('/^(?:PF|DPF)[\s\-.]*\d+/u', $serial) === 1;
+        $hasExplicitFilterLabel = preg_match('/(?:^|[\s\/|;,:()_-])(?:FILTER|FILTRAS|DPF)(?:$|[\s\/|;,:()_-])/u', $body) === 1;
+        $combined = preg_match('/FILTER\s*\+\s*KAT|KAT\s*\+\s*FILTER|FILTRAS\s*\+\s*(KERAMIKA|METALAS)|CERAMIC\s*\+\s*DPF|SU\s+FILTRU/u', $body) === 1;
+        $catalyst = preg_match('/KATALIST|CATALYST/u', $body) === 1;
+        $metallic = preg_match('/METAL|METALLIC|METALAS/u', $body) === 1;
+
+        return ($serialIsFilter || $hasExplicitFilterLabel)
+            && ! $combined
+            && ! $catalyst
+            && ! $metallic;
     }
 }
