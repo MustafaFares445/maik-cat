@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Items\Tables;
 
 use App\Models\CarGroup;
 use App\Models\Item;
+use App\Models\ItemFilterMapping;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -52,6 +53,11 @@ class ItemsTable
                     ->label('RH')
                     ->numeric(4)
                     ->sortable(),
+                TextColumn::make('pricing_review_status')
+                    ->label('Pricing review')
+                    ->getStateUsing(fn (Item $record): string => $record->filterMapping?->status === ItemFilterMapping::STATUS_NEEDS_REVIEW ? 'Needs review' : 'Clear')
+                    ->badge()
+                    ->color(fn (string $state): string => $state === 'Needs review' ? 'warning' : 'success'),
                 TextColumn::make('updated_at')
                     ->label('Updated')
                     ->since()
@@ -62,6 +68,19 @@ class ItemsTable
                     ->label('Car group')
                     ->options(fn (): array => CarGroup::query()->orderBy('name')->pluck('name', 'id')->all())
                     ->searchable(),
+                SelectFilter::make('pricing_review')
+                    ->label('Pricing review')
+                    ->options([
+                        'needs_review' => 'Needs review — blocked from API',
+                        'clear' => 'Clear',
+                    ])
+                    ->query(function ($query, array $data) {
+                        return match ($data['value'] ?? null) {
+                            'needs_review' => $query->whereHas('filterMapping', fn ($mapping) => $mapping->where('status', ItemFilterMapping::STATUS_NEEDS_REVIEW)),
+                            'clear' => $query->whereDoesntHave('filterMapping', fn ($mapping) => $mapping->where('status', ItemFilterMapping::STATUS_NEEDS_REVIEW)),
+                            default => $query,
+                        };
+                    }),
                 TernaryFilter::make('has_image')
                     ->label('Has image')
                     ->queries(

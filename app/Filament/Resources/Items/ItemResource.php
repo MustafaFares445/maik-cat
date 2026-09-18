@@ -53,7 +53,7 @@ class ItemResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->with(['carGroup', 'extraCodes', 'media']);
+        return parent::getEloquentQuery()->with(['carGroup', 'extraCodes', 'media', 'filterMapping']);
     }
 
     public static function canViewAny(): bool

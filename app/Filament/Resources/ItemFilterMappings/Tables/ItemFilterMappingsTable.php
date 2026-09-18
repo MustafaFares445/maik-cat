@@ -2,15 +2,25 @@
 
 namespace App\Filament\Resources\ItemFilterMappings\Tables;
 
+use App\Filament\Resources\Items\ItemResource;
 use App\Models\ItemFilterMapping;
 use App\Services\Mobile\ItemPriceService;
 use App\Services\Pricing\FilterPriceCorrectionService;
+use App\Services\Pricing\PricingReviewService;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Text;
+use Filament\Schemas\Components\UnorderedList;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Support\HtmlString;
+use RuntimeException;
 
 class ItemFilterMappingsTable
 {
@@ -27,6 +37,12 @@ class ItemFilterMappingsTable
                     ->searchable()
                     ->sortable()
                     ->weight('bold'),
+                TextColumn::make('issue')
+                    ->label('Review issue')
+                    ->getStateUsing(fn (ItemFilterMapping $record): string => app(PricingReviewService::class)->issue($record)['label'])
+                    ->badge()
+                    ->color(fn (ItemFilterMapping $record): string => $record->status === ItemFilterMapping::STATUS_NEEDS_REVIEW ? 'warning' : 'gray')
+                    ->wrap(),
                 TextColumn::make('item.weight_kg')
                     ->label('Original W')
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 3).' kg'),
@@ -52,12 +68,21 @@ class ItemFilterMappingsTable
                     ->label('Weight only')
                     ->getStateUsing(fn (ItemFilterMapping $record): float => self::price($record, FilterPriceCorrectionService::MODE_WEIGHT_ONLY))
                     ->money('USD'),
-                TextColumn::make('weight_metals_price')
-                    ->label('Weight + metals')
-                    ->getStateUsing(fn (ItemFilterMapping $record): float => self::price($record, FilterPriceCorrectionService::MODE_WEIGHT_AND_METALS))
-                    ->money('USD'),
+                TextColumn::make('api_status')
+                    ->label('API')
+                    ->getStateUsing(fn (ItemFilterMapping $record): string => $record->status === ItemFilterMapping::STATUS_NEEDS_REVIEW ? 'Blocked' : 'Visible')
+                    ->badge()
+                    ->color(fn (string $state): string => $state === 'Blocked' ? 'danger' : 'success'),
                 TextColumn::make('confidence')->badge()->sortable(),
-                TextColumn::make('status')->badge()->sortable(),
+                TextColumn::make('status')
+                    ->badge()
+                    ->sortable()
+                    ->color(fn (string $state): string => match ($state) {
+                        ItemFilterMapping::STATUS_NEEDS_REVIEW => 'warning',
+                        ItemFilterMapping::STATUS_APPROVED => 'success',
+                        ItemFilterMapping::STATUS_IGNORED => 'gray',
+                        default => 'info',
+                    }),
                 TextColumn::make('item.source_url')
                     ->label('Source')
                     ->formatStateUsing(fn (?string $state): string => filled($state) ? 'Open' : '-')
@@ -65,12 +90,15 @@ class ItemFilterMappingsTable
                     ->openUrlInNewTab(),
             ])
             ->filters([
-                SelectFilter::make('status')->options([
-                    ItemFilterMapping::STATUS_DETECTED => 'Detected',
-                    ItemFilterMapping::STATUS_NEEDS_REVIEW => 'Needs review',
-                    ItemFilterMapping::STATUS_APPROVED => 'Approved',
-                    ItemFilterMapping::STATUS_IGNORED => 'Ignored',
-                ]),
+                SelectFilter::make('status')
+                    ->label('Review status')
+                    ->default(ItemFilterMapping::STATUS_NEEDS_REVIEW)
+                    ->options([
+                        ItemFilterMapping::STATUS_NEEDS_REVIEW => 'Needs review — blocked from API',
+                        ItemFilterMapping::STATUS_APPROVED => 'Approved',
+                        ItemFilterMapping::STATUS_IGNORED => 'Reviewed — current pricing kept',
+                        ItemFilterMapping::STATUS_DETECTED => 'Detected',
+                    ]),
                 SelectFilter::make('confidence')->options([
                     'high' => 'High',
                     'medium' => 'Medium',
@@ -79,52 +107,195 @@ class ItemFilterMappingsTable
                 ]),
             ])
             ->recordActions([
-                Action::make('approve')
-                    ->label('Approve')
-                    ->icon('heroicon-o-check-circle')
-                    ->color('success')
-                    ->requiresConfirmation()
-                    ->visible(fn (ItemFilterMapping $record): bool => $record->status !== ItemFilterMapping::STATUS_APPROVED && self::canApprove($record))
-                    ->action(function (ItemFilterMapping $record): void {
-                        if (! self::canApprove($record)) {
-                            Notification::make()->title('Filter mapping is not safe to approve')->danger()->send();
-
-                            return;
-                        }
-
-                        $record->update([
-                            'status' => ItemFilterMapping::STATUS_APPROVED,
-                            'approved_by' => auth()->id(),
-                            'approved_at' => now(),
-                        ]);
-
-                        Notification::make()->title('Filter mapping approved')->success()->send();
-                    }),
-                Action::make('ignore')
-                    ->label('Ignore')
-                    ->icon('heroicon-o-no-symbol')
-                    ->color('gray')
-                    ->requiresConfirmation()
-                    ->visible(fn (ItemFilterMapping $record): bool => $record->status !== ItemFilterMapping::STATUS_IGNORED)
-                    ->action(function (ItemFilterMapping $record): void {
-                        $record->update(['status' => ItemFilterMapping::STATUS_IGNORED]);
-                        Notification::make()->title('Candidate ignored')->success()->send();
-                    }),
+                self::reviewWeightAction(),
+                Action::make('editItemData')
+                    ->label('Edit item data')
+                    ->icon('heroicon-o-pencil-square')
+                    ->color('info')
+                    ->visible(fn (ItemFilterMapping $record): bool => $record->status === ItemFilterMapping::STATUS_NEEDS_REVIEW && $record->item !== null && ItemResource::canEdit($record->item))
+                    ->url(fn (ItemFilterMapping $record): string => ItemResource::getUrl('edit', ['record' => $record->item]))
+                    ->openUrlInNewTab(),
+                self::keepCurrentPricingAction(),
                 EditAction::make(),
             ])
             ->defaultSort('updated_at', 'desc');
     }
 
-    private static function canApprove(ItemFilterMapping $record): bool
+    private static function reviewWeightAction(): Action
     {
-        return self::weightOnlyAssay($record)['applied'] ?? false;
+        return Action::make('reviewAndApplyWeight')
+            ->label('Review & apply')
+            ->icon('heroicon-o-scale')
+            ->color('warning')
+            ->modalHeading('Review linked pricing before approval')
+            ->modalSubmitActionLabel('Approve & apply to linked items')
+            ->visible(function (ItemFilterMapping $record): bool {
+                if ($record->status !== ItemFilterMapping::STATUS_NEEDS_REVIEW) {
+                    return false;
+                }
+
+                return app(PricingReviewService::class)->issue($record)['type'] === 'component_weight';
+            })
+            ->schema([
+                Section::make('Issue')
+                    ->compact()
+                    ->schema([
+                        Text::make(function (ItemFilterMapping $record): string {
+                            $issue = app(PricingReviewService::class)->issue($record);
+
+                            return $issue['label'].($issue['variant'] ? ' · '.$issue['variant'] : '');
+                        })->weight('bold'),
+                        Text::make(fn (ItemFilterMapping $record): string => app(PricingReviewService::class)->issue($record)['instruction']),
+                    ]),
+                TextInput::make('filter_weight_kg')
+                    ->label('Verified DPF / filter component weight')
+                    ->numeric()
+                    ->minValue(0.001)
+                    ->step(0.001)
+                    ->suffix('kg')
+                    ->required()
+                    ->live(debounce: 350)
+                    ->helperText('Enter the measured component weight once. It will be previewed and, after approval, applied to every linked Needs Review item in the same group and serial family.'),
+                Section::make('Before / after preview')
+                    ->description('Nothing is saved until you approve the modal.')
+                    ->schema([
+                        Text::make(function (Get $get, ItemFilterMapping $record): HtmlString {
+                            $weight = $get('filter_weight_kg');
+
+                            if (! is_numeric($weight) || (float) $weight <= 0) {
+                                return new HtmlString('<strong>Enter a verified component weight to calculate the preview.</strong>');
+                            }
+
+                            $preview = app(PricingReviewService::class)->previewFamilyWeight($record, (float) $weight);
+                            $status = $preview['all_safe']
+                                ? '<span style="color:#15803d"><strong>Safe to apply to all linked items.</strong></span>'
+                                : '<span style="color:#b91c1c"><strong>Not safe to approve yet. At least one linked item failed the weight safety rules.</strong></span>';
+
+                            return new HtmlString($status.'<br>Linked items: <strong>'.$preview['count'].'</strong>');
+                        }),
+                        UnorderedList::make(function (Get $get, ItemFilterMapping $record): array {
+                            $weight = $get('filter_weight_kg');
+
+                            if (! is_numeric($weight) || (float) $weight <= 0) {
+                                return ['Preview will appear here after entering the verified component weight.'];
+                            }
+
+                            $preview = app(PricingReviewService::class)->previewFamilyWeight($record, (float) $weight);
+
+                            return collect($preview['rows'])
+                                ->map(function (array $row): string {
+                                    $model = filled($row['model']) ? ' · '.$row['model'] : '';
+                                    $net = $row['net_weight_kg'] === null ? 'invalid' : number_format((float) $row['net_weight_kg'], 3).' kg';
+                                    $delta = $row['delta_percent'] === null ? '' : sprintf(' (%+.2f%%)', (float) $row['delta_percent']);
+                                    $safety = $row['safe'] ? 'Safe' : 'Blocked: '.$row['reason'];
+
+                                    return sprintf(
+                                        '%s%s — weight %.3f kg → %s — $%s → $%s%s — %s',
+                                        $row['serial'],
+                                        $model,
+                                        (float) $row['original_weight_kg'],
+                                        $net,
+                                        number_format((float) $row['current_price_usd'], 2),
+                                        number_format((float) $row['proposed_price_usd'], 2),
+                                        $delta,
+                                        $safety,
+                                    );
+                                })
+                                ->all();
+                        })->columns(1),
+                    ]),
+                Textarea::make('review_note')
+                    ->label('Review note')
+                    ->rows(3)
+                    ->placeholder('Optional: measurement source, scale reading, OEM/variant confirmation, etc.'),
+            ])
+            ->action(function (array $data, ItemFilterMapping $record): void {
+                try {
+                    $result = app(PricingReviewService::class)->applyFamilyWeight(
+                        $record,
+                        (float) $data['filter_weight_kg'],
+                        auth()->id(),
+                        filled($data['review_note'] ?? null) ? (string) $data['review_note'] : null,
+                    );
+                } catch (RuntimeException $exception) {
+                    Notification::make()
+                        ->title('Pricing review was not applied')
+                        ->body($exception->getMessage())
+                        ->danger()
+                        ->send();
+
+                    return;
+                }
+
+                Notification::make()
+                    ->title('Pricing review approved')
+                    ->body(sprintf(
+                        'Applied the verified component weight to %d linked item(s). They are now available to the API.',
+                        $result['applied'],
+                    ))
+                    ->success()
+                    ->send();
+            });
+    }
+
+    private static function keepCurrentPricingAction(): Action
+    {
+        return Action::make('approveCurrentPricing')
+            ->label('Keep current pricing')
+            ->icon('heroicon-o-check-badge')
+            ->color('gray')
+            ->modalHeading('Approve current pricing without a filter correction')
+            ->modalDescription('Use this only after verifying that no component-weight correction should be applied. The linked items will return to the API with their existing pricing.')
+            ->modalSubmitActionLabel('Approve current pricing')
+            ->visible(fn (ItemFilterMapping $record): bool => $record->status === ItemFilterMapping::STATUS_NEEDS_REVIEW)
+            ->schema([
+                Text::make(function (ItemFilterMapping $record): string {
+                    $issue = app(PricingReviewService::class)->issue($record);
+                    $count = app(PricingReviewService::class)->relatedReviewMappings($record)->count();
+
+                    return $issue['label'].' · '.$count.' linked Needs Review item(s)';
+                })->weight('bold'),
+                Text::make(fn (ItemFilterMapping $record): string => app(PricingReviewService::class)->issue($record)['instruction']),
+                Textarea::make('review_note')
+                    ->label('Why is the current pricing safe to keep?')
+                    ->required()
+                    ->rows(4)
+                    ->helperText('This note is stored as audit evidence and applies to all linked review items.'),
+            ])
+            ->action(function (array $data, ItemFilterMapping $record): void {
+                try {
+                    $count = app(PricingReviewService::class)->approveCurrentPricing(
+                        $record,
+                        auth()->id(),
+                        (string) $data['review_note'],
+                    );
+                } catch (RuntimeException $exception) {
+                    Notification::make()
+                        ->title('Review could not be completed')
+                        ->body($exception->getMessage())
+                        ->danger()
+                        ->send();
+
+                    return;
+                }
+
+                Notification::make()
+                    ->title('Current pricing approved')
+                    ->body("Reviewed {$count} linked item(s). They are now available to the API.")
+                    ->success()
+                    ->send();
+            });
     }
 
     private static function correctionStatus(ItemFilterMapping $record): string
     {
+        if ($record->status === ItemFilterMapping::STATUS_NEEDS_REVIEW) {
+            return 'Needs review';
+        }
+
         $assay = self::weightOnlyAssay($record);
 
-        return ($assay['applied'] ?? false) ? 'Ready' : (string) ($assay['reason'] ?? 'Needs review');
+        return ($assay['applied'] ?? false) ? 'Ready' : (string) ($assay['reason'] ?? 'No correction');
     }
 
     /** @return array<string, mixed> */

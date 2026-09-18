@@ -1,5 +1,6 @@
 <?php
 
+use App\Filament\Resources\ItemFilterMappings\ItemFilterMappingResource;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Role;
@@ -43,4 +44,19 @@ test('inactive admins cannot access filament panel', function () {
     $response = $this->actingAs($user)->get('/admin');
 
     $response->assertForbidden();
+});
+
+test('super admin can open the filter pricing review queue', function () {
+    Role::query()->firstOrCreate(['name' => 'super_admin', 'guard_name' => 'web']);
+
+    $user = User::factory()->create([
+        'is_active' => true,
+    ]);
+    $user->assignRole('super_admin');
+
+    $response = $this->actingAs($user)->get(ItemFilterMappingResource::getUrl('index'));
+
+    $response->assertOk();
+    $response->assertSee('Filter Pricing Review');
+    $response->assertSee('blocked from the public API');
 });

@@ -38,7 +38,7 @@ class ItemFilterMappingForm
                         ->step(0.001)
                         ->suffix('kg')
                         ->nullable()
-                        ->helperText('Optional manual override. Leave empty to use the median filter weight.'),
+                        ->helperText('Advanced draft value only. For Needs Review items, use the Review & apply action from the list so all linked items are previewed and approved together.'),
                     Select::make('confidence')
                         ->options([
                             'high' => 'High',

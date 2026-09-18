@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\ItemFilterMappings\Pages;
 
 use App\Filament\Resources\ItemFilterMappings\ItemFilterMappingResource;
+use App\Models\ItemFilterMapping;
 use App\Services\Pricing\FilterCandidateDetectionService;
 use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
@@ -15,7 +16,11 @@ class ListItemFilterMappings extends ListRecords
 
     public function getSubheading(): ?string
     {
-        return 'Review suspected filter-included pricing before enabling any correction. Detection never changes item assay data.';
+        $count = ItemFilterMapping::query()
+            ->where('status', ItemFilterMapping::STATUS_NEEDS_REVIEW)
+            ->count();
+
+        return "{$count} item(s) currently need pricing review and are blocked from the public API. Enter verified data, preview every linked price change, then approve the family to publish it again.";
     }
 
     protected function getHeaderActions(): array

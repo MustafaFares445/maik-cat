@@ -3,6 +3,7 @@
 use App\Models\CarGroup;
 use App\Models\ExtraCode;
 use App\Models\Item;
+use App\Models\ItemFilterMapping;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 
@@ -94,4 +95,53 @@ test('item code suggestions return only matching codes from API-visible items', 
             'ALT-GM10',
         ],
     ]);
+});
+
+test('needs review items are blocked from item discovery APIs until the review is resolved', function (): void {
+    $group = CarGroup::factory()->create(['name' => 'MERCEDES']);
+
+    $blocked = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'KT 6044',
+        'normalized_serial' => 'KT6044',
+    ]);
+    itemDiscoveryApiAttachImage($blocked);
+
+    ItemFilterMapping::factory()->create([
+        'item_id' => $blocked->id,
+        'status' => ItemFilterMapping::STATUS_NEEDS_REVIEW,
+        'evidence' => ['pricing_review' => ['type' => 'component_weight']],
+    ]);
+
+    $visible = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'KT 6043',
+        'normalized_serial' => 'KT6043',
+    ]);
+    itemDiscoveryApiAttachImage($visible);
+
+    ItemFilterMapping::factory()->create([
+        'item_id' => $visible->id,
+        'status' => ItemFilterMapping::STATUS_APPROVED,
+    ]);
+
+    $items = getJson('/api/items?sort=serial_code');
+
+    $items->assertOk();
+    $items->assertJsonPath('meta.total', 1);
+    $items->assertJsonPath('data.0.serialCode', 'KT6043');
+    $items->assertJsonMissing(['serialCode' => 'KT6044']);
+
+    $codes = getJson('/api/items/codes?search=KT60&limit=10');
+
+    $codes->assertOk();
+    $codes->assertJsonMissing(['KT 6044']);
+
+    getJson("/api/items/{$blocked->id}")->assertNotFound();
+    getJson("/api/items/{$visible->id}")->assertOk();
+
+    $blockedMapping = $blocked->filterMapping()->firstOrFail();
+    $blockedMapping->update(['status' => ItemFilterMapping::STATUS_IGNORED]);
+
+    getJson("/api/items/{$blocked->id}")->assertOk();
 });

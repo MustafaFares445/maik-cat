@@ -18,11 +18,17 @@ use Illuminate\Database\Eloquent\Builder;
 class ItemFilterMappingResource extends Resource
 {
     protected static ?string $model = ItemFilterMapping::class;
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedScale;
+
     protected static ?string $navigationLabel = 'Filter Pricing Review';
+
     protected static ?string $modelLabel = 'filter pricing mapping';
+
     protected static ?string $pluralModelLabel = 'Filter Pricing Review';
+
     protected static string|\UnitEnum|null $navigationGroup = 'Settings';
+
     protected static ?int $navigationSort = 15;
 
     public static function form(Schema $schema): Schema
@@ -47,6 +53,20 @@ class ItemFilterMappingResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()->with(['item.carGroup', 'filterItem']);
+    }
+
+    public static function getNavigationBadge(): ?string
+    {
+        $count = ItemFilterMapping::query()
+            ->where('status', ItemFilterMapping::STATUS_NEEDS_REVIEW)
+            ->count();
+
+        return $count > 0 ? (string) $count : null;
+    }
+
+    public static function getNavigationBadgeColor(): string|array|null
+    {
+        return 'warning';
     }
 
     public static function canViewAny(): bool
