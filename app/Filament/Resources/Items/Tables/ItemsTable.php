@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Items\Tables;
 use App\Models\CarGroup;
 use App\Models\Item;
 use App\Models\ItemFilterMapping;
+use App\Services\Mobile\ItemPriceService;
 use App\Services\Pricing\PricingReviewService;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -54,6 +55,10 @@ class ItemsTable
                     ->label('RH')
                     ->numeric(4)
                     ->sortable(),
+                TextColumn::make('current_price')
+                    ->label('Price')
+                    ->getStateUsing(fn (Item $record): float => app(ItemPriceService::class)->priceFor($record, 'USD'))
+                    ->money('USD'),
                 TextColumn::make('pricing_review_status')
                     ->label('Pricing review')
                     ->getStateUsing(fn (Item $record): string => $record->filterMapping?->status === ItemFilterMapping::STATUS_NEEDS_REVIEW ? 'Needs review' : 'Clear')
