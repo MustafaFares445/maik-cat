@@ -2,13 +2,9 @@
 
 namespace App\Filament\Resources\CarGroups\Schemas;
 
-use App\Models\CarGroup;
-use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
-use Illuminate\Support\HtmlString;
 
 class CarGroupForm
 {
@@ -17,42 +13,12 @@ class CarGroupForm
         return $schema
             ->components([
                 Section::make('Car group details')
-                    ->description('Organize item categories used across search and browsing.')
-                    ->columns([
-                        'default' => 1,
-                        'md' => 2,
-                    ])
+                    ->description('Manage the category name used for catalog items.')
                     ->components([
                         TextInput::make('name')
+                            ->placeholder('Enter car group name')
                             ->required()
                             ->maxLength(255),
-                        TextInput::make('region')
-                            ->maxLength(255),
-                        Placeholder::make('current_image')
-                            ->label('Current image')
-                            ->content(function (?CarGroup $record): HtmlString {
-                                $url = $record?->getFirstMediaUrl('logo')
-                                    ?: $record?->getFirstMediaUrl('images');
-
-                                return new HtmlString(
-                                    sprintf(
-                                        '<img src="%s" alt="Current car group image" class="h-auto w-full max-w-full sm:max-w-sm rounded-lg border border-gray-200 bg-white p-2 object-contain" loading="lazy" />',
-                                        e($url),
-                                    ),
-                                );
-                            })
-                            ->hidden(fn (?CarGroup $record): bool => blank($record?->getFirstMediaUrl('logo')
-                                ?: $record?->getFirstMediaUrl('images')))
-                            ->columnSpanFull(),
-                        FileUpload::make('car_group_image')
-                            ->label('Image')
-                            ->image()
-                            ->disk('public')
-                            ->directory('filament/car-groups')
-                            ->visibility('public')
-                            ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'image/avif'])
-                            ->maxSize(4096)
-                            ->columnSpanFull(),
                     ]),
             ]);
     }
