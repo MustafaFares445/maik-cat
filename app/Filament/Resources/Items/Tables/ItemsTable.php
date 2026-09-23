@@ -185,14 +185,15 @@ class ItemsTable
                 ->avg();
 
         return sprintf(
-            '%d related items · App average $%s · %s · %s kg · PT %s · PD %s · RH %s',
+            '%d related items · Model: %s · Car group: %s · Weight: %s kg · PT: %s · PD: %s · RH: %s · Price: $%s',
             $siblings->count(),
-            number_format($averagePrice, 2),
+            self::displayValue($representative->model),
             self::displayValue($representative->carGroup?->name),
             self::formatNumber($representative->weight_kg, 3),
             self::formatNumber($representative->pt_ppm, 4),
             self::formatNumber($representative->pd_ppm, 4),
             self::formatNumber($representative->rh_ppm, 4),
+            number_format($averagePrice, 2),
         );
     }
 
