@@ -53,7 +53,7 @@ class CarGroupResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->withCount(['children', 'items']);
+        return parent::getEloquentQuery()->withCount('items');
     }
 
     public static function canViewAny(): bool
