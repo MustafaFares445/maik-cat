@@ -17,30 +17,38 @@ class PlatformStats extends StatsOverviewWidget
     protected function getStats(): array
     {
         $latestMetalPrice = MetalPrice::query()->latest('fetched_at')->first();
-        $activeAppUsers = User::query()->role('app_user')->where('is_active', true)->count();
+        $activeAppUsers = User::query()
+            ->appUsers()
+            ->where('is_active', true)
+            ->count();
+
+        $latestPt = $latestMetalPrice?->pt_usd_per_oz;
+        $latestPriceDescription = $latestMetalPrice?->fetched_at
+            ? 'Stored market snapshot updated '.$latestMetalPrice->fetched_at->diffForHumans()
+            : 'Waiting for the first stored market snapshot';
 
         return [
             Stat::make('Total Items', number_format(Item::query()->count()))
-                ->description('Catalog entries available to the mobile app')
+                ->description('Total catalog records stored in the system')
                 ->icon('heroicon-o-rectangle-stack')
                 ->color('primary'),
             Stat::make('Active App Users', number_format($activeAppUsers))
-                ->description('Users eligible for push notifications')
+                ->description('Active end-user accounts with mobile access')
                 ->icon('heroicon-o-users')
                 ->color('success'),
             Stat::make('Saved Items', number_format(DB::table('saved_items')->count()))
-                ->description('Bookmarked converters by end users')
+                ->description('Total bookmarks created by end users')
                 ->icon('heroicon-o-heart')
                 ->color('warning'),
             Stat::make('Sent Campaigns', number_format(AdminNotificationCampaign::query()->where('status', 'sent')->count()))
-                ->description('Delivered from dashboard communication center')
+                ->description('Campaigns delivered from the dashboard communication center')
                 ->icon('heroicon-o-paper-airplane')
                 ->color('primary'),
             Stat::make(
                 'Latest PT (USD/Oz)',
-                $latestMetalPrice ? number_format((float) $latestMetalPrice->pt_usd_per_oz, 2) : 'N/A'
+                is_numeric($latestPt) ? number_format((float) $latestPt, 2) : 'N/A'
             )
-                ->description('Most recent tracked platinum market price')
+                ->description($latestPriceDescription)
                 ->icon('heroicon-o-chart-bar-square')
                 ->color('gray'),
         ];
