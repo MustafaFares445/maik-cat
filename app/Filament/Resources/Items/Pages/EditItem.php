@@ -4,11 +4,11 @@ namespace App\Filament\Resources\Items\Pages;
 
 use App\Filament\Resources\Items\ItemResource;
 use App\Models\Item;
+use App\Services\ItemDashboardImageService;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 use Filament\Support\Enums\Width;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Storage;
 
 class EditItem extends EditRecord
 {
@@ -30,7 +30,9 @@ class EditItem extends EditRecord
     {
         /** @var Item $record */
         $record = $this->getRecord();
-        $this->syncUploadedImage($record);
+
+        app(ItemDashboardImageService::class)
+            ->replaceFromPublicUpload($record, $this->uploadedImagePath);
     }
 
     protected function getHeaderActions(): array
@@ -51,21 +53,5 @@ class EditItem extends EditRecord
         }
 
         return $uploaded;
-    }
-
-    private function syncUploadedImage(Item $record): void
-    {
-        if (! is_string($this->uploadedImagePath) || $this->uploadedImagePath === '') {
-            return;
-        }
-
-        $absolutePath = Storage::disk('public')->path($this->uploadedImagePath);
-
-        if (! is_file($absolutePath)) {
-            return;
-        }
-
-        $record->clearMediaCollection('images');
-        $record->addMedia($absolutePath)->toMediaCollection('images');
     }
 }
