@@ -57,8 +57,8 @@ test('super admin can open the filter pricing review queue', function () {
     $response = $this->actingAs($user)->get(ItemFilterMappingResource::getUrl('index'));
 
     $response->assertOk();
-    $response->assertSee('Filter Pricing Review');
-    $response->assertSee('blocked from being shown in the app');
+    $response->assertSee('Items Awaiting Pricing Review');
+    $response->assertSee('temporarily hidden from customers');
 });
 
 test('manual filter mapping form focuses on business inputs and hides technical metadata', function () {
@@ -72,7 +72,7 @@ test('manual filter mapping form focuses on business inputs and hides technical 
     $response = $this->actingAs($user)->get(ItemFilterMappingResource::getUrl('create'));
 
     $response->assertOk();
-    $response->assertSee('Add manual filter mapping');
+    $response->assertSee('Add filter reference');
     $response->assertSee('Catalyst product');
     $response->assertSee('Matching filter reference');
     $response->assertSee('Corrected filter weight');

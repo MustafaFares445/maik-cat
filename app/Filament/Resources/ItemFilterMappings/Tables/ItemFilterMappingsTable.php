@@ -38,46 +38,53 @@ class ItemFilterMappingsTable
                     ->sortable()
                     ->weight('bold'),
                 TextColumn::make('issue')
-                    ->label('Review issue')
+                    ->label('Why review is needed')
                     ->getStateUsing(fn (ItemFilterMapping $record): string => app(PricingReviewService::class)->issue($record)['label'])
                     ->badge()
                     ->color(fn (ItemFilterMapping $record): string => $record->status === ItemFilterMapping::STATUS_NEEDS_REVIEW ? 'warning' : 'gray')
                     ->wrap(),
                 TextColumn::make('item.weight_kg')
-                    ->label('Original W')
+                    ->label('Product weight')
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 3).' kg'),
                 TextColumn::make('filter_serial')
-                    ->label('Filter')
+                    ->label('Filter reference')
                     ->searchable()
-                    ->placeholder('Manual mapping needed'),
+                    ->placeholder('Filter reference not linked'),
                 TextColumn::make('filter_weight')
-                    ->label('Filter W')
+                    ->label('Filter weight')
                     ->getStateUsing(fn (ItemFilterMapping $record): ?string => self::formattedWeight(self::filterWeight($record))),
                 TextColumn::make('net_weight')
-                    ->label('Net W')
+                    ->label('Corrected weight')
                     ->getStateUsing(fn (ItemFilterMapping $record): ?string => self::formattedWeight(self::netWeight($record))),
                 TextColumn::make('correction_status')
-                    ->label('Correction')
+                    ->label('Review status')
                     ->getStateUsing(fn (ItemFilterMapping $record): string => self::correctionStatus($record))
                     ->badge(),
                 TextColumn::make('current_price')
-                    ->label('Current')
+                    ->label('Current price')
                     ->getStateUsing(fn (ItemFilterMapping $record): float => self::price($record, FilterPriceCorrectionService::MODE_DISABLED))
                     ->money('USD'),
                 TextColumn::make('weight_only_price')
-                    ->label('Weight only')
+                    ->label('Price after correction')
                     ->getStateUsing(fn (ItemFilterMapping $record): float => self::price($record, FilterPriceCorrectionService::MODE_WEIGHT_ONLY))
                     ->money('USD'),
                 TextColumn::make('api_status')
-                    ->label('Shown in app')
-                    ->getStateUsing(fn (ItemFilterMapping $record): string => $record->status === ItemFilterMapping::STATUS_NEEDS_REVIEW ? 'No — needs review' : 'Yes')
+                    ->label('Customer visibility')
+                    ->getStateUsing(fn (ItemFilterMapping $record): string => $record->status === ItemFilterMapping::STATUS_NEEDS_REVIEW ? 'Hidden until reviewed' : 'Visible to customers')
                     ->badge()
-                    ->color(fn (string $state): string => str_starts_with($state, 'No') ? 'danger' : 'success'),
+                    ->color(fn (string $state): string => $state === 'Hidden until reviewed' ? 'danger' : 'success'),
                 TextColumn::make('confidence')->badge()->sortable(),
                 TextColumn::make('status')
                     ->badge()
                     ->sortable()
-                    ->color(fn (string $state): string => match ($state) {
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        ItemFilterMapping::STATUS_NEEDS_REVIEW => 'Awaiting review',
+                        ItemFilterMapping::STATUS_APPROVED => 'Approved',
+                        ItemFilterMapping::STATUS_IGNORED => 'Reviewed — current pricing kept',
+                        ItemFilterMapping::STATUS_DETECTED => 'Detected',
+                        default => $state,
+                    })
+                    ->color(fn (ItemFilterMapping $record): string => match ($record->status) {
                         ItemFilterMapping::STATUS_NEEDS_REVIEW => 'warning',
                         ItemFilterMapping::STATUS_APPROVED => 'success',
                         ItemFilterMapping::STATUS_IGNORED => 'gray',
@@ -94,7 +101,7 @@ class ItemFilterMappingsTable
                     ->label('Review status')
                     ->default(ItemFilterMapping::STATUS_NEEDS_REVIEW)
                     ->options([
-                        ItemFilterMapping::STATUS_NEEDS_REVIEW => 'Needs review — blocked from being shown in the app',
+                        ItemFilterMapping::STATUS_NEEDS_REVIEW => 'Awaiting review — hidden from customers until approved',
                         ItemFilterMapping::STATUS_APPROVED => 'Approved',
                         ItemFilterMapping::STATUS_IGNORED => 'Reviewed — current pricing kept',
                         ItemFilterMapping::STATUS_DETECTED => 'Detected',
@@ -124,7 +131,7 @@ class ItemFilterMappingsTable
     private static function reviewWeightAction(): Action
     {
         return Action::make('reviewAndApplyWeight')
-            ->label('Review & apply')
+            ->label('Review item')
             ->icon('heroicon-o-scale')
             ->color('warning')
             ->modalHeading('Review linked pricing before approval')
@@ -241,7 +248,7 @@ class ItemFilterMappingsTable
     private static function keepCurrentPricingAction(): Action
     {
         return Action::make('approveCurrentPricing')
-            ->label('Keep current pricing')
+            ->label('Keep current price')
             ->icon('heroicon-o-check-badge')
             ->color('gray')
             ->modalHeading('Approve current pricing without a filter correction')
@@ -290,7 +297,7 @@ class ItemFilterMappingsTable
     private static function correctionStatus(ItemFilterMapping $record): string
     {
         if ($record->status === ItemFilterMapping::STATUS_NEEDS_REVIEW) {
-            return 'Needs review';
+            return 'Awaiting review';
         }
 
         $assay = self::weightOnlyAssay($record);

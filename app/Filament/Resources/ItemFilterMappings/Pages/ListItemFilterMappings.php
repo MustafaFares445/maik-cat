@@ -20,14 +20,14 @@ class ListItemFilterMappings extends ListRecords
             ->where('status', ItemFilterMapping::STATUS_NEEDS_REVIEW)
             ->count();
 
-        return "{$count} item(s) currently need pricing review and are blocked from being shown in the app. Check the reason, verify the data, preview the price change, then approve the item group so it can be shown again.";
+        return "{$count} item(s) are temporarily hidden from customers because some pricing information needs confirmation. Review the issue, check the proposed price, then approve the item so it can be shown again.";
     }
 
     protected function getHeaderActions(): array
     {
         return [
             Action::make('scanCandidates')
-                ->label('Scan candidates')
+                ->label('Recheck items')
                 ->icon('heroicon-o-magnifying-glass')
                 ->action(function (): void {
                     $summary = app(FilterCandidateDetectionService::class)->scan();
@@ -44,7 +44,7 @@ class ListItemFilterMappings extends ListRecords
                         ->success()
                         ->send();
                 }),
-            CreateAction::make()->label('Add manual mapping'),
+            CreateAction::make()->label('Add filter reference'),
         ];
     }
 }

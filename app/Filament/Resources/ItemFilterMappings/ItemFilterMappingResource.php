@@ -21,11 +21,11 @@ class ItemFilterMappingResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedScale;
 
-    protected static ?string $navigationLabel = 'Filter Pricing Review';
+    protected static ?string $navigationLabel = 'Items Awaiting Pricing Review';
 
     protected static ?string $modelLabel = 'filter pricing mapping';
 
-    protected static ?string $pluralModelLabel = 'Filter Pricing Review';
+    protected static ?string $pluralModelLabel = 'Items Awaiting Pricing Review';
 
     protected static string|\UnitEnum|null $navigationGroup = 'Settings';
 

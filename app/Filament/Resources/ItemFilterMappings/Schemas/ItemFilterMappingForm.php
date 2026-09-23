@@ -38,12 +38,7 @@ class ItemFilterMappingForm
                         ->nullable()
                         ->live()
                         ->label('Matching filter reference')
-                        ->helperText('Select the filter-only item that should be used as the pricing reference. Leave this empty only when you need to enter a reference serial manually.'),
-                    TextInput::make('filter_serial')
-                        ->label('Filter serial (optional)')
-                        ->maxLength(255)
-                        ->live(debounce: 350)
-                        ->helperText('Use this when the correct filter is not available as a selectable item, or when several filter samples share the same reference serial.'),
+                        ->helperText('Select the filter-only item that should be used as the pricing reference. Leave this empty only when providing a verified filter weight.'),
                     TextInput::make('filter_weight_override')
                         ->label('Corrected filter weight (optional)')
                         ->numeric()
@@ -56,7 +51,7 @@ class ItemFilterMappingForm
                 ]),
 
             Section::make('Pricing impact preview')
-                ->description('Preview the effect before saving. The final correction is still approved from Filter Pricing Review so linked items can be checked together.')
+                ->description('Preview the effect before saving. The final correction is still approved from Items Awaiting Pricing Review so linked items can be checked together.')
                 ->components([
                     Text::make(fn (Get $get): string => self::pricingPreview($get)),
                 ]),
@@ -86,17 +81,15 @@ class ItemFilterMappingForm
         }
 
         $filterItemId = $get('filter_item_id');
-        $filterSerial = trim((string) ($get('filter_serial') ?? ''));
         $weightOverride = $get('filter_weight_override');
 
-        if (blank($filterItemId) && $filterSerial === '' && ! is_numeric($weightOverride)) {
-            return 'Select a matching filter reference, enter a filter serial, or provide a verified filter weight to calculate the preview.';
+        if (blank($filterItemId) && ! is_numeric($weightOverride)) {
+            return 'Select a matching filter reference or provide a verified filter weight to calculate the preview.';
         }
 
         $mapping = new ItemFilterMapping([
             'item_id' => $item->getKey(),
             'filter_item_id' => filled($filterItemId) ? (string) $filterItemId : null,
-            'filter_serial' => $filterSerial !== '' ? $filterSerial : null,
             'filter_weight_override' => is_numeric($weightOverride) ? (float) $weightOverride : null,
             'detection_method' => 'manual',
             'confidence' => 'manual',

@@ -12,7 +12,7 @@ class CreateItemFilterMapping extends CreateRecord
 
     public function getTitle(): string
     {
-        return 'Add manual filter mapping';
+        return 'Add filter reference';
     }
 
     protected function mutateFormDataBeforeCreate(array $data): array
