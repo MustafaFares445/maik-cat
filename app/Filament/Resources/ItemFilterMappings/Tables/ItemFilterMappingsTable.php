@@ -69,10 +69,10 @@ class ItemFilterMappingsTable
                     ->getStateUsing(fn (ItemFilterMapping $record): float => self::price($record, FilterPriceCorrectionService::MODE_WEIGHT_ONLY))
                     ->money('USD'),
                 TextColumn::make('api_status')
-                    ->label('API')
-                    ->getStateUsing(fn (ItemFilterMapping $record): string => $record->status === ItemFilterMapping::STATUS_NEEDS_REVIEW ? 'Blocked' : 'Visible')
+                    ->label('Shown in app')
+                    ->getStateUsing(fn (ItemFilterMapping $record): string => $record->status === ItemFilterMapping::STATUS_NEEDS_REVIEW ? 'No — needs review' : 'Yes')
                     ->badge()
-                    ->color(fn (string $state): string => $state === 'Blocked' ? 'danger' : 'success'),
+                    ->color(fn (string $state): string => str_starts_with($state, 'No') ? 'danger' : 'success'),
                 TextColumn::make('confidence')->badge()->sortable(),
                 TextColumn::make('status')
                     ->badge()
@@ -94,7 +94,7 @@ class ItemFilterMappingsTable
                     ->label('Review status')
                     ->default(ItemFilterMapping::STATUS_NEEDS_REVIEW)
                     ->options([
-                        ItemFilterMapping::STATUS_NEEDS_REVIEW => 'Needs review — blocked from API',
+                        ItemFilterMapping::STATUS_NEEDS_REVIEW => 'Needs review — blocked from being shown in the app',
                         ItemFilterMapping::STATUS_APPROVED => 'Approved',
                         ItemFilterMapping::STATUS_IGNORED => 'Reviewed — current pricing kept',
                         ItemFilterMapping::STATUS_DETECTED => 'Detected',
@@ -230,7 +230,7 @@ class ItemFilterMappingsTable
                 Notification::make()
                     ->title('Pricing review approved')
                     ->body(sprintf(
-                        'Applied the verified component weight to %d linked item(s). They are now available to the API.',
+                        'Applied the verified component weight to %d linked item(s). They can now be shown in the app.',
                         $result['applied'],
                     ))
                     ->success()
@@ -245,7 +245,7 @@ class ItemFilterMappingsTable
             ->icon('heroicon-o-check-badge')
             ->color('gray')
             ->modalHeading('Approve current pricing without a filter correction')
-            ->modalDescription('Use this only after verifying that no component-weight correction should be applied. The linked items will return to the API with their existing pricing.')
+            ->modalDescription('Use this only after verifying that no component-weight correction should be applied. The linked items can then be shown in the app with their existing pricing.')
             ->modalSubmitActionLabel('Approve current pricing')
             ->visible(fn (ItemFilterMapping $record): bool => $record->status === ItemFilterMapping::STATUS_NEEDS_REVIEW)
             ->schema([
@@ -281,7 +281,7 @@ class ItemFilterMappingsTable
 
                 Notification::make()
                     ->title('Current pricing approved')
-                    ->body("Reviewed {$count} linked item(s). They are now available to the API.")
+                    ->body("Reviewed {$count} linked item(s). They can now be shown in the app.")
                     ->success()
                     ->send();
             });
