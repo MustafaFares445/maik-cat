@@ -7,7 +7,6 @@ use App\Models\ItemFilterMapping;
 use App\Services\Mobile\ItemApiSettingsService;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
-use Illuminate\Database\Eloquent\Builder;
 
 class ItemCatalogStats extends StatsOverviewWidget
 {
@@ -15,8 +14,8 @@ class ItemCatalogStats extends StatsOverviewWidget
 
     protected function getStats(): array
     {
-        $groupedMode = app(ItemApiSettingsService::class)->uniqueSerialItemsEnabled();
-        $shownInApp = $this->shownInAppCount($groupedMode);
+        $uniqueSerialMode = app(ItemApiSettingsService::class)->uniqueSerialItemsEnabled();
+        $shownInApp = Item::query()->apiVisible()->count();
 
         $needsReview = Item::query()
             ->whereHas(
@@ -34,9 +33,9 @@ class ItemCatalogStats extends StatsOverviewWidget
 
         return [
             Stat::make('Shown in app', number_format($shownInApp))
-                ->description($groupedMode
-                    ? 'Unique serial items currently available to customers'
-                    : 'Items currently available to customers')
+                ->description($uniqueSerialMode
+                    ? 'Item records available to customers; matching serials are grouped in the app'
+                    : 'Item records currently available to customers')
                 ->icon('heroicon-o-eye')
                 ->color('success'),
             Stat::make('Needs review', number_format($needsReview))
@@ -50,27 +49,5 @@ class ItemCatalogStats extends StatsOverviewWidget
         ];
     }
 
-    private function shownInAppCount(bool $groupedMode): int
-    {
-        $query = Item::query()->apiVisible();
 
-        if (! $groupedMode) {
-            return $query->count();
-        }
-
-        $uniqueSerials = (clone $query)
-            ->whereNotNull('normalized_serial')
-            ->where('normalized_serial', '!=', '')
-            ->distinct()
-            ->count('normalized_serial');
-
-        $itemsWithoutSerial = (clone $query)
-            ->where(function (Builder $query): void {
-                $query->whereNull('normalized_serial')
-                    ->orWhere('normalized_serial', '');
-            })
-            ->count();
-
-        return $uniqueSerials + $itemsWithoutSerial;
-    }
 }
