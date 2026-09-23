@@ -23,6 +23,10 @@ class UserResource extends Resource
 
     protected static ?string $navigationLabel = 'Admins';
 
+    protected static ?string $modelLabel = 'Admin';
+
+    protected static ?string $pluralModelLabel = 'Admins';
+
     protected static string|\UnitEnum|null $navigationGroup = 'Access Management';
 
     public static function form(Schema $schema): Schema
@@ -54,7 +58,6 @@ class UserResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->with('roles')
             ->whereHas('roles', fn (Builder $query) => $query->whereIn('name', ['super_admin', 'admin', 'content_manager']));
     }
 
