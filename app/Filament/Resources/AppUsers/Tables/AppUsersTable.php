@@ -40,14 +40,13 @@ class AppUsersTable
                 TextColumn::make('device_status')
                     ->label('Authorized device')
                     ->getStateUsing(fn (User $record): string => match (true) {
-                        $record->unlimited_devices => 'Unlimited',
                         $record->hasAuthorizedDeviceId() => 'Device ID',
                         $record->hasAuthorizedDevice() => 'FCM fallback',
                         default => 'Not bound',
                     })
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
-                        'Unlimited', 'Device ID' => 'success',
+                        'Device ID' => 'success',
                         'FCM fallback' => 'warning',
                         default => 'gray',
                     }),
@@ -94,6 +93,10 @@ class AppUsersTable
                     ->icon('heroicon-o-arrow-path')
                     ->color('warning')
                     ->visible(fn (User $record): bool => $record->hasAuthorizedDevice())
+                    ->disabled(fn (User $record): bool => $record->unlimited_devices)
+                    ->tooltip(fn (User $record): ?string => $record->unlimited_devices
+                        ? 'Device restrictions are disabled for unlimited-device accounts.'
+                        : null)
                     ->requiresConfirmation()
                     ->modalHeading('Reset authorized mobile device?')
                     ->modalDescription('This revokes all current mobile sessions, clears the old notification token, and allows the next successful login to claim this account from a new app installation.')
