@@ -27,7 +27,7 @@ class ItemForm
                     ->visible(fn (?Item $record): bool => $record?->filterMapping?->status === ItemFilterMapping::STATUS_NEEDS_REVIEW)
                     ->schema([
                         Placeholder::make('review_warning')
-                            ->hiddenLabel()
+                            ->label('')
                             ->content(function (?Item $record): HtmlString {
                                 $mapping = $record?->filterMapping;
 
