@@ -121,12 +121,16 @@ class ItemsTable
             ])
             ->defaultSort('updated_at', 'desc');
 
-        if (app(ItemApiSettingsService::class)->uniqueSerialItemsEnabled()) {
+        $activeTab = $table->getLivewire()->activeTab ?? null;
+        $groupedView = app(ItemApiSettingsService::class)->uniqueSerialItemsEnabled()
+            && ($activeTab === null || $activeTab === 'grouped');
+
+        if ($groupedView) {
             $table
                 ->groups([
                     self::serialGroup(),
                 ])
-                ->defaultGroup('normalized_serial')
+                ->defaultGroup('serial_code')
                 ->groupingSettingsHidden();
         }
 
@@ -135,49 +139,27 @@ class ItemsTable
 
     private static function serialGroup(): Group
     {
-        return Group::make('normalized_serial')
-            ->label('Grouped app item')
+        return Group::make('serial_code')
+            ->label('Serial')
             ->titlePrefixedWithLabel(false)
-            ->getKeyFromRecordUsing(fn (Item $record): string => self::groupKey($record))
-            ->getTitleFromRecordUsing(fn (Item $record): string => 'Grouped app item · '.self::displaySerial($record))
+            ->getTitleFromRecordUsing(fn (Item $record): string => 'Serial · '.self::displayValue($record->serial_code))
             ->getDescriptionFromRecordUsing(fn (Item $record): string => self::groupDescription($record))
-            ->scopeQueryByKeyUsing(function (Builder $query, string $key): Builder {
-                if (str_starts_with($key, '__item__')) {
-                    return $query->whereKey(substr($key, strlen('__item__')));
-                }
-
-                return $query->where('normalized_serial', $key);
-            })
+            ->scopeQueryByKeyUsing(
+                fn (Builder $query, string $key): Builder => $query->where('serial_code', $key),
+            )
             ->orderQueryUsing(
-                fn (Builder $query, string $direction): Builder => $query
-                    ->orderByRaw("CASE WHEN normalized_serial IS NULL OR normalized_serial = '' THEN 1 ELSE 0 END {$direction}")
-                    ->orderBy('normalized_serial', $direction),
+                fn (Builder $query, string $direction): Builder => $query->orderBy('serial_code', $direction),
             )
             ->collapsible();
     }
 
     private static function groupDescription(Item $record): string
     {
-        $serial = Item::normalizeSerialValue($record->normalized_serial ?: $record->serial_code);
-
-        if ($serial === '') {
-            $price = app(ItemPriceService::class)->priceFor($record, 'USD');
-
-            return sprintf(
-                'App item · Model: %s · Car group: %s · Weight: %.3f kg · PT: %.4f · PD: %.4f · RH: %.4f · Price: $%s · 1 stored item',
-                self::displayValue($record->model),
-                self::displayValue($record->carGroup?->name),
-                (float) $record->weight_kg,
-                (float) $record->pt_ppm,
-                (float) $record->pd_ppm,
-                (float) $record->rh_ppm,
-                number_format($price, 2),
-            );
-        }
+        $serial = trim((string) $record->serial_code);
 
         $siblings = Item::query()
             ->with(['carGroup', 'media', 'filterMapping'])
-            ->where('normalized_serial', $serial)
+            ->where('serial_code', $serial)
             ->orderByDesc('created_at')
             ->get();
 
@@ -186,9 +168,8 @@ class ItemsTable
 
         if (! $representative instanceof Item) {
             return sprintf(
-                'Not currently shown in the app · %d stored item%s in this serial group',
+                'Not currently shown in the app · %d related stored items',
                 $siblings->count(),
-                $siblings->count() === 1 ? '' : 's',
             );
         }
 
@@ -204,7 +185,7 @@ class ItemsTable
                 ->avg();
 
         return sprintf(
-            'Shown in app · Model: %s · Car group: %s · Weight: %.3f kg · PT: %.4f · PD: %.4f · RH: %.4f · App price: $%s average · %d stored item%s',
+            'Shown in app · Model: %s · Car group: %s · Weight: %.3f kg · PT: %.4f · PD: %.4f · RH: %.4f · App price: $%s average · %d related items',
             self::displayValue($representative->model),
             self::displayValue($representative->carGroup?->name),
             (float) $representative->weight_kg,
@@ -213,22 +194,7 @@ class ItemsTable
             (float) $representative->rh_ppm,
             number_format($averagePrice, 2),
             $siblings->count(),
-            $siblings->count() === 1 ? '' : 's',
         );
-    }
-
-    private static function groupKey(Item $record): string
-    {
-        $serial = Item::normalizeSerialValue($record->normalized_serial ?: $record->serial_code);
-
-        return $serial !== '' ? $serial : '__item__'.(string) $record->getKey();
-    }
-
-    private static function displaySerial(Item $record): string
-    {
-        $serial = Item::normalizeSerialValue($record->normalized_serial ?: $record->serial_code);
-
-        return $serial !== '' ? $serial : (string) $record->serial_code;
     }
 
     private static function displayValue(mixed $value): string
