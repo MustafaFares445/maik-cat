@@ -14,6 +14,20 @@ class ListItems extends ListRecords
 {
     protected static string $resource = ItemResource::class;
 
+    public function mount(): void
+    {
+        parent::mount();
+
+        $this->syncTableGrouping();
+    }
+
+    public function updatedActiveTab(): void
+    {
+        parent::updatedActiveTab();
+
+        $this->syncTableGrouping();
+    }
+
     public function getSubheading(): ?string
     {
         if (app(ItemApiSettingsService::class)->uniqueSerialItemsEnabled()) {
@@ -54,6 +68,14 @@ class ListItems extends ListRecords
     public function getDefaultActiveTab(): string|int|null
     {
         return 'all';
+    }
+
+    private function syncTableGrouping(): void
+    {
+        $this->tableGrouping = app(ItemApiSettingsService::class)->uniqueSerialItemsEnabled()
+            && $this->activeTab === 'grouped'
+            ? 'serial_code'
+            : null;
     }
 
     protected function getHeaderWidgets(): array
