@@ -145,3 +145,30 @@ test('keeping current pricing resolves every linked review item with an audit no
         ->and($firstMapping->fresh()->evidence['manual_review_resolution']['type'])->toBe('keep_current_pricing')
         ->and($secondMapping->fresh()->notes)->toBe('OEM and assay manually verified.');
 });
+
+
+test('review issue explains the reason in user-friendly language', function (): void {
+    $group = CarGroup::factory()->create(['name' => 'BMW']);
+
+    $item = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'REVIEW-01',
+        'weight_kg' => 2.5,
+        'pt_ppm' => 100,
+    ]);
+
+    $mapping = ItemFilterMapping::factory()->create([
+        'item_id' => $item->id,
+        'filter_item_id' => null,
+        'filter_serial' => null,
+        'status' => ItemFilterMapping::STATUS_NEEDS_REVIEW,
+        'evidence' => [
+            'threshold_match' => true,
+        ],
+    ]);
+
+    $issue = app(PricingReviewService::class)->issue($mapping->fresh(['item']));
+
+    expect($issue['label'])->toBe('Weight and price need confirmation')
+        ->and($issue['instruction'])->toBe('Check the item details before showing this item in the app again.');
+});
