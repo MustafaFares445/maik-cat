@@ -42,24 +42,23 @@ class RefreshMetalPrices extends Command
     {
         $rows = collect($result['data'] ?? [])->keyBy('key');
 
-        $platinum = $rows->get('platinum');
-        $palladium = $rows->get('palladium');
-        $rhodium = $rows->get('rhodium');
-
-        foreach ([$platinum, $palladium, $rhodium] as $metal) {
-            if (! is_array($metal) || ! is_numeric($metal['price_oz'] ?? null) || (float) $metal['price_oz'] <= 0) {
-                throw new \RuntimeException('Metal price snapshot is incomplete and was not stored.');
-            }
-        }
-
         MetalPrice::query()->create([
-            'pt_usd_per_oz' => (float) $platinum['price_oz'],
-            'pd_usd_per_oz' => (float) $palladium['price_oz'],
-            'rh_usd_per_oz' => (float) $rhodium['price_oz'],
+            'pt_usd_per_oz' => $this->priceFromRow($rows->get('platinum')),
+            'pd_usd_per_oz' => $this->priceFromRow($rows->get('palladium')),
+            'rh_usd_per_oz' => $this->priceFromRow($rows->get('rhodium')),
             'source' => (string) ($result['source'] ?? 'metal-sentinel'),
             'fetched_at' => now(),
         ]);
 
         $this->info('Historical metal price snapshot stored.');
+    }
+
+    private function priceFromRow(mixed $metal): float
+    {
+        if (! is_array($metal) || ! is_numeric($metal['price_oz'] ?? null) || (float) $metal['price_oz'] <= 0) {
+            throw new \RuntimeException('Metal price snapshot is incomplete and was not stored.');
+        }
+
+        return (float) $metal['price_oz'];
     }
 }
