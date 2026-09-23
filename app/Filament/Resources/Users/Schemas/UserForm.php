@@ -2,8 +2,6 @@
 
 namespace App\Filament\Resources\Users\Schemas;
 
-use App\Enums\PreferredLanguage;
-use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Section;
@@ -17,21 +15,24 @@ class UserForm
         return $schema
             ->components([
                 Section::make('Admin account')
-                    ->description('Control dashboard staff access, permissions, and active status.')
+                    ->description('Manage dashboard administrator accounts and active status.')
                     ->columns([
                         'default' => 1,
                         'md' => 2,
                     ])
                     ->components([
                         TextInput::make('name')
+                            ->placeholder('Enter admin name')
                             ->required()
                             ->maxLength(255),
                         TextInput::make('email')
+                            ->placeholder('admin@example.com')
                             ->email()
                             ->required()
                             ->unique(ignoreRecord: true)
                             ->maxLength(255),
                         TextInput::make('password')
+                            ->placeholder('Enter password')
                             ->password()
                             ->revealable()
                             ->dehydrated(fn ($state): bool => filled($state))
@@ -41,26 +42,6 @@ class UserForm
                         Toggle::make('is_active')
                             ->label('Active')
                             ->default(true),
-                        Select::make('preferred_language')
-                            ->label('Preferred language')
-                            ->options([
-                                PreferredLanguage::EN->value => 'English',
-                                PreferredLanguage::AR->value => 'Arabic',
-                                PreferredLanguage::HU->value => 'Hungarian',
-                            ])
-                            ->default(PreferredLanguage::EN->value)
-                            ->required(),
-                        Select::make('roles')
-                            ->label('Roles')
-                            ->multiple()
-                            ->relationship(
-                                name: 'roles',
-                                titleAttribute: 'name',
-                                modifyQueryUsing: fn ($query) => $query->whereIn('name', ['super_admin', 'admin', 'content_manager']),
-                            )
-                            ->required()
-                            ->preload()
-                            ->searchable(),
                     ]),
             ]);
     }
