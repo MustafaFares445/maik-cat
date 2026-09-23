@@ -3,6 +3,8 @@
 namespace App\Filament\Resources\Items\Schemas;
 
 use App\Models\Item;
+use App\Models\ItemFilterMapping;
+use App\Services\Pricing\PricingReviewService;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
@@ -63,34 +65,55 @@ class ItemForm
                             ->numeric()
                             ->step(0.0001)
                             ->minValue(0),
-                        Textarea::make('details')
-                            ->rows(3)
-                            ->columnSpanFull(),
-                        Placeholder::make('current_item_image')
-                            ->label('Current image')
+                        Placeholder::make('review_warning')
+                            ->label('Review warning')
+                            ->visible(fn (?Item $record): bool => $record?->filterMapping?->status === ItemFilterMapping::STATUS_NEEDS_REVIEW)
                             ->content(function (?Item $record): HtmlString {
-                                $url = $record?->getFirstMediaUrl('images', 'card')
-                                    ?: $record?->getFirstMediaUrl('images');
+                                $mapping = $record?->filterMapping;
+
+                                if (! $mapping instanceof ItemFilterMapping) {
+                                    return new HtmlString('');
+                                }
+
+                                $issue = app(PricingReviewService::class)->issue($mapping);
+                                $reason = e($issue['label']);
+                                $note = e($issue['instruction']);
 
                                 return new HtmlString(
-                                    sprintf(
-                                        '<img src="%s" alt="Current item image" class="h-auto w-full max-w-full sm:max-w-sm rounded-lg border border-gray-200 bg-white p-2 object-contain" loading="lazy" />',
-                                        e($url),
-                                    ),
+                                    '<div class="rounded-xl border border-warning-500/40 bg-warning-500/10 p-4 text-sm">'
+                                    .'<div class="font-semibold text-warning-600 dark:text-warning-400">This item needs review and is not currently shown in the app.</div>'
+                                    .'<div class="mt-2"><strong>Reason:</strong> '.$reason.'</div>'
+                                    .'<div class="mt-1"><strong>Review note:</strong> '.$note.'</div>'
+                                    .'</div>',
                                 );
                             })
-                            ->hidden(fn (?Item $record): bool => blank($record?->getFirstMediaUrl('images')))
+                            ->columnSpanFull(),
+                        Textarea::make('details')
+                            ->rows(3)
                             ->columnSpanFull(),
                         FileUpload::make('item_image')
                             ->label('Item image')
                             ->image()
                             ->imageEditor()
+                            ->downloadable()
+                            ->openable()
                             ->disk('public')
                             ->directory('filament/items')
                             ->visibility('public')
                             ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'image/avif'])
                             ->maxSize(4096)
-                            ->helperText('Image uploads are converted to WebP thumb/card/detail variants for mobile usage.')
+                            ->afterStateHydrated(function (FileUpload $component, mixed $state, ?Item $record): void {
+                                if (filled($state) || ! $record instanceof Item) {
+                                    return;
+                                }
+
+                                $media = $record->getFirstMedia('images');
+
+                                if ($media !== null) {
+                                    $component->state($media->getPathRelativeToRoot());
+                                }
+                            })
+                            ->helperText('Edit, replace, open, or download the current image here. New uploads automatically receive the Maik Cat watermark and mobile image sizes.')
                             ->columnSpanFull(),
                         Repeater::make('extraCodes')
                             ->relationship()
