@@ -6,7 +6,6 @@ use App\Enums\PreferredLanguage;
 use App\Models\User;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Section;
@@ -28,14 +27,17 @@ class AppUserForm
                     ])
                     ->components([
                         TextInput::make('name')
+                            ->placeholder('Enter user name')
                             ->required()
                             ->maxLength(255),
                         TextInput::make('email')
+                            ->placeholder('user@example.com')
                             ->required()
                             ->email()
                             ->unique(ignoreRecord: true)
                             ->maxLength(255),
                         TextInput::make('password')
+                            ->placeholder('Enter password')
                             ->password()
                             ->revealable()
                             ->dehydrated(fn ($state): bool => filled($state))
@@ -47,10 +49,10 @@ class AppUserForm
                             ->default(true),
                         Toggle::make('unlimited_devices')
                             ->label('Unlimited devices')
-                            ->default(false)
-                            ->helperText('Allow this account to sign in from any number of devices. Device ID / FCM restrictions are ignored while enabled.'),
+                            ->default(false),
                         Select::make('preferred_language')
                             ->label('Preferred language')
+                            ->placeholder('Select language')
                             ->options([
                                 PreferredLanguage::EN->value => 'English',
                                 PreferredLanguage::AR->value => 'Arabic',
@@ -58,16 +60,10 @@ class AppUserForm
                             ])
                             ->default(PreferredLanguage::EN->value)
                             ->required(),
-                        Textarea::make('fcm_token')
-                            ->label('FCM token')
-                            ->rows(3)
-                            ->disabled()
-                            ->dehydrated(false)
-                            ->columnSpanFull()
-                            ->helperText('Read-only. Use Reset authorized device when moving the account to another phone or app installation.'),
                     ]),
                 Section::make('Authorized mobile device')
                     ->description('Standard accounts use Device ID as the permanent identity, with FCM as a temporary fallback. Unlimited-device accounts bypass the device restriction.')
+                    ->visible(fn (string $operation): bool => $operation === 'edit')
                     ->columns(2)
                     ->components([
                         Placeholder::make('device_binding_status')
