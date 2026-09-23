@@ -41,6 +41,7 @@ class ItemCatalogStats extends StatsOverviewWidget
 
         return [
             Stat::make('Shown in app', number_format($shownInApp))
+                ->description('Item records available to customer')
                 ->icon('heroicon-o-eye')
                 ->color('success'),
             Stat::make('Needs review', number_format($needsReview))
