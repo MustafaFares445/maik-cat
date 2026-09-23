@@ -20,7 +20,7 @@ class ListItemFilterMappings extends ListRecords
             ->where('status', ItemFilterMapping::STATUS_NEEDS_REVIEW)
             ->count();
 
-        return "{$count} item(s) currently need pricing review and are blocked from the public API. Enter verified data, preview every linked price change, then approve the family to publish it again.";
+        return "{$count} item(s) currently need pricing review and are blocked from being shown in the app. Check the reason, verify the data, preview the price change, then approve the item group so it can be shown again.";
     }
 
     protected function getHeaderActions(): array
