@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Items\Tables;
 use App\Models\CarGroup;
 use App\Models\Item;
 use App\Models\ItemFilterMapping;
+use App\Services\Pricing\PricingReviewService;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -58,6 +59,19 @@ class ItemsTable
                     ->getStateUsing(fn (Item $record): string => $record->filterMapping?->status === ItemFilterMapping::STATUS_NEEDS_REVIEW ? 'Needs review' : 'Clear')
                     ->badge()
                     ->color(fn (string $state): string => $state === 'Needs review' ? 'warning' : 'success'),
+                TextColumn::make('pricing_review_reason')
+                    ->label('Reason')
+                    ->getStateUsing(function (Item $record): ?string {
+                        $mapping = $record->filterMapping;
+
+                        if (! $mapping instanceof ItemFilterMapping || $mapping->status !== ItemFilterMapping::STATUS_NEEDS_REVIEW) {
+                            return null;
+                        }
+
+                        return app(PricingReviewService::class)->issue($mapping)['label'];
+                    })
+                    ->placeholder('—')
+                    ->wrap(),
                 TextColumn::make('updated_at')
                     ->label('Updated')
                     ->since()
@@ -71,7 +85,7 @@ class ItemsTable
                 SelectFilter::make('pricing_review')
                     ->label('Pricing review')
                     ->options([
-                        'needs_review' => 'Needs review — blocked from API',
+                        'needs_review' => 'Needs review — blocked from being shown in the app',
                         'clear' => 'Clear',
                     ])
                     ->query(function ($query, array $data) {
