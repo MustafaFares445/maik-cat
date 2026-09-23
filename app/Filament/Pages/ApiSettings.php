@@ -15,9 +15,9 @@ class ApiSettings extends Page implements HasSchemas
 {
     use InteractsWithSchemas;
 
-    protected static ?string $title = 'API Settings';
+    protected static ?string $title = 'Customer App Item Display';
 
-    protected static ?string $navigationLabel = 'API Settings';
+    protected static ?string $navigationLabel = 'App Item Display';
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-adjustments-horizontal';
 
@@ -45,19 +45,19 @@ class ApiSettings extends Page implements HasSchemas
 
     public function getSubheading(): ?string
     {
-        return 'Control how item records are exposed by the public API without changing stored item data.';
+        return 'Choose how product items are shown to customers in the app when several records share the same serial code. This changes only what customers see; the stored product data is not changed.';
     }
 
     public function form(Schema $schema): Schema
     {
         return $schema
             ->components([
-                Section::make('Item response mode')
-                    ->description('This setting only changes API output. Existing item rows, weights, and metal values remain untouched in the database.')
+                Section::make('Items shown to customers')
+                    ->description('Decide whether customers should see every stored item record or a single combined item for each repeated serial code. Product weights, metal values, and stored records remain unchanged.')
                     ->components([
                         Toggle::make('unique_serial_items')
-                            ->label('Return one item per unique serial code')
-                            ->helperText('When enabled, duplicate serial codes are collapsed to one representative item. Its stored weight and metal values stay unchanged, while price is the arithmetic average of the individually calculated prices for all calculable items with the same normalized serial code.')
+                            ->label('Show one item for each unique serial code')
+                            ->helperText('When enabled, items with the same serial code are shown to customers as one item instead of several duplicates. The displayed price is calculated from the valid prices of the matching records, while the original stored item data stays unchanged.')
                             ->default(ItemApiSettingsService::DEFAULT_UNIQUE_SERIAL_ITEMS),
                     ]),
             ])
@@ -76,10 +76,10 @@ class ApiSettings extends Page implements HasSchemas
         ]);
 
         Notification::make()
-            ->title('API settings updated')
+            ->title('Customer item display updated')
             ->body($enabled
-                ? 'Item API responses now return one representative item per unique serial code with the average of its individual item prices.'
-                : 'Item API responses now return the original item rows.')
+                ? 'Customers will now see one item for each unique serial code, with the displayed price based on the matching item records.'
+                : 'Customers will now see every available item record, including records that share the same serial code.')
             ->success()
             ->send();
     }
