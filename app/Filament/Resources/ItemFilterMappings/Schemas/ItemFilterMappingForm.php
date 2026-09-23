@@ -7,7 +7,6 @@ use App\Models\ItemFilterMapping;
 use App\Services\Mobile\ItemPriceService;
 use App\Services\Pricing\FilterPriceCorrectionService;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Text;
@@ -20,7 +19,7 @@ class ItemFilterMappingForm
     {
         return $schema->components([
             Section::make('Manual filter mapping')
-                ->description('Choose the catalyst product and the matching filter reference. Saving this form only creates a Needs Review mapping; it does not approve or publish a pricing correction.')
+                ->description('Choose the catalyst product and the matching filter reference. Saving applies this manual mapping immediately.')
                 ->columns(2)
                 ->components([
                     Select::make('item_id')
@@ -35,15 +34,10 @@ class ItemFilterMappingForm
                         ->relationship('filterItem', 'serial_code')
                         ->searchable()
                         ->preload(false)
-                        ->nullable()
+                        ->required()
                         ->live()
                         ->label('Matching filter reference')
-                        ->helperText('Select the filter-only item that should be used as the pricing reference. Leave this empty only when you need to enter a reference serial manually.'),
-                    TextInput::make('filter_serial')
-                        ->label('Filter serial (optional)')
-                        ->maxLength(255)
-                        ->live(debounce: 350)
-                        ->helperText('Use this when the correct filter is not available as a selectable item, or when several filter samples share the same reference serial.'),
+                        ->helperText('Select the filter-only item that should be used as the pricing reference.'),
                     TextInput::make('filter_weight_override')
                         ->label('Corrected filter weight (optional)')
                         ->numeric()
@@ -52,22 +46,13 @@ class ItemFilterMappingForm
                         ->suffix('kg')
                         ->nullable()
                         ->live(debounce: 350)
-                        ->helperText('Enter a verified filter weight only when the stored or detected weight is wrong. This value is previewed here and still requires review before it can affect the app.'),
+                        ->helperText('Enter a verified filter weight only when the stored or detected weight is wrong. When provided, this value is applied immediately with the manual mapping.'),
                 ]),
 
             Section::make('Pricing impact preview')
-                ->description('Preview the effect before saving. The final correction is still approved from Filter Pricing Review so linked items can be checked together.')
+                ->description('Preview the pricing effect before saving. Saving applies the mapping immediately.')
                 ->components([
                     Text::make(fn (Get $get): string => self::pricingPreview($get)),
-                ]),
-
-            Section::make('Reason / notes')
-                ->description('Record why this manual mapping is being created so the later review has clear audit context.')
-                ->components([
-                    Textarea::make('notes')
-                        ->label('Notes')
-                        ->rows(4)
-                        ->placeholder('Example: confirmed against OEM reference / verified filter-only record / measured filter weight.'),
                 ]),
         ]);
     }
@@ -86,21 +71,19 @@ class ItemFilterMappingForm
         }
 
         $filterItemId = $get('filter_item_id');
-        $filterSerial = trim((string) ($get('filter_serial') ?? ''));
         $weightOverride = $get('filter_weight_override');
 
-        if (blank($filterItemId) && $filterSerial === '' && ! is_numeric($weightOverride)) {
-            return 'Select a matching filter reference, enter a filter serial, or provide a verified filter weight to calculate the preview.';
+        if (blank($filterItemId)) {
+            return 'Select a matching filter reference to calculate the preview.';
         }
 
         $mapping = new ItemFilterMapping([
             'item_id' => $item->getKey(),
-            'filter_item_id' => filled($filterItemId) ? (string) $filterItemId : null,
-            'filter_serial' => $filterSerial !== '' ? $filterSerial : null,
+            'filter_item_id' => (string) $filterItemId,
             'filter_weight_override' => is_numeric($weightOverride) ? (float) $weightOverride : null,
             'detection_method' => 'manual',
             'confidence' => 'manual',
-            'status' => ItemFilterMapping::STATUS_NEEDS_REVIEW,
+            'status' => ItemFilterMapping::STATUS_APPROVED,
         ]);
 
         $correctionService = app(FilterPriceCorrectionService::class);
@@ -139,7 +122,7 @@ class ItemFilterMappingForm
             : 0.0;
 
         return sprintf(
-            'Current price: $%s → Preview: $%s (%+.2f%%). Net catalyst weight after filter correction: %s kg. Saving will keep this mapping in Needs Review until it is approved from the review list.',
+            'Current price: $%s → Preview: $%s (%+.2f%%). Net catalyst weight after filter correction: %s kg. Saving will apply this manual filter mapping immediately.',
             number_format($currentPrice, 2),
             number_format($previewPrice, 2),
             $deltaPercent,
