@@ -42,9 +42,6 @@ class ItemForm
                             ->label('Serial code')
                             ->maxLength(255)
                             ->required(),
-                        TextInput::make('shape_code')
-                            ->label('Shape code')
-                            ->maxLength(20),
                         TextInput::make('weight_kg')
                             ->label('Weight (kg)')
                             ->numeric()
