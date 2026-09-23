@@ -5,7 +5,6 @@ namespace App\Filament\Resources\Items\Tables;
 use App\Models\CarGroup;
 use App\Models\Item;
 use App\Models\ItemFilterMapping;
-use App\Services\Mobile\ItemApiSettingsService;
 use App\Services\Mobile\ItemPriceService;
 use App\Services\Pricing\PricingReviewService;
 use Filament\Actions\BulkActionGroup;
@@ -119,20 +118,12 @@ class ItemsTable
                     DeleteBulkAction::make(),
                 ]),
             ])
+            ->groups([
+                self::serialGroup(),
+            ])
+            ->groupingSettingsHidden()
+            ->deferLoading()
             ->defaultSort('updated_at', 'desc');
-
-        $activeTab = $table->getLivewire()->activeTab ?? null;
-        $groupedView = app(ItemApiSettingsService::class)->uniqueSerialItemsEnabled()
-            && ($activeTab === null || $activeTab === 'grouped');
-
-        if ($groupedView) {
-            $table
-                ->groups([
-                    self::serialGroup(),
-                ])
-                ->defaultGroup('serial_code')
-                ->groupingSettingsHidden();
-        }
 
         return $table;
     }
