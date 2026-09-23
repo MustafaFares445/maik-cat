@@ -70,9 +70,15 @@ class PricingSettings extends Page implements HasSchemas
                         ->label('Apply metal-specific deductions')
                         ->helperText('Safe default is OFF. Enable only when the client confirms this formula.')
                         ->live(),
-                    $this->percentInput('platinum_deduction_percent', 'Platinum deduction', 'Default: 2%.'),
-                    $this->percentInput('palladium_deduction_percent', 'Palladium deduction', 'Default: 2%.'),
-                    $this->percentInput('rhodium_deduction_percent', 'Rhodium deduction', 'Default: 10%.'),
+                    $this->percentInput('platinum_deduction_percent', 'Platinum deduction', 'Default: 2%.')
+                        ->disabled(fn (): bool => ! (bool) ($this->data['metal_deductions_enabled'] ?? false))
+                        ->dehydrated(),
+                    $this->percentInput('palladium_deduction_percent', 'Palladium deduction', 'Default: 2%.')
+                        ->disabled(fn (): bool => ! (bool) ($this->data['metal_deductions_enabled'] ?? false))
+                        ->dehydrated(),
+                    $this->percentInput('rhodium_deduction_percent', 'Rhodium deduction', 'Default: 10%.')
+                        ->disabled(fn (): bool => ! (bool) ($this->data['metal_deductions_enabled'] ?? false))
+                        ->dehydrated(),
                 ])
                 ->columns(3),
             Section::make('Filter price correction')
