@@ -65,14 +65,7 @@ class PricingSettings extends Page implements HasSchemas
                 ->components([
                     Placeholder::make('pricing_formula_overview')
                         ->label('')
-                        ->content(new HtmlString(
-                            '<div class="space-y-2 text-sm">'
-                            .'<div><strong>1.</strong> The system calculates the value of Platinum, Palladium, and Rhodium using the item weight, metal values, and current market prices.</div>'
-                            .'<div><strong>2.</strong> If metal deductions are enabled, the selected percentage is removed from each metal value.</div>'
-                            .'<div><strong>3.</strong> If a filter correction is enabled and approved for the item, the corrected weight and/or metal values are used.</div>'
-                            .'<div><strong>4.</strong> The final <strong>Price rate</strong> is applied to produce the customer price.</div>'
-                            .'</div>',
-                        )),
+                        ->content($this->pricingStepsCard()),
                 ]),
             Section::make('General item price rate')
                 ->description('Choose what percentage of the calculated metal value becomes the final customer price.')
@@ -80,15 +73,14 @@ class PricingSettings extends Page implements HasSchemas
                     $this->percentInput('rate_percent', 'Price rate', 'Default: 80%.')
                         ->live(),
                     Placeholder::make('general_rate_formula')
-                        ->label('Formula')
-                        ->content(fn (): string => 'Final price = calculated metal value × '.number_format($this->previewPercent('rate_percent', $this->savedRatePercent), 2).'%.'),
+                        ->label('')
+                        ->content(fn (): HtmlString => $this->generalRateCard()),
                 ]),
             Section::make('Metal deductions')
                 ->description('Use this only when you want to reduce the value of each metal separately before applying the general price rate.')
                 ->components([
                     Toggle::make('metal_deductions_enabled')
                         ->label('Apply metal-specific deductions')
-                        ->helperText('Safe default is OFF. Enable only when the client confirms this formula.')
                         ->live(),
                     $this->percentInput('platinum_deduction_percent', 'Platinum deduction', 'Default: 2%.')
                         ->disabled(fn (): bool => ! (bool) ($this->data['metal_deductions_enabled'] ?? false))
@@ -100,27 +92,8 @@ class PricingSettings extends Page implements HasSchemas
                         ->disabled(fn (): bool => ! (bool) ($this->data['metal_deductions_enabled'] ?? false))
                         ->dehydrated(),
                     Placeholder::make('metal_deduction_formula')
-                        ->label('How this changes the formula')
-                        ->content(function (): HtmlString {
-                            $enabled = (bool) ($this->data['metal_deductions_enabled'] ?? false);
-                            $rate = number_format($this->previewPercent('rate_percent', $this->savedRatePercent), 2);
-                            $pt = number_format($this->previewPercent('platinum_deduction_percent', $this->savedPlatinumDeductionPercent), 2);
-                            $pd = number_format($this->previewPercent('palladium_deduction_percent', $this->savedPalladiumDeductionPercent), 2);
-                            $rh = number_format($this->previewPercent('rhodium_deduction_percent', $this->savedRhodiumDeductionPercent), 2);
-
-                            if (! $enabled) {
-                                return new HtmlString(
-                                    '<div class="text-sm"><strong>OFF:</strong> Final price = (PT value + PD value + RH value) × '.$rate.'%.</div>'
-                                );
-                            }
-
-                            return new HtmlString(
-                                '<div class="space-y-1 text-sm">'
-                                .'<div><strong>ON:</strong> each metal is reduced first, then the general price rate is applied.</div>'
-                                .'<div>Final price = [PT value × (100% − '.$pt.'%) + PD value × (100% − '.$pd.'%) + RH value × (100% − '.$rh.'%)] × '.$rate.'%.</div>'
-                                .'</div>'
-                            );
-                        })
+                        ->label('')
+                        ->content(fn (): HtmlString => $this->metalDeductionCard())
                         ->columnSpanFull(),
                 ])
                 ->columns(3),
@@ -128,14 +101,8 @@ class PricingSettings extends Page implements HasSchemas
                 ->description('Choose how an approved filter or DPF part should be removed from the item before the customer price is calculated. The original stored item data is never changed.')
                 ->components([
                     Placeholder::make('filter_mode_explanation')
-                        ->label('Correction modes')
-                        ->content(new HtmlString(
-                            '<div class="space-y-2 text-sm">'
-                            .'<div><strong>Disabled:</strong> use the original stored weight and metal values exactly as they are.</div>'
-                            .'<div><strong>Weight only:</strong> subtract the approved filter/DPF weight from the item weight, but keep the original PT, PD, and RH values.</div>'
-                            .'<div><strong>Weight + metals:</strong> subtract the approved filter/DPF weight and also remove its estimated metal contribution before calculating the price. If reliable filter metal data is not available, the system safely falls back to Weight only.</div>'
-                            .'</div>',
-                        ))
+                        ->label('')
+                        ->content(fn (): HtmlString => $this->filterModeCards())
                         ->columnSpanFull(),
                     Select::make('filter_correction_mode')
                         ->label('Correction mode')
@@ -163,23 +130,17 @@ class PricingSettings extends Page implements HasSchemas
                         ->required()
                         ->helperText('Review signal only. Default: 1.5 kg.'),
                     Placeholder::make('filter_formula')
-                        ->label('How the selected mode changes the calculation')
-                        ->content(function (): HtmlString {
-                            $mode = $this->previewMode((string) ($this->data['filter_correction_mode'] ?? $this->savedFilterCorrectionMode));
-
-                            return new HtmlString(match ($mode) {
-                                FilterPriceCorrectionService::MODE_WEIGHT_ONLY =>
-                                    '<div class="text-sm"><strong>Weight only:</strong> Effective weight = stored item weight − approved filter weight. PT, PD, and RH values stay the same. The normal pricing formula then uses this corrected weight.</div>',
-                                FilterPriceCorrectionService::MODE_WEIGHT_AND_METALS =>
-                                    '<div class="text-sm"><strong>Weight + metals:</strong> Effective weight = stored item weight − approved filter weight. The filter metal contribution is also removed, then the normal pricing formula uses the corrected weight and corrected metal values.</div>',
-                                default =>
-                                    '<div class="text-sm"><strong>Disabled:</strong> the normal pricing formula uses the original stored item weight and PT, PD, RH values with no filter correction.</div>',
-                            });
-                        })
+                        ->label('')
+                        ->content(fn (): HtmlString => $this->filterFormulaCard())
                         ->columnSpanFull(),
                     Placeholder::make('candidate_threshold_help')
-                        ->label('About the candidate thresholds')
-                        ->content('The price and weight thresholds only help identify items that may need review. They never change an item price by themselves.')
+                        ->label('')
+                        ->content(new HtmlString(
+                            '<div class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 text-sm dark:border-white/10 dark:bg-white/5">'
+                            .'<div class="font-semibold text-gray-950 dark:text-white">Review thresholds</div>'
+                            .'<div class="mt-1 text-gray-600 dark:text-gray-400">Price and weight thresholds only flag items that may need review. They never change a price automatically.</div>'
+                            .'</div>'
+                        ))
                         ->columnSpanFull(),
                 ])
                 ->columns(3),
@@ -273,6 +234,142 @@ class PricingSettings extends Page implements HasSchemas
                 ];
             })
             ->all();
+    }
+
+    private function pricingStepsCard(): HtmlString
+    {
+        return new HtmlString(
+            '<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">'
+            .'<div class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-white/10 dark:bg-white/5">'
+            .'<div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Step 1</div>'
+            .'<div class="mt-1 font-semibold text-gray-950 dark:text-white">Calculate metal value</div>'
+            .'<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">Weight × PT, PD, RH values × current market prices.</div>'
+            .'</div>'
+            .'<div class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-white/10 dark:bg-white/5">'
+            .'<div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Step 2</div>'
+            .'<div class="mt-1 font-semibold text-gray-950 dark:text-white">Apply metal deductions</div>'
+            .'<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">Only when enabled. Each metal can have its own deduction.</div>'
+            .'</div>'
+            .'<div class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-white/10 dark:bg-white/5">'
+            .'<div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Step 3</div>'
+            .'<div class="mt-1 font-semibold text-gray-950 dark:text-white">Apply filter correction</div>'
+            .'<div class="mt-1 text-sm text-gray-600 dark:text-gray-400">Only for approved filter/DPF mappings and according to the selected mode.</div>'
+            .'</div>'
+            .'<div class="rounded-xl border border-primary-500/30 bg-primary-500/10 p-4">'
+            .'<div class="text-xs font-semibold uppercase tracking-wide text-primary-600 dark:text-primary-400">Step 4</div>'
+            .'<div class="mt-1 font-semibold text-gray-950 dark:text-white">Apply final price rate</div>'
+            .'<div class="mt-1 text-sm text-gray-600 dark:text-gray-300">The final percentage produces the customer-facing price.</div>'
+            .'</div>'
+            .'</div>'
+        );
+    }
+
+    private function generalRateCard(): HtmlString
+    {
+        $rate = number_format($this->previewPercent('rate_percent', $this->savedRatePercent), 2);
+
+        return new HtmlString(
+            '<div class="rounded-xl border border-primary-500/30 bg-primary-500/10 p-4">'
+            .'<div class="text-xs font-semibold uppercase tracking-wide text-primary-600 dark:text-primary-400">Current formula</div>'
+            .'<div class="mt-2 text-base font-semibold text-gray-950 dark:text-white">Final price = calculated metal value × '.$rate.'%</div>'
+            .'<div class="mt-1 text-sm text-gray-600 dark:text-gray-300">Change the rate above and this formula updates instantly.</div>'
+            .'</div>'
+        );
+    }
+
+    private function metalDeductionCard(): HtmlString
+    {
+        $enabled = (bool) ($this->data['metal_deductions_enabled'] ?? false);
+        $rate = number_format($this->previewPercent('rate_percent', $this->savedRatePercent), 2);
+        $pt = number_format($this->previewPercent('platinum_deduction_percent', $this->savedPlatinumDeductionPercent), 2);
+        $pd = number_format($this->previewPercent('palladium_deduction_percent', $this->savedPalladiumDeductionPercent), 2);
+        $rh = number_format($this->previewPercent('rhodium_deduction_percent', $this->savedRhodiumDeductionPercent), 2);
+
+        if (! $enabled) {
+            return new HtmlString(
+                '<div class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-white/10 dark:bg-white/5">'
+                .'<div class="flex items-center gap-2"><span class="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-700 dark:bg-white/10 dark:text-gray-300">OFF</span>'
+                .'<span class="font-semibold text-gray-950 dark:text-white">Metal deductions are not used</span></div>'
+                .'<div class="mt-2 text-sm text-gray-600 dark:text-gray-400">Final price = (PT value + PD value + RH value) × '.$rate.'%.</div>'
+                .'</div>'
+            );
+        }
+
+        return new HtmlString(
+            '<div class="rounded-xl border border-success-500/30 bg-success-500/10 p-4">'
+            .'<div class="flex items-center gap-2"><span class="rounded-full bg-success-500/15 px-2 py-0.5 text-xs font-semibold text-success-700 dark:text-success-400">ON</span>'
+            .'<span class="font-semibold text-gray-950 dark:text-white">Metal deductions are applied before the price rate</span></div>'
+            .'<div class="mt-2 text-sm text-gray-700 dark:text-gray-300">PT '.$pt.'% · PD '.$pd.'% · RH '.$rh.'%</div>'
+            .'<div class="mt-2 rounded-lg bg-white/60 p-3 text-sm text-gray-700 dark:bg-black/10 dark:text-gray-300">Final price = [PT × (100% − '.$pt.'%) + PD × (100% − '.$pd.'%) + RH × (100% − '.$rh.'%)] × '.$rate.'%.</div>'
+            .'</div>'
+        );
+    }
+
+    private function filterModeCards(): HtmlString
+    {
+        $mode = $this->previewMode((string) ($this->data['filter_correction_mode'] ?? $this->savedFilterCorrectionMode));
+
+        $cards = [
+            FilterPriceCorrectionService::MODE_DISABLED => [
+                'title' => 'Disabled',
+                'text' => 'Use the stored weight and PT / PD / RH values exactly as they are.',
+            ],
+            FilterPriceCorrectionService::MODE_WEIGHT_ONLY => [
+                'title' => 'Weight only',
+                'text' => 'Subtract approved filter/DPF weight. Keep PT / PD / RH values unchanged.',
+            ],
+            FilterPriceCorrectionService::MODE_WEIGHT_AND_METALS => [
+                'title' => 'Weight + metals',
+                'text' => 'Subtract filter/DPF weight and its metal contribution. Falls back to Weight only when metal data is not reliable.',
+            ],
+        ];
+
+        $html = '<div class="grid gap-3 lg:grid-cols-3">';
+
+        foreach ($cards as $key => $card) {
+            $selected = $key === $mode;
+            $classes = $selected
+                ? 'border-primary-500/40 bg-primary-500/10'
+                : 'border-gray-200 bg-gray-50/70 dark:border-white/10 dark:bg-white/5';
+            $badge = $selected
+                ? '<span class="rounded-full bg-primary-500/15 px-2 py-0.5 text-xs font-semibold text-primary-700 dark:text-primary-400">Selected</span>'
+                : '';
+
+            $html .= '<div class="rounded-xl border p-4 '.$classes.'">'
+                .'<div class="flex items-center justify-between gap-2"><div class="font-semibold text-gray-950 dark:text-white">'.$card['title'].'</div>'.$badge.'</div>'
+                .'<div class="mt-2 text-sm text-gray-600 dark:text-gray-400">'.$card['text'].'</div>'
+                .'</div>';
+        }
+
+        return new HtmlString($html.'</div>');
+    }
+
+    private function filterFormulaCard(): HtmlString
+    {
+        $mode = $this->previewMode((string) ($this->data['filter_correction_mode'] ?? $this->savedFilterCorrectionMode));
+
+        [$title, $formula] = match ($mode) {
+            FilterPriceCorrectionService::MODE_WEIGHT_ONLY => [
+                'Weight only formula',
+                'Effective weight = stored item weight − approved filter weight. PT, PD, and RH stay unchanged.',
+            ],
+            FilterPriceCorrectionService::MODE_WEIGHT_AND_METALS => [
+                'Weight + metals formula',
+                'Effective weight = stored item weight − approved filter weight. Filter metal contribution is also removed before pricing.',
+            ],
+            default => [
+                'Original item formula',
+                'Stored item weight and PT, PD, RH values are used without filter correction.',
+            ],
+        };
+
+        return new HtmlString(
+            '<div class="rounded-xl border border-primary-500/30 bg-primary-500/10 p-4">'
+            .'<div class="text-xs font-semibold uppercase tracking-wide text-primary-600 dark:text-primary-400">Selected calculation</div>'
+            .'<div class="mt-1 font-semibold text-gray-950 dark:text-white">'.$title.'</div>'
+            .'<div class="mt-2 text-sm text-gray-600 dark:text-gray-300">'.$formula.'</div>'
+            .'</div>'
+        );
     }
 
     private function percentInput(string $name, string $label, string $helperText): TextInput
