@@ -6,6 +6,7 @@ use App\Models\Item;
 use App\Services\Mobile\ItemPriceService;
 use App\Services\Mobile\ItemPriceSettingsService;
 use App\Services\Pricing\FilterPriceCorrectionService;
+use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -15,6 +16,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Concerns\InteractsWithSchemas;
 use Filament\Schemas\Contracts\HasSchemas;
 use Filament\Schemas\Schema;
+use Illuminate\Support\HtmlString;
 
 class PricingSettings extends Page implements HasSchemas
 {
@@ -58,13 +60,31 @@ class PricingSettings extends Page implements HasSchemas
     public function form(Schema $schema): Schema
     {
         return $schema->components([
-            Section::make('General item price rate')
-                ->description('Applied after metal valuation. Default: 80%.')
+            Section::make('How pricing works')
+                ->description('These settings control the price shown to customers. They do not change the stored item weight or metal values.')
                 ->components([
-                    $this->percentInput('rate_percent', 'Price rate', 'Default: 80%.'),
+                    Placeholder::make('pricing_formula_overview')
+                        ->label('')
+                        ->content(new HtmlString(
+                            '<div class="space-y-2 text-sm">'
+                            .'<div><strong>1.</strong> The system calculates the value of Platinum, Palladium, and Rhodium using the item weight, metal values, and current market prices.</div>'
+                            .'<div><strong>2.</strong> If metal deductions are enabled, the selected percentage is removed from each metal value.</div>'
+                            .'<div><strong>3.</strong> If a filter correction is enabled and approved for the item, the corrected weight and/or metal values are used.</div>'
+                            .'<div><strong>4.</strong> The final <strong>Price rate</strong> is applied to produce the customer price.</div>'
+                            .'</div>',
+                        )),
+                ]),
+            Section::make('General item price rate')
+                ->description('Choose what percentage of the calculated metal value becomes the final customer price.')
+                ->components([
+                    $this->percentInput('rate_percent', 'Price rate', 'Default: 80%.')
+                        ->live(),
+                    Placeholder::make('general_rate_formula')
+                        ->label('Formula')
+                        ->content(fn (): string => 'Final price = calculated metal value × '.number_format($this->previewPercent('rate_percent', $this->savedRatePercent), 2).'%.'),
                 ]),
             Section::make('Metal deductions')
-                ->description('Optional deductions are applied to each metal contribution before the general rate. Keep disabled to preserve the legacy formula.')
+                ->description('Use this only when you want to reduce the value of each metal separately before applying the general price rate.')
                 ->components([
                     Toggle::make('metal_deductions_enabled')
                         ->label('Apply metal-specific deductions')
@@ -79,11 +99,44 @@ class PricingSettings extends Page implements HasSchemas
                     $this->percentInput('rhodium_deduction_percent', 'Rhodium deduction', 'Default: 10%.')
                         ->disabled(fn (): bool => ! (bool) ($this->data['metal_deductions_enabled'] ?? false))
                         ->dehydrated(),
+                    Placeholder::make('metal_deduction_formula')
+                        ->label('How this changes the formula')
+                        ->content(function (): HtmlString {
+                            $enabled = (bool) ($this->data['metal_deductions_enabled'] ?? false);
+                            $rate = number_format($this->previewPercent('rate_percent', $this->savedRatePercent), 2);
+                            $pt = number_format($this->previewPercent('platinum_deduction_percent', $this->savedPlatinumDeductionPercent), 2);
+                            $pd = number_format($this->previewPercent('palladium_deduction_percent', $this->savedPalladiumDeductionPercent), 2);
+                            $rh = number_format($this->previewPercent('rhodium_deduction_percent', $this->savedRhodiumDeductionPercent), 2);
+
+                            if (! $enabled) {
+                                return new HtmlString(
+                                    '<div class="text-sm"><strong>OFF:</strong> Final price = (PT value + PD value + RH value) × '.$rate.'%.</div>'
+                                );
+                            }
+
+                            return new HtmlString(
+                                '<div class="space-y-1 text-sm">'
+                                .'<div><strong>ON:</strong> each metal is reduced first, then the general price rate is applied.</div>'
+                                .'<div>Final price = [PT value × (100% − '.$pt.'%) + PD value × (100% − '.$pd.'%) + RH value × (100% − '.$rh.'%)] × '.$rate.'%.</div>'
+                                .'</div>'
+                            );
+                        })
+                        ->columnSpanFull(),
                 ])
                 ->columns(3),
             Section::make('Filter price correction')
-                ->description('Correction is virtual and only applies to approved filter mappings. Original item data remains unchanged.')
+                ->description('Choose how an approved filter or DPF part should be removed from the item before the customer price is calculated. The original stored item data is never changed.')
                 ->components([
+                    Placeholder::make('filter_mode_explanation')
+                        ->label('Correction modes')
+                        ->content(new HtmlString(
+                            '<div class="space-y-2 text-sm">'
+                            .'<div><strong>Disabled:</strong> use the original stored weight and metal values exactly as they are.</div>'
+                            .'<div><strong>Weight only:</strong> subtract the approved filter/DPF weight from the item weight, but keep the original PT, PD, and RH values.</div>'
+                            .'<div><strong>Weight + metals:</strong> subtract the approved filter/DPF weight and also remove its estimated metal contribution before calculating the price. If reliable filter metal data is not available, the system safely falls back to Weight only.</div>'
+                            .'</div>',
+                        ))
+                        ->columnSpanFull(),
                     Select::make('filter_correction_mode')
                         ->label('Correction mode')
                         ->options([
@@ -109,6 +162,25 @@ class PricingSettings extends Page implements HasSchemas
                         ->suffix('kg')
                         ->required()
                         ->helperText('Review signal only. Default: 1.5 kg.'),
+                    Placeholder::make('filter_formula')
+                        ->label('How the selected mode changes the calculation')
+                        ->content(function (): HtmlString {
+                            $mode = $this->previewMode((string) ($this->data['filter_correction_mode'] ?? $this->savedFilterCorrectionMode));
+
+                            return new HtmlString(match ($mode) {
+                                FilterPriceCorrectionService::MODE_WEIGHT_ONLY =>
+                                    '<div class="text-sm"><strong>Weight only:</strong> Effective weight = stored item weight − approved filter weight. PT, PD, and RH values stay the same. The normal pricing formula then uses this corrected weight.</div>',
+                                FilterPriceCorrectionService::MODE_WEIGHT_AND_METALS =>
+                                    '<div class="text-sm"><strong>Weight + metals:</strong> Effective weight = stored item weight − approved filter weight. The filter metal contribution is also removed, then the normal pricing formula uses the corrected weight and corrected metal values.</div>',
+                                default =>
+                                    '<div class="text-sm"><strong>Disabled:</strong> the normal pricing formula uses the original stored item weight and PT, PD, RH values with no filter correction.</div>',
+                            });
+                        })
+                        ->columnSpanFull(),
+                    Placeholder::make('candidate_threshold_help')
+                        ->label('About the candidate thresholds')
+                        ->content('The price and weight thresholds only help identify items that may need review. They never change an item price by themselves.')
+                        ->columnSpanFull(),
                 ])
                 ->columns(3),
         ])->statePath('data');
