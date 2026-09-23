@@ -56,7 +56,7 @@ class ItemsTable
                     ->numeric(4)
                     ->sortable(),
                 TextColumn::make('current_price')
-                    ->label('Price')
+                    ->label('Price (USD)')
                     ->getStateUsing(fn (Item $record): float => app(ItemPriceService::class)->priceFor($record, 'USD'))
                     ->money('USD'),
                 TextColumn::make('pricing_review_status')
