@@ -39,7 +39,7 @@ class ItemsTable
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('weight_kg')
-                    ->label('KG')
+                    ->label('Weight (kg)')
                     ->numeric(3)
                     ->sortable(),
                 TextColumn::make('pt_ppm')
