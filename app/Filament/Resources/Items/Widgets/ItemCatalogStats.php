@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Items\Widgets;
 
 use App\Models\Item;
 use App\Models\ItemFilterMapping;
+use App\Services\Mobile\ItemApiResponseService;
 use App\Services\Mobile\ItemApiSettingsService;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
@@ -15,7 +16,14 @@ class ItemCatalogStats extends StatsOverviewWidget
     protected function getStats(): array
     {
         $uniqueSerialMode = app(ItemApiSettingsService::class)->uniqueSerialItemsEnabled();
-        $shownInApp = Item::query()->apiVisible()->count();
+
+        $visibleItems = Item::query()
+            ->apiVisible()
+            ->get(['id', 'normalized_serial', 'serial_code']);
+
+        $shownInApp = $uniqueSerialMode
+            ? app(ItemApiResponseService::class)->representativeIds($visibleItems)->count()
+            : $visibleItems->count();
 
         $needsReview = Item::query()
             ->whereHas(
@@ -33,9 +41,6 @@ class ItemCatalogStats extends StatsOverviewWidget
 
         return [
             Stat::make('Shown in app', number_format($shownInApp))
-                ->description($uniqueSerialMode
-                    ? 'Item records available to customers; matching serials are grouped in the app'
-                    : 'Item records currently available to customers')
                 ->icon('heroicon-o-eye')
                 ->color('success'),
             Stat::make('Needs review', number_format($needsReview))
