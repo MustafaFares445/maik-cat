@@ -17,7 +17,7 @@ class ListItems extends ListRecords
     public function getSubheading(): ?string
     {
         if (app(ItemApiSettingsService::class)->uniqueSerialItemsEnabled()) {
-            return 'Grouped items is the default view. It only groups serial codes that have more than one stored item. Use All items to see the full catalog without grouping.';
+            return 'All items is the default view. Use Grouped items to review serial codes that have more than one stored item.';
         }
 
         return 'Manage converter items, technical specs, and app-ready images.';
@@ -32,6 +32,8 @@ class ListItems extends ListRecords
         }
 
         return [
+            'all' => Tab::make('All items')
+                ->icon('heroicon-o-list-bullet'),
             'grouped' => Tab::make('Grouped items')
                 ->icon('heroicon-o-rectangle-stack')
                 ->modifyQueryUsing(fn (Builder $query): Builder => $query
@@ -46,16 +48,12 @@ class ListItems extends ListRecords
                             ->groupBy('serial_code')
                             ->havingRaw('COUNT(*) > 1');
                     })),
-            'all' => Tab::make('All items')
-                ->icon('heroicon-o-list-bullet'),
         ];
     }
 
     public function getDefaultActiveTab(): string|int|null
     {
-        return app(ItemApiSettingsService::class)->uniqueSerialItemsEnabled()
-            ? 'grouped'
-            : 'all';
+        return 'all';
     }
 
     protected function getHeaderWidgets(): array
