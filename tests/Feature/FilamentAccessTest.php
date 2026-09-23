@@ -58,5 +58,25 @@ test('super admin can open the filter pricing review queue', function () {
 
     $response->assertOk();
     $response->assertSee('Filter Pricing Review');
-    $response->assertSee('blocked from the public API');
+    $response->assertSee('blocked from being shown in the app');
+});
+
+test('manual filter mapping form focuses on business inputs and hides technical metadata', function () {
+    Role::query()->firstOrCreate(['name' => 'super_admin', 'guard_name' => 'web']);
+
+    $user = User::factory()->create([
+        'is_active' => true,
+    ]);
+    $user->assignRole('super_admin');
+
+    $response = $this->actingAs($user)->get(ItemFilterMappingResource::getUrl('create'));
+
+    $response->assertOk();
+    $response->assertSee('Add manual filter mapping');
+    $response->assertSee('Catalyst product');
+    $response->assertSee('Matching filter reference');
+    $response->assertSee('Corrected filter weight');
+    $response->assertSee('Pricing impact preview');
+    $response->assertDontSee('Detection method');
+    $response->assertDontSee('Confidence');
 });
