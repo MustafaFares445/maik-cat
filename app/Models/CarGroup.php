@@ -31,11 +31,6 @@ class CarGroup extends Model implements HasMedia
         return $this->belongsTo(self::class, 'parent_id');
     }
 
-    public function children(): HasMany
-    {
-        return $this->hasMany(self::class, 'parent_id');
-    }
-
     public function items(): HasMany
     {
         return $this->hasMany(Item::class, 'car_group_id');
