@@ -54,18 +54,51 @@ final class PricingReviewService
 
         $type = (string) ($review['type'] ?? 'pricing_data');
         $label = match ($type) {
-            'component_weight' => 'Component weight required',
-            'metallic_component' => 'Metallic construction review',
-            'assay_source' => 'Assay / source review',
-            default => 'Pricing review',
+            'component_weight' => 'Component weight needs confirmation',
+            'metallic_component' => 'Material details need confirmation',
+            'assay_source' => 'Metal values or source need confirmation',
+            default => $this->genericIssueLabel($mapping, $evidence),
         };
 
         return [
             'type' => $type,
             'label' => $label,
-            'instruction' => (string) ($review['instruction'] ?? $mapping->notes ?? 'Review the pricing evidence before returning this item to the API.'),
+            'instruction' => (string) ($review['instruction'] ?? $mapping->notes ?? 'Check the item details before showing this item in the app again.'),
             'variant' => filled($review['variant'] ?? null) ? (string) $review['variant'] : null,
         ];
+    }
+
+    /** @param array<string, mixed> $evidence */
+    private function genericIssueLabel(ItemFilterMapping $mapping, array $evidence): string
+    {
+        if ($mapping->filter_item_id === null && filled($mapping->filter_serial)) {
+            return 'Matching filter item was not found';
+        }
+
+        if ($mapping->filter_item_id === null && (bool) ($evidence['explicit'] ?? false)) {
+            return 'Filter details need confirmation';
+        }
+
+        if ($mapping->filter_item_id === null && (bool) ($evidence['threshold_match'] ?? false)) {
+            return 'Weight and price need confirmation';
+        }
+
+        if ($mapping->item instanceof Item && $mapping->filter_item_id !== null) {
+            $result = $this->filterPriceCorrectionService->effectiveAssayForMapping(
+                $mapping->item,
+                $mapping,
+                FilterPriceCorrectionService::MODE_WEIGHT_ONLY,
+            );
+
+            return match ($result['reason'] ?? null) {
+                'missing_filter_weight' => 'Filter weight is missing',
+                'invalid_net_weight' => 'Filter weight is too high for this item',
+                'implausible_net_weight' => 'Remaining item weight looks too low',
+                default => 'Price details need confirmation',
+            };
+        }
+
+        return 'Price details need confirmation';
     }
 
     /** @return array{all_safe:bool,count:int,rows:list<array<string,mixed>>} */
