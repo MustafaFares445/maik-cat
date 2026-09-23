@@ -44,19 +44,19 @@ class ItemsTable
                     ->sortable(),
                 TextColumn::make('weight_kg')
                     ->label('Weight (kg)')
-                    ->numeric(3)
+                    ->formatStateUsing(fn (mixed $state): string => self::formatNumber($state, 3))
                     ->sortable(),
                 TextColumn::make('pt_ppm')
                     ->label('PT')
-                    ->numeric(4)
+                    ->formatStateUsing(fn (mixed $state): string => self::formatNumber($state, 4))
                     ->sortable(),
                 TextColumn::make('pd_ppm')
                     ->label('PD')
-                    ->numeric(4)
+                    ->formatStateUsing(fn (mixed $state): string => self::formatNumber($state, 4))
                     ->sortable(),
                 TextColumn::make('rh_ppm')
                     ->label('RH')
-                    ->numeric(4)
+                    ->formatStateUsing(fn (mixed $state): string => self::formatNumber($state, 4))
                     ->sortable(),
                 TextColumn::make('current_price')
                     ->label('Price (USD)')
@@ -142,7 +142,7 @@ class ItemsTable
         return Group::make('serial_code')
             ->label('Serial')
             ->titlePrefixedWithLabel(false)
-            ->getTitleFromRecordUsing(fn (Item $record): string => 'Serial · '.self::displayValue($record->serial_code))
+            ->getTitleFromRecordUsing(fn (Item $record): string => self::displayValue($record->serial_code))
             ->getDescriptionFromRecordUsing(fn (Item $record): string => self::groupDescription($record))
             ->scopeQueryByKeyUsing(
                 fn (Builder $query, string $key): Builder => $query->where('serial_code', $key),
@@ -185,16 +185,26 @@ class ItemsTable
                 ->avg();
 
         return sprintf(
-            'Shown in app · Model: %s · Car group: %s · Weight: %.3f kg · PT: %.4f · PD: %.4f · RH: %.4f · App price: $%s average · %d related items',
-            self::displayValue($representative->model),
-            self::displayValue($representative->carGroup?->name),
-            (float) $representative->weight_kg,
-            (float) $representative->pt_ppm,
-            (float) $representative->pd_ppm,
-            (float) $representative->rh_ppm,
-            number_format($averagePrice, 2),
+            '%d related items · App average $%s · %s · %s kg · PT %s · PD %s · RH %s',
             $siblings->count(),
+            number_format($averagePrice, 2),
+            self::displayValue($representative->carGroup?->name),
+            self::formatNumber($representative->weight_kg, 3),
+            self::formatNumber($representative->pt_ppm, 4),
+            self::formatNumber($representative->pd_ppm, 4),
+            self::formatNumber($representative->rh_ppm, 4),
         );
+    }
+
+    private static function formatNumber(mixed $value, int $maxDecimals): string
+    {
+        if (! is_numeric($value)) {
+            return '—';
+        }
+
+        $formatted = number_format((float) $value, $maxDecimals, '.', ',');
+
+        return rtrim(rtrim($formatted, '0'), '.');
     }
 
     private static function displayValue(mixed $value): string
