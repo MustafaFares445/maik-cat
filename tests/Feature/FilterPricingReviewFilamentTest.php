@@ -1,5 +1,6 @@
 <?php
 
+use App\Filament\Resources\ItemFilterMappings\Pages\CreateItemFilterMapping;
 use App\Filament\Resources\ItemFilterMappings\Pages\ListItemFilterMappings;
 use App\Models\CarGroup;
 use App\Models\Item;
@@ -34,6 +35,49 @@ beforeEach(function (): void {
     ]);
 
     app()->instance(MetalsSpotService::class, $mock);
+});
+
+test('manual filter reference is applied immediately without a review step', function (): void {
+    $group = CarGroup::factory()->create(['name' => 'Mercedes']);
+
+    $item = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'CAT 100',
+        'weight_kg' => 3.0,
+        'pt_ppm' => 100,
+        'pd_ppm' => 20,
+        'rh_ppm' => 5,
+    ]);
+
+    $filterItem = Item::factory()->create([
+        'car_group_id' => $group->id,
+        'serial_code' => 'DPF 100',
+        'weight_kg' => 1.0,
+        'pt_ppm' => 0,
+        'pd_ppm' => 0,
+        'rh_ppm' => 0,
+    ]);
+
+    Livewire::actingAs($this->admin)
+        ->test(CreateItemFilterMapping::class)
+        ->fillForm([
+            'item_id' => $item->id,
+            'filter_item_id' => $filterItem->id,
+            'filter_weight_override' => 1.2,
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $mapping = ItemFilterMapping::query()->where('item_id', $item->id)->firstOrFail();
+
+    expect($mapping->status)->toBe(ItemFilterMapping::STATUS_APPROVED)
+        ->and($mapping->detection_method)->toBe('manual')
+        ->and($mapping->confidence)->toBe('manual')
+        ->and($mapping->filter_item_id)->toBe($filterItem->id)
+        ->and($mapping->filter_serial)->toBe('DPF 100')
+        ->and((float) $mapping->filter_weight_override)->toBe(1.2)
+        ->and($mapping->approved_by)->toBe($this->admin->id)
+        ->and($mapping->approved_at)->not->toBeNull();
 });
 
 test('admin can preview and apply a verified family weight from the review table action', function (): void {

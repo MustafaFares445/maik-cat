@@ -269,12 +269,10 @@ final class EcotradeImageReferenceIndex
             ->replace(' ', '-')
             ->toString();
         $configuredGroups = (array) config('imports.ecotrade_brand_groups', []);
-        $configuredName = $this->canonicalGroupName((string) ($configuredGroups[$slug] ?? $product->brandName));
-        $brandName = $this->canonicalGroupName($product->brandName);
+        $defaultGroup = (string) config('imports.ecotrade_default_group', 'RAZNI');
+        $configuredName = $this->canonicalGroupName((string) ($configuredGroups[$slug] ?? $defaultGroup));
 
-        return $this->groupIdsByCanonicalName[$configuredName]
-            ?? $this->groupIdsByCanonicalName[$brandName]
-            ?? null;
+        return $this->groupIdsByCanonicalName[$configuredName] ?? null;
     }
 
     private function canonicalGroupName(string $name): string

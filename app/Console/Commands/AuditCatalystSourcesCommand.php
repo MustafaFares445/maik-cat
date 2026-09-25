@@ -140,6 +140,7 @@ class AuditCatalystSourcesCommand extends Command
 
                     if (! $this->validAssayRow($serial, $weight, $pt, $pd, $rh)) {
                         $rowsInvalid++;
+
                         continue;
                     }
 
@@ -154,6 +155,7 @@ class AuditCatalystSourcesCommand extends Command
 
                     if (isset($seen[$signature])) {
                         $exactDuplicates++;
+
                         continue;
                     }
 
@@ -212,16 +214,19 @@ class AuditCatalystSourcesCommand extends Command
 
             if (! $product->isValid() || blank($product->mainImageUrl)) {
                 $recordsInvalid++;
+
                 continue;
             }
 
             if ($this->rejectedImageUrl((string) $product->mainImageUrl)) {
                 $rejectedPlaceholderImages++;
+
                 continue;
             }
 
             if (! CatalystSerialValidator::isUsable($product->serialCode)) {
                 $recordsInvalid++;
+
                 continue;
             }
 
@@ -231,7 +236,8 @@ class AuditCatalystSourcesCommand extends Command
                 ->replace('_', '-')
                 ->replace(' ', '-')
                 ->toString();
-            $groupName = ((array) config('imports.ecotrade_brand_groups', []))[$slug] ?? $product->brandName;
+            $groupName = ((array) config('imports.ecotrade_brand_groups', []))[$slug]
+                ?? (string) config('imports.ecotrade_default_group', 'RAZNI');
             $group = $groupResolver->canonicalSheetName(
                 $groupResolver->normalizeSheetName((string) $groupName),
             );
@@ -239,6 +245,7 @@ class AuditCatalystSourcesCommand extends Command
 
             if ($group === '' || $serial === '') {
                 $recordsInvalid++;
+
                 continue;
             }
 

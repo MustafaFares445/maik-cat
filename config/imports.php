@@ -3,6 +3,27 @@
 return [
     'excel_directory' => env('EXCEL_IMPORT_DIRECTORY', base_path('excel')),
 
+    'canonical_car_groups' => [
+        'AUDI VW',
+        'BMW',
+        'MERCEDES',
+        'PSA',
+        'OPEL',
+        'FIAT',
+        'IVECO',
+        'RENAULT',
+        'JAPAN',
+        'KOREA',
+        'FORD',
+        'JAGUAR',
+        'SWEDEN',
+        'ROVER&LAND ROVER',
+        'RAZNI',
+        'USA',
+    ],
+
+    'ecotrade_default_group' => 'RAZNI',
+
     'sheet_aliases' => [
         'VW' => 'AUDI VW',
         'AUDI' => 'AUDI VW',
@@ -54,6 +75,8 @@ return [
         'subaru' => 'JAPAN',
         'suzuki' => 'JAPAN',
         'isuzu' => 'JAPAN',
+        'daihatsu' => 'JAPAN',
+        'hino' => 'JAPAN',
         'kia' => 'KOREA',
         'hyundai' => 'KOREA',
         'genesis' => 'KOREA',
@@ -79,6 +102,8 @@ return [
         'pontiac' => 'USA',
         'saturn' => 'USA',
         'tesla' => 'USA',
+        'ferrari' => 'RAZNI',
+        'walker' => 'RAZNI',
     ],
 
     'rejected_image_url_fragments' => [

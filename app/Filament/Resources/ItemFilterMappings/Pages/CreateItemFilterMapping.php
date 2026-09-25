@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\ItemFilterMappings\Pages;
 
 use App\Filament\Resources\ItemFilterMappings\ItemFilterMappingResource;
+use App\Models\Item;
 use App\Models\ItemFilterMapping;
 use Filament\Resources\Pages\CreateRecord;
 
@@ -19,9 +20,15 @@ class CreateItemFilterMapping extends CreateRecord
     {
         $data['detection_method'] = 'manual';
         $data['confidence'] = 'manual';
-        $data['status'] = ItemFilterMapping::STATUS_NEEDS_REVIEW;
-        $data['approved_by'] = null;
-        $data['approved_at'] = null;
+        $data['status'] = ItemFilterMapping::STATUS_APPROVED;
+        $data['approved_by'] = auth()->id();
+        $data['approved_at'] = now();
+
+        if (filled($data['filter_item_id'] ?? null)) {
+            $data['filter_serial'] = Item::query()
+                ->whereKey($data['filter_item_id'])
+                ->value('serial_code');
+        }
 
         return $data;
     }

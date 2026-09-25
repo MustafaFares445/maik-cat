@@ -77,6 +77,9 @@ test('manual filter mapping form focuses on business inputs and hides technical 
     $response->assertSee('Matching filter reference');
     $response->assertSee('Corrected filter weight');
     $response->assertSee('Pricing impact preview');
+    $response->assertDontSee('Filter serial');
+    $response->assertDontSee('Reason / notes');
+    $response->assertDontSee('Review note');
     $response->assertDontSee('Detection method');
     $response->assertDontSee('Confidence');
 });

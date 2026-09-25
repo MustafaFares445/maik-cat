@@ -108,13 +108,15 @@ test('imports Ecotrade brands, products, and brand logos', function () {
         '--brand-images' => $mappingPath,
     ])->assertExitCode(0);
 
-    expect(CarGroup::query()->where('source', 'ecotrade')->count())->toBe(2)
+    expect(CarGroup::query()->count())->toBe(2)
+        ->and(CarGroup::query()->whereIn('excel_sheet_name', ['FIAT', 'JAPAN'])->count())->toBe(2)
         ->and(Item::query()->where('source', 'ecotrade')->count())->toBe(3);
 
-    $alfaRomeo = CarGroup::query()->where('slug', 'alfa-romeo')->firstOrFail();
-    expect($alfaRomeo->name)->toBe('Alfa Romeo')
-        ->and($alfaRomeo->excel_sheet_name)->toBe('ALFA ROMEO')
-        ->and($alfaRomeo->getFirstMedia('logo'))->not->toBeNull();
+    $fiat = CarGroup::query()->where('excel_sheet_name', 'FIAT')->firstOrFail();
+    expect($fiat->name)->toBe('FIAT')
+        ->and($fiat->slug)->toBe('fiat')
+        ->and($fiat->getFirstMedia('logo'))->not->toBeNull()
+        ->and(CarGroup::query()->where('excel_sheet_name', 'ALFA ROMEO')->doesntExist())->toBeTrue();
 
     $item = Item::query()->where('source_hash', sha1('acura|ACURA MDX 04 FRONT|https://www.ecotradegroup.com/en/product/acura/acura-mdx-04-front'))->firstOrFail();
     expect($item->details)->toBe('ACURA MDX 04 FRONT')

@@ -453,20 +453,10 @@ class EcotradeProductImageCandidateResolver
             ->replace(' ', '-')
             ->toString();
         $configured = (array) config('imports.ecotrade_brand_groups', []);
+        $defaultGroup = (string) config('imports.ecotrade_default_group', 'RAZNI');
         $configuredGroup = $this->groupResolver->canonicalSheetName(
-            $this->groupResolver->normalizeSheetName((string) ($configured[$slug] ?? $product->brandName)),
+            $this->groupResolver->normalizeSheetName((string) ($configured[$slug] ?? $defaultGroup)),
         );
-        $brandGroup = $this->groupResolver->canonicalSheetName(
-            $this->groupResolver->normalizeSheetName($product->brandName),
-        );
-
-        if (isset($groupIds[$configuredGroup])) {
-            return $configuredGroup;
-        }
-
-        if (isset($groupIds[$brandGroup])) {
-            return $brandGroup;
-        }
 
         return $configuredGroup;
     }

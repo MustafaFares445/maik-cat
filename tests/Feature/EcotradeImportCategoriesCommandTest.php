@@ -110,14 +110,14 @@ test('imports Ecotrade categories and relinks matching items', function () {
             ->assertExitCode(0);
 
         $brand = CarGroup::query()
-            ->where('source', 'ecotrade')
-            ->where('slug', 'acura')
+            ->where('excel_sheet_name', 'JAPAN')
             ->firstOrFail();
 
         $item->refresh();
 
-        expect($brand->name)->toBe('Acura')
-            ->and($item->car_group_id)->toBe($brand->id);
+        expect($brand->name)->toBe('JAPAN')
+            ->and($item->car_group_id)->toBe($brand->id)
+            ->and(CarGroup::query()->where('excel_sheet_name', 'ACURA')->doesntExist())->toBeTrue();
     } finally {
         @unlink($jsonPath);
     }
@@ -222,11 +222,10 @@ test('fresh resets existing Ecotrade categories before rebuilding', function () 
 
         expect(CarGroup::query()->where('slug', 'acura-old')->doesntExist())->toBeTrue()
             ->and(CarGroup::query()->where('slug', 'legacy-group')->doesntExist())->toBeTrue()
-            ->and(CarGroup::query()->where('slug', 'ecotrade-unlinked')->exists())->toBeTrue();
+            ->and(CarGroup::query()->where('excel_sheet_name', 'RAZNI')->exists())->toBeTrue();
 
         $brand = CarGroup::query()
-            ->where('source', 'ecotrade')
-            ->where('slug', 'acura')
+            ->where('excel_sheet_name', 'JAPAN')
             ->firstOrFail();
 
         $item->refresh();
@@ -294,13 +293,11 @@ test('unlink missing moves unmatched Ecotrade items to the fallback group', func
             ->assertExitCode(0);
 
         $fallback = CarGroup::query()
-            ->where('source', 'ecotrade')
-            ->where('slug', 'ecotrade-unlinked')
+            ->where('excel_sheet_name', 'RAZNI')
             ->firstOrFail();
 
         $brand = CarGroup::query()
-            ->where('source', 'ecotrade')
-            ->where('slug', 'acura')
+            ->where('excel_sheet_name', 'JAPAN')
             ->firstOrFail();
 
         $matchedItem->refresh();
@@ -390,18 +387,15 @@ test('imports Ecotrade categories from an Excel workbook and links items by bran
             ->assertExitCode(0);
 
         $audiGroup = CarGroup::query()
-            ->where('source', 'ecotrade')
             ->where('excel_sheet_name', 'AUDI VW')
             ->firstOrFail();
 
         $bmwGroup = CarGroup::query()
-            ->where('source', 'ecotrade')
             ->where('excel_sheet_name', 'BMW')
             ->firstOrFail();
 
         $fallback = CarGroup::query()
-            ->where('source', 'ecotrade')
-            ->where('slug', 'ecotrade-unlinked')
+            ->where('excel_sheet_name', 'RAZNI')
             ->firstOrFail();
 
         $audiItem->refresh();

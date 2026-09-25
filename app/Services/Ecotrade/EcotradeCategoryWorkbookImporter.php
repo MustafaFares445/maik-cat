@@ -50,7 +50,21 @@ class EcotradeCategoryWorkbookImporter
                 continue;
             }
 
-            $group = $this->resolveGroup($sheetName, true);
+            $canonical = $this->groupResolver->canonicalSheetName(
+                $this->groupResolver->normalizeSheetName($sheetName),
+            );
+            $allowed = array_map(
+                fn (string $name): string => $this->groupResolver->canonicalSheetName(
+                    $this->groupResolver->normalizeSheetName($name),
+                ),
+                (array) config('imports.canonical_car_groups', []),
+            );
+
+            if (! in_array($canonical, $allowed, true)) {
+                continue;
+            }
+
+            $group = $this->resolveGroup($canonical, true);
 
             if ($group->wasRecentlyCreated) {
                 $report['groups_created']++;
@@ -170,6 +184,14 @@ class EcotradeCategoryWorkbookImporter
             $keys[] = $this->normalizeKey((string) $alias);
         }
 
+        foreach ((array) config('imports.ecotrade_brand_groups', []) as $brand => $target) {
+            if ($this->normalizeKey((string) $target) !== $this->normalizeKey($canonical)) {
+                continue;
+            }
+
+            $keys[] = $this->normalizeKey((string) $brand);
+        }
+
         $tokens = preg_split('/[^A-Z0-9]+/', $this->normalizeKey($canonical)) ?: [];
         $keys = array_merge($keys, array_filter($tokens));
 
@@ -211,7 +233,22 @@ class EcotradeCategoryWorkbookImporter
             }
         }
 
-        return $best;
+        if ($best !== null) {
+            return $best;
+        }
+
+        $defaultKey = $this->normalizeKey((string) config('imports.ecotrade_default_group', 'RAZNI'));
+
+        foreach ($groupMatchers as $matcher) {
+            if (isset($matcher['keys'][$defaultKey])) {
+                return [
+                    'group' => $matcher['group'],
+                    'score' => 0,
+                ];
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -247,7 +284,7 @@ class EcotradeCategoryWorkbookImporter
             'excel_sheet_name' => $canonical,
             'region' => null,
             'parent_id' => null,
-            'source' => 'ecotrade',
+            'source' => null,
             'source_url' => null,
         ];
 

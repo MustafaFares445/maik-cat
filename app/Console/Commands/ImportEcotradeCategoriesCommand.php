@@ -3,9 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Data\EcotradeProductData;
+use App\Models\CarGroup;
 use App\Models\Item;
-use App\Services\Ecotrade\EcotradeCategoryWorkbookImporter;
 use App\Services\Ecotrade\EcotradeBrandImporter;
+use App\Services\Ecotrade\EcotradeCategoryWorkbookImporter;
 use App\Services\Ecotrade\EcotradeJsonReader;
 use App\Services\Ecotrade\EcotradeRecordNormalizer;
 use Illuminate\Console\Command;
@@ -69,7 +70,7 @@ class ImportEcotradeCategoriesCommand extends Command
                     );
             }
 
-            if ($unlinkMissing && $fallbackGroup instanceof \App\Models\CarGroup) {
+            if ($unlinkMissing && $fallbackGroup instanceof CarGroup) {
                 $totals['items_unlinked'] += $this->unlinkMissingItems(
                     $fallbackGroup->id,
                     $this->matchedItemIdsFromReports($files),
@@ -94,7 +95,7 @@ class ImportEcotradeCategoriesCommand extends Command
             return self::SUCCESS;
         } catch (Throwable $exception) {
             DB::rollBack();
-            $this->error('Ecotrade category import failed: ' . $exception->getMessage());
+            $this->error('Ecotrade category import failed: '.$exception->getMessage());
 
             return self::FAILURE;
         }
@@ -283,17 +284,17 @@ class ImportEcotradeCategoriesCommand extends Command
     private function printReport(array $files, array $totals, bool $dryRun): void
     {
         foreach ($files as $fileReport) {
-            $this->line('File: ' . $fileReport['path']);
+            $this->line('File: '.$fileReport['path']);
 
             foreach ($this->reportKeys() as $key) {
-                $this->line($key . ': ' . (int) ($fileReport[$key] ?? 0));
+                $this->line($key.': '.(int) ($fileReport[$key] ?? 0));
             }
         }
 
         $this->line('Totals:');
 
         foreach ($this->reportKeys() as $key) {
-            $this->line($key . ': ' . (int) ($totals[$key] ?? 0));
+            $this->line($key.': '.(int) ($totals[$key] ?? 0));
         }
 
         if ($dryRun) {
@@ -301,41 +302,54 @@ class ImportEcotradeCategoriesCommand extends Command
         }
     }
 
-    private function ensureFallbackGroup(): \App\Models\CarGroup
+    private function ensureFallbackGroup(): CarGroup
     {
-        return \App\Models\CarGroup::query()->firstOrCreate(
-            [
-                'source' => 'ecotrade',
-                'slug' => 'ecotrade-unlinked',
-            ],
-            [
-                'name' => 'Ecotrade Unlinked',
-                'excel_sheet_name' => 'ECOTRADE UNLINKED',
-                'region' => null,
-                'parent_id' => null,
-                'source_url' => null,
-            ],
-        );
+        $fallbackName = strtoupper((string) config('imports.ecotrade_default_group', 'RAZNI'));
+
+        $group = CarGroup::query()
+            ->whereRaw('UPPER(excel_sheet_name) = ?', [$fallbackName])
+            ->orWhereRaw('UPPER(name) = ?', [$fallbackName])
+            ->first();
+
+        if ($group instanceof CarGroup) {
+            return $group;
+        }
+
+        return CarGroup::query()->create([
+            'name' => $fallbackName,
+            'slug' => strtolower($fallbackName),
+            'excel_sheet_name' => $fallbackName,
+            'region' => null,
+            'parent_id' => null,
+            'source' => null,
+            'source_url' => null,
+        ]);
     }
 
     private function resetAllCarGroups(string $fallbackGroupId): int
     {
-        Item::query()
-            ->where('car_group_id', '!=', $fallbackGroupId)
-            ->update(['car_group_id' => $fallbackGroupId]);
+        $canonical = array_map(
+            static fn (string $name): string => strtoupper(trim($name)),
+            (array) config('imports.canonical_car_groups', []),
+        );
 
-        $groups = \App\Models\CarGroup::query()
+        $groups = CarGroup::query()
             ->where('id', '!=', $fallbackGroupId)
-            ->get();
+            ->get()
+            ->filter(function (CarGroup $group) use ($canonical): bool {
+                $name = strtoupper(trim((string) ($group->excel_sheet_name ?: $group->name)));
+
+                return ! in_array($name, $canonical, true);
+            });
 
         $count = $groups->count();
 
-        $groups->each(function (\App\Models\CarGroup $carGroup) use ($fallbackGroupId): void {
-                $carGroup->items()->update(['car_group_id' => $fallbackGroupId]);
-                $carGroup->clearMediaCollection('logo');
-                $carGroup->clearMediaCollection('images');
-                $carGroup->delete();
-            });
+        $groups->each(function (CarGroup $carGroup) use ($fallbackGroupId): void {
+            $carGroup->items()->update(['car_group_id' => $fallbackGroupId]);
+            $carGroup->clearMediaCollection('logo');
+            $carGroup->clearMediaCollection('images');
+            $carGroup->delete();
+        });
 
         return $count;
     }
@@ -387,13 +401,13 @@ class ImportEcotradeCategoriesCommand extends Command
         $previous = @ini_set('memory_limit', $limit);
 
         if ($previous === false) {
-            $this->warn('Unable to set memory_limit to ' . $limit . '; current limit remains ' . $current . '.');
+            $this->warn('Unable to set memory_limit to '.$limit.'; current limit remains '.$current.'.');
 
             return;
         }
 
         if ($current !== $limit) {
-            $this->line('memory_limit: ' . $current . ' -> ' . $limit);
+            $this->line('memory_limit: '.$current.' -> '.$limit);
         }
     }
 
@@ -418,7 +432,7 @@ class ImportEcotradeCategoriesCommand extends Command
             }
         }
 
-        throw new RuntimeException('Ecotrade JSON file not found: ' . $path);
+        throw new RuntimeException('Ecotrade JSON file not found: '.$path);
     }
 
     /**

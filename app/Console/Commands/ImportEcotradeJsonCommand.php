@@ -35,7 +35,7 @@ class ImportEcotradeJsonCommand extends Command
         EcotradeProductImporter $productImporter,
         EcotradeBrandMediaImporter $brandMediaImporter,
     ): int {
-        $reporter = new EcotradeImportReporter();
+        $reporter = new EcotradeImportReporter;
 
         try {
             $this->applyMemoryLimit((string) $this->option('memory-limit'));
@@ -110,7 +110,7 @@ class ImportEcotradeJsonCommand extends Command
 
             return self::SUCCESS;
         } catch (Throwable $exception) {
-            $this->error('Ecotrade import failed: ' . $exception->getMessage());
+            $this->error('Ecotrade import failed: '.$exception->getMessage());
 
             return self::FAILURE;
         }
@@ -153,6 +153,7 @@ class ImportEcotradeJsonCommand extends Command
 
                 if (! $data->isValid()) {
                     $reporter->invalid((string) $data->invalidReason);
+
                     continue;
                 }
 
@@ -212,13 +213,13 @@ class ImportEcotradeJsonCommand extends Command
         $previous = @ini_set('memory_limit', $limit);
 
         if ($previous === false) {
-            $this->warn('Unable to set memory_limit to ' . $limit . '; current limit remains ' . $current . '.');
+            $this->warn('Unable to set memory_limit to '.$limit.'; current limit remains '.$current.'.');
 
             return;
         }
 
         if ($current !== $limit) {
-            $this->line('memory_limit: ' . $current . ' -> ' . $limit);
+            $this->line('memory_limit: '.$current.' -> '.$limit);
         }
     }
 
@@ -228,9 +229,19 @@ class ImportEcotradeJsonCommand extends Command
             ->where('source', 'ecotrade')
             ->delete();
 
+        $canonical = array_map(
+            static fn (string $name): string => strtoupper(trim($name)),
+            (array) config('imports.canonical_car_groups', []),
+        );
+
         CarGroup::query()
             ->where('source', 'ecotrade')
             ->get()
+            ->filter(function (CarGroup $carGroup) use ($canonical): bool {
+                $name = strtoupper(trim((string) ($carGroup->excel_sheet_name ?: $carGroup->name)));
+
+                return ! in_array($name, $canonical, true);
+            })
             ->each(function (CarGroup $carGroup): void {
                 $carGroup->clearMediaCollection('logo');
                 $carGroup->clearMediaCollection('images');
@@ -255,6 +266,6 @@ class ImportEcotradeJsonCommand extends Command
             }
         }
 
-        throw new RuntimeException('Ecotrade JSON file not found: ' . $path);
+        throw new RuntimeException('Ecotrade JSON file not found: '.$path);
     }
 }
